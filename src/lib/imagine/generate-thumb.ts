@@ -12,6 +12,12 @@ export type ImagineThumbResult = {
   error?: string;
 };
 
+type XaiImageResponse = {
+  data?: { url?: string; b64_json?: string }[];
+  error?: { message?: string } | string;
+  message?: string;
+};
+
 const EDIT_URL = "https://api.x.ai/v1/images/edits";
 const GEN_URL = "https://api.x.ai/v1/images/generations";
 const MODEL = "grok-imagine-image-quality";
@@ -33,7 +39,6 @@ export async function generateVehicleThumbnail(opts: {
   const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 2);
 
   try {
-    // Prefer edit with a real photo we re-host as base64 (xAI often can't fetch dealer CDNs)
     for (const ref of refs) {
       const dataUri = await fetchImageAsDataUri(ref);
       if (!dataUri) continue;
@@ -50,22 +55,18 @@ export async function generateVehicleThumbnail(opts: {
         return { ok: true, url: editResult.url, b64: editResult.b64, mode: "edit" };
       }
 
-      // Try public URL form if data URI rejected
-      if (editResult.error?.includes("data") || editResult.error?.includes("image")) {
-        const byUrl = await callXaiJson(EDIT_URL, key, {
-          model: MODEL,
-          prompt: buildThumbEditPrompt(opts.car),
-          aspect_ratio: "1:1",
-          response_format: "url",
-          image: { url: ref, type: "image_url" },
-        });
-        if (byUrl.ok && (byUrl.url || byUrl.b64)) {
-          return { ok: true, url: byUrl.url, b64: byUrl.b64, mode: "edit" };
-        }
+      const byUrl = await callXaiJson(EDIT_URL, key, {
+        model: MODEL,
+        prompt: buildThumbEditPrompt(opts.car),
+        aspect_ratio: "1:1",
+        response_format: "url",
+        image: { url: ref, type: "image_url" },
+      });
+      if (byUrl.ok && (byUrl.url || byUrl.b64)) {
+        return { ok: true, url: byUrl.url, b64: byUrl.b64, mode: "edit" };
       }
     }
 
-    // Text-only generate (weaker accuracy, but always works if key is valid)
     const gen = await callXaiJson(GEN_URL, key, {
       model: MODEL,
       prompt: buildThumbTextPrompt(opts.car),
@@ -108,16 +109,11 @@ async function callXaiJson(
   });
 
   const text = await res.text();
-  let json: {
-    data?: { url?: string; b64_json?: string }[];
-    error?: { message?: string } | string;
-    message?: string;
-  } | null = null;
+  let json: XaiImageResponse | null = null;
 
   try {
-    json = text ? (JSON.parse(text) as typeof json) : null;
+    if (text) json = JSON.parse(text) as XaiImageResponse;
   } catch {
-    // API sometimes returns plain text like "Failed to download image..."
     const snippet = text.replace(/\s+/g, " ").slice(0, 240);
     return {
       ok: false,
@@ -128,12 +124,15 @@ async function callXaiJson(
   }
 
   if (!res.ok) {
-    const msg =
-      (typeof json?.error === "object" && json?.error?.message) ||
-      (typeof json?.error === "string" ? json.error : null) ||
-      json?.message ||
-      text.slice(0, 200) ||
-      `HTTP ${res.status}`;
+    let msg = `HTTP ${res.status}`;
+    if (json) {
+      if (typeof json.error === "object" && json.error?.message) msg = json.error.message;
+      else if (typeof json.error === "string") msg = json.error;
+      else if (json.message) msg = json.message;
+      else if (text) msg = text.slice(0, 200);
+    } else if (text) {
+      msg = text.slice(0, 200);
+    }
     return { ok: false, error: String(msg) };
   }
 
@@ -143,7 +142,6 @@ async function callXaiJson(
   return { ok: false, error: "Empty Imagine response (no url/b64)" };
 }
 
-/** Pull dealer CDN image ourselves so xAI gets a data URI it can always read. */
 async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
   try {
     const res = await fetch(imageUrl, {
@@ -158,7 +156,6 @@ async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
     });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
-    // Cap ~4.5MB to keep request payload reasonable
     if (buf.length < 800 || buf.length > 4_500_000) return null;
     const ctype = (res.headers.get("content-type") || "image/jpeg").split(";")[0]!.trim();
     if (!ctype.startsWith("image/")) return null;
