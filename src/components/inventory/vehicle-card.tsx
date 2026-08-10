@@ -66,13 +66,17 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
-          {/* Full car visible — contain + breathing room so nose/front is never cropped */}
+          {/*
+            Media: flush to top + left + right of the tile.
+            Tall frame + object-contain so the full car (front) shows without cropping.
+            White image bg matches the tile so letterboxing reads as continuous white.
+          */}
           <div
             className={cn(
               "relative w-full overflow-hidden bg-white",
               expanded
-                ? "aspect-[4/5] md:aspect-auto md:min-h-[300px] md:flex-1"
-                : "aspect-[4/5] sm:aspect-[3/4]",
+                ? "aspect-[3/4] md:aspect-auto md:min-h-[340px] md:flex-1"
+                : "aspect-[3/4]",
             )}
           >
             <img
@@ -80,13 +84,13 @@ export function VehicleCard({
               alt={title}
               loading="lazy"
               decoding="async"
-              className="h-full w-full bg-white object-contain object-center p-4 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:p-5"
+              className="absolute inset-0 h-full w-full bg-white object-contain object-center transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]"
               style={{ backgroundColor: "#FFFFFF" }}
             />
           </div>
 
-          {/* Meta under image — tighter than original, roomier than last pass */}
-          <div className="flex flex-col items-center px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pb-4">
+          {/* Dealer + meta sits immediately under the image area — no large white gap */}
+          <div className="flex flex-col items-center border-t border-transparent bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">
             <p className="mb-1.5 max-w-[94%] text-[9px] font-medium tracking-[0.22em] text-fg-subtle uppercase sm:text-[10px] sm:tracking-[0.26em]">
               {dealerLabel}
             </p>
