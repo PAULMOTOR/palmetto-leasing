@@ -1,10 +1,12 @@
 /**
  * Static inventory catalog for the public marketing site.
  * No database — curated partner inventory ships with the deploy.
+ * Goal: every vehicle ≥ $150,000 CAD from partner dealerships.
  */
 import {
   BASE_INVENTORY,
   DEALERS,
+  PREMIUM_MIN_CENTS,
   ROTATING_ARRIVALS,
   dealerListingUrl,
   slugifyVehicle,
@@ -15,14 +17,14 @@ import { calculateLease, type QuoteSettings } from "./calc";
 import type { VehicleCard } from "./types";
 import { loadQuoteSettings } from "./quote-config";
 
-const PREMIUM_THRESHOLD_CENTS = 150_000_00;
-
 export function activeDealers(): SeedDealer[] {
   return DEALERS.filter((d) => d.active);
 }
 
 export function allSeedVehicles(): SeedVehicle[] {
-  return [...BASE_INVENTORY, ...ROTATING_ARRIVALS];
+  return [...BASE_INVENTORY, ...ROTATING_ARRIVALS].filter(
+    (v) => v.price_cents >= PREMIUM_MIN_CENTS,
+  );
 }
 
 function toVehicleCard(item: SeedVehicle, dealer: SeedDealer, settings: QuoteSettings): VehicleCard {
@@ -53,7 +55,7 @@ function toVehicleCard(item: SeedVehicle, dealer: SeedDealer, settings: QuoteSet
     photo_urls: JSON.stringify(photos),
     dealer_listing_url: dealerListingUrl(item.dealership_id, item.listing_path),
     status: "active",
-    is_premium: item.price_cents >= PREMIUM_THRESHOLD_CENTS,
+    is_premium: item.price_cents >= PREMIUM_MIN_CENTS,
     first_seen_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString(),
     removed_at: null,
@@ -88,6 +90,10 @@ export function getCatalogVehicleById(id: string, settings?: QuoteSettings): Veh
 }
 
 export function listCatalogDealerSummaries() {
+  const counts = new Map<string, number>();
+  for (const v of allSeedVehicles()) {
+    counts.set(v.dealership_id, (counts.get(v.dealership_id) || 0) + 1);
+  }
   return activeDealers().map((d) => ({
     id: d.id,
     name: d.name,
@@ -96,6 +102,6 @@ export function listCatalogDealerSummaries() {
     brands: d.brands,
     website_url: d.website_url,
     inventory_url: d.inventory_url,
-    count: allSeedVehicles().filter((v) => v.dealership_id === d.id).length,
+    count: counts.get(d.id) || 0,
   }));
 }
