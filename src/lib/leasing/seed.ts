@@ -37,12 +37,12 @@ export const PREMIUM_MIN_CENTS = 150_000_00;
 export const DEALERS: SeedDealer[] = [
   {
     id: "pfaff-porsche",
-    name: "Pfaff Porsche",
+    name: "Pfaff Reserve",
     city: "Toronto",
     province: "ON",
-    brands: "Porsche",
-    website_url: "https://www.pfaffauto.com",
-    inventory_url: "https://www.pfaffauto.com/inventory",
+    brands: "Porsche, Ferrari, McLaren, Lamborghini, Mercedes-AMG",
+    website_url: "https://www.pfaffreserve.com",
+    inventory_url: "https://www.pfaffreserve.com/used/search.html",
     active: true,
   },
   {
@@ -57,12 +57,12 @@ export const DEALERS: SeedDealer[] = [
   },
   {
     id: "bmw-toronto",
-    name: "BMW Toronto",
+    name: "Pfaff Auto",
     city: "Toronto",
     province: "ON",
-    brands: "BMW, MINI",
-    website_url: "https://www.bmwtoronto.ca",
-    inventory_url: "https://www.bmwtoronto.ca/inventory",
+    brands: "BMW, Porsche, multi-brand used ≥$150k",
+    website_url: "https://www.pfaffauto.com",
+    inventory_url: "https://www.pfaffauto.com/used/search.html",
     active: true,
   },
   {
@@ -101,8 +101,8 @@ export const DEALERS: SeedDealer[] = [
     city: "Vaughan",
     province: "ON",
     brands: "Ferrari",
-    website_url: "https://www.ferrari.com",
-    inventory_url: "https://ontario.ferraridealers.com/en_ca/used-cars",
+    website_url: "https://www.ferrariofontario.com",
+    inventory_url: "https://www.ferrariofontario.com/used/search.html",
     active: true,
   },
   {
@@ -111,8 +111,8 @@ export const DEALERS: SeedDealer[] = [
     city: "Montréal",
     province: "QC",
     brands: "Lamborghini",
-    website_url: "https://www.lamborghinimontreal.com",
-    inventory_url: "https://www.lamborghinimontreal.com/en/inventory",
+    website_url: "https://lamborghinimontreal.com",
+    inventory_url: "https://lamborghinimontreal.com/en/inventory",
     active: true,
   },
   {
@@ -142,7 +142,7 @@ export const DEALERS: SeedDealer[] = [
     province: "QC",
     brands: "Aston Martin",
     website_url: "https://www.astonmartinmontreal.com",
-    inventory_url: "https://www.astonmartinmontreal.com/en/inventory",
+    inventory_url: "https://www.astonmartinmontreal.com/en/new-cars",
     active: true,
   },
   {

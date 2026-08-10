@@ -75,3 +75,26 @@ CRM leads stay in the **CRM** project via `CRM_HANDOFF_URL`.
 ## 7. Local / preview without Neon
 
 If `DATABASE_URL` is unset, the app uses **PGLite** (embedded) so preview still works. Production should always set Neon.
+
+
+## 8. Grok Imagine — unique accurate tiles
+
+The party trick: every car gets a **unique top-down studio thumbnail** faithful to the real unit.
+
+1. Crawler pulls **real** inventory (JSON-LD Vehicle) from partner sites  
+2. Stores **real dealer photos** in `photo_urls`  
+3. For each **new** car, calls xAI Imagine **image edit** with:
+   - 1–2 dealer photos as reference  
+   - prompt template in `src/lib/imagine/thumb-prompt.ts` (top-down, white studio, match paint/body)  
+4. Writes result URL to `thumbnail_url`
+
+### Env
+
+| Name | Purpose |
+|------|---------|
+| `XAI_API_KEY` | xAI API key (console.x.ai) |
+| `IMAGINE_MAX_PER_CRAWL` | Cap generations per crawl (default 20) |
+
+Without `XAI_API_KEY`, tiles show **real dealer photos** (still accurate cars, not fake stock). With the key, tiles become the consistent Palmetto top-down look **per literal car**.
+
+**Accuracy rule:** never invent a car — always reference real listing photos + year/make/model/color from the dealer feed.

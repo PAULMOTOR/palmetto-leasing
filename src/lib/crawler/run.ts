@@ -8,9 +8,13 @@ import {
   type SeedVehicle,
 } from "@/lib/leasing/seed";
 import { fetchDealerInventory } from "./fetch-dealer";
+import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "5-neon-live"; // bump to re-sync dealer seed rows
+const POOL_VERSION = "6-live-jsonld"; // bump re-syncs dealer URLs from seed
+
+/** Max Imagine generations per crawl (cost control). */
+const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
 
 let seedChain: Promise<unknown> = Promise.resolve();
 function enqueueSeed<T>(fn: () => Promise<T>): Promise<T> {
@@ -30,20 +34,21 @@ export type CrawlResult = {
   added: number;
   updated: number;
   removed: number;
+  imagined?: number;
   sources?: Record<string, string>;
   notes?: string[];
 };
 
-/**
- * Crawl active dealership inventory URLs → Neon (or PGLite fallback).
- * Live HTTP first; curated seed fills gaps when sites block bots.
- */
-export async function runInventoryCrawl(opts?: { forceIncludeAll?: boolean }) {
+export async function runInventoryCrawl(opts?: { forceIncludeAll?: boolean; generateThumbs?: boolean }) {
   return enqueueSeed(() => runInventoryCrawlInner(opts));
 }
 
-async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }): Promise<CrawlResult> {
+async function runInventoryCrawlInner(opts?: {
+  forceIncludeAll?: boolean;
+  generateThumbs?: boolean;
+}): Promise<CrawlResult> {
   const sql = await getSql();
+  const wantThumbs = opts?.generateThumbs !== false;
 
   const runRows = await sql<{ id: number }>`
     insert into crawl_runs (status) values ('running') returning id
@@ -54,6 +59,7 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }): Pro
   let updated = 0;
   let removed = 0;
   let listingsFound = 0;
+  let imagined = 0;
   const sources: Record<string, string> = {};
   const notes: string[] = [];
 
@@ -110,35 +116,74 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }): Pro
     const activeIds = new Set(activeDealers.map((d) => d.id));
 
     const liveFeed: SeedVehicle[] = [];
+    let anyLive = false;
     for (const d of activeDealers) {
       const result = await fetchDealerInventory(d.id, d.inventory_url);
       sources[d.id] = result.source;
       notes.push(`${d.name}: ${result.source} · ${result.items.length} · ${result.notes.join("; ")}`);
+      if (result.source === "live") anyLive = true;
       liveFeed.push(...result.items.filter((v) => v.price_cents >= PREMIUM_THRESHOLD_CENTS));
     }
 
-    // Safety net: if crawl completely empty, force full seed
-    if (liveFeed.length === 0 || opts?.forceIncludeAll) {
+    // Only inject full seed if *every* dealer failed live AND force/empty
+    if (liveFeed.length === 0) {
       const seedAll = BASE_INVENTORY.filter(
         (v) => activeIds.has(v.dealership_id) && v.price_cents >= PREMIUM_THRESHOLD_CENTS,
       );
-      const keys = new Set(liveFeed.map((v) => `${v.dealership_id}::${v.external_id}`));
-      for (const s of seedAll) {
-        const k = `${s.dealership_id}::${s.external_id}`;
-        if (!keys.has(k)) liveFeed.push(s);
-      }
-      notes.push(`Seed safety net applied · feed size ${liveFeed.length}`);
+      liveFeed.push(...seedAll);
+      notes.push(`EMERGENCY seed only — no live dealers returned data (${seedAll.length})`);
+    } else if (opts?.forceIncludeAll && !anyLive) {
+      notes.push("forceIncludeAll ignored seed merge because live path preferred");
     }
 
     listingsFound = liveFeed.length;
     const seenExternal = new Set<string>();
+    const newForImagine: SeedVehicle[] = [];
 
     for (const item of liveFeed) {
       const key = `${item.dealership_id}::${item.external_id}`;
       seenExternal.add(key);
       const result = await upsertVehicle(sql, item, runId);
-      if (result === "added") added += 1;
-      else if (result === "updated") updated += 1;
+      if (result === "added") {
+        added += 1;
+        newForImagine.push(item);
+      } else if (result === "updated") updated += 1;
+    }
+
+    // Imagine unique studio thumbs for new live cars (reference = dealer photos)
+    if (wantThumbs && process.env.XAI_API_KEY?.trim()) {
+      const batch = newForImagine
+        .filter((v) => v.photos.some((p) => p.startsWith("http")))
+        .slice(0, MAX_IMAGINE_PER_CRAWL);
+      for (const item of batch) {
+        const id = `${item.dealership_id}_${item.external_id}`
+          .toLowerCase()
+          .replace(/[^a-z0-9_]+/g, "_");
+        const imag = await generateVehicleThumbnail({
+          car: {
+            year: item.year,
+            make: item.make,
+            model: item.model,
+            trim: item.trim,
+            exteriorColor: item.exterior_color,
+            bodyStyle: item.body_style,
+          },
+          referencePhotoUrls: item.photos.filter((p) => p.startsWith("http")).slice(0, 2),
+        });
+        if (imag.ok && imag.url) {
+          await sql`
+            update vehicles
+            set thumbnail_url = ${imag.url}, updated_at = now()
+            where id = ${id}
+          `;
+          imagined += 1;
+        } else if (imag.error) {
+          notes.push(`Imagine ${item.external_id}: ${imag.error}`);
+        }
+      }
+      notes.push(`Imagine thumbs generated: ${imagined}/${batch.length}`);
+    } else if (wantThumbs) {
+      notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
     }
 
     const active = await sql<{ id: string; dealership_id: string; external_id: string }>`
@@ -195,6 +240,7 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }): Pro
       added,
       updated,
       removed,
+      imagined,
       sources,
       notes,
     };
@@ -231,12 +277,22 @@ async function upsertVehicle(
     : dealerListingUrl(item.dealership_id, item.listing_path);
   const specsJson = JSON.stringify(item.specs);
   const photosJson = JSON.stringify(item.photos.length ? item.photos : [item.thumbnail]);
-  const thumbnail = item.thumbnail;
+  // Prefer real dealer photo as tile until Imagine overwrites
+  const thumbnail = item.thumbnail.startsWith("http")
+    ? item.thumbnail
+    : item.photos.find((p) => p.startsWith("http")) || item.thumbnail;
 
-  const existing = await sql<{ id: string }>`
-    select id from vehicles where id = ${id} limit 1
+  const existing = await sql<{ id: string; thumbnail_url: string }>`
+    select id, thumbnail_url from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
+  // Keep prior Imagine thumb if we already generated one (x.ai or our CDN)
+  const keepThumb =
+    !isNew &&
+    existing[0]?.thumbnail_url &&
+    /imagine|x\.ai|generated|palmetto/i.test(existing[0].thumbnail_url)
+      ? existing[0].thumbnail_url
+      : thumbnail;
 
   await sql`
     insert into vehicles (
@@ -250,7 +306,7 @@ async function upsertVehicle(
       ${item.year}, ${item.make}, ${item.model}, ${item.trim},
       ${item.body_style}, ${item.exterior_color}, ${item.interior_color},
       ${item.mileage}, ${item.price_cents}, 'CAD', ${item.vin},
-      ${item.stock_number}, ${item.description}, ${specsJson}, ${thumbnail},
+      ${item.stock_number}, ${item.description}, ${specsJson}, ${keepThumb},
       ${photosJson}, ${listingUrl}, 'active', ${isPremium},
       now(), now(), now()
     )
@@ -285,7 +341,7 @@ async function upsertVehicle(
       ${item.dealership_id},
       ${id},
       ${isNew ? "added" : "updated"},
-      ${isNew ? `${item.year} ${item.make} ${item.model}` : `Price ${item.price_cents}`}
+      ${isNew ? `LIVE ${item.year} ${item.make} ${item.model}` : `Price ${item.price_cents}`}
     )
   `;
   return isNew ? "added" : "updated";
@@ -301,11 +357,11 @@ export async function ensureSeededInventory() {
         select value from app_meta where key = 'pool_version' limit 1
       `;
       if (ver[0]?.value !== POOL_VERSION) {
-        return runInventoryCrawlInner({ forceIncludeAll: true });
+        return runInventoryCrawlInner({ forceIncludeAll: false, generateThumbs: false });
       }
       return { seeded: false as const, count };
     }
-    const result = await runInventoryCrawlInner({ forceIncludeAll: true });
+    const result = await runInventoryCrawlInner({ forceIncludeAll: false, generateThumbs: true });
     return { seeded: true as const, ...result };
   });
 }
