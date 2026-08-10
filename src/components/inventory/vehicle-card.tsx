@@ -67,9 +67,8 @@ export function VehicleCard({
       >
         <div className="flex flex-col">
           {/*
-            Media: flush to top + left + right of the tile.
-            Tall frame + object-contain so the full car (front) shows without cropping.
-            White image bg matches the tile so letterboxing reads as continuous white.
+            Flush top + sides. Imagine tiles bake empty white above the car —
+            cover + vertical shift crops that band so the car sits against the tile top.
           */}
           <div
             className={cn(
@@ -84,13 +83,12 @@ export function VehicleCard({
               alt={title}
               loading="lazy"
               decoding="async"
-              className="absolute inset-0 h-full w-full bg-white object-contain object-center transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]"
+              className="absolute inset-0 h-full w-full origin-top bg-white object-cover object-[center_62%] transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02]"
               style={{ backgroundColor: "#FFFFFF" }}
             />
           </div>
 
-          {/* Dealer + meta sits immediately under the image area — no large white gap */}
-          <div className="flex flex-col items-center border-t border-transparent bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">
+          <div className="flex flex-col items-center bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">
             <p className="mb-1.5 max-w-[94%] text-[9px] font-medium tracking-[0.22em] text-fg-subtle uppercase sm:text-[10px] sm:tracking-[0.26em]">
               {dealerLabel}
             </p>
