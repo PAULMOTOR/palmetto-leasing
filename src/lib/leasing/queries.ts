@@ -10,7 +10,7 @@ import {
   listCatalogDealerSummaries,
   listCatalogVehicles,
 } from "./catalog";
-import { loadQuoteSettings } from "./quote-config";
+import { loadQuoteSettings, loadQuoteSettingsAsync } from "./quote-config";
 import { handoffLeaseToCrm } from "@/lib/crm/handoff";
 import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { getSql, dbSource } from "@/lib/db";
@@ -22,9 +22,10 @@ import { generateMissingImagineThumbs } from "@/lib/imagine/batch-thumbs";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
+  settings?: Awaited<ReturnType<typeof loadQuoteSettingsAsync>>,
 ): Promise<VehicleCard> {
-  const settings = loadQuoteSettings();
-  const quote = calculateLease(Number(row.price_cents), settings);
+  const qs = settings ?? (await loadQuoteSettingsAsync());
+  const quote = calculateLease(Number(row.price_cents), qs);
   const photos = parsePhotos(row.photo_urls).length
     ? parsePhotos(row.photo_urls)
     : row.thumbnail_url
@@ -100,6 +101,7 @@ export const listVehicles = createServerFn({ method: "GET" })
     const filters = data ?? {};
     let list: VehicleCard[] = [];
 
+    const quoteSettings = await loadQuoteSettingsAsync();
     try {
       await ensureSeededInventory();
       const sql = await getSql();
@@ -112,10 +114,10 @@ export const listVehicles = createServerFn({ method: "GET" })
         where v.status = 'active' and d.active = true and v.price_cents >= 15000000
         order by v.price_cents desc
       `;
-      list = await Promise.all(rows.map((r) => toCard(r)));
+      list = await Promise.all(rows.map((r) => toCard(r, quoteSettings)));
     } catch (err) {
       console.warn("[listVehicles] DB unavailable, static catalog:", err);
-      list = listCatalogVehicles(loadQuoteSettings());
+      list = listCatalogVehicles(quoteSettings);
     }
 
     list = dedupeCards(list);
@@ -184,7 +186,7 @@ export const getVehicleBySlug = createServerFn({ method: "GET" })
     } catch {
       /* fall through */
     }
-    return getCatalogVehicleBySlug(data.slug, loadQuoteSettings());
+    return getCatalogVehicleBySlug(data.slug, await loadQuoteSettingsAsync());
   });
 
 export const listDealers = createServerFn({ method: "GET" }).handler(async () => {
@@ -243,7 +245,7 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
       hasImagineKey: Boolean(process.env.XAI_API_KEY?.trim()),
     };
   } catch {
-    const list = listCatalogVehicles(loadQuoteSettings());
+    const list = listCatalogVehicles(await loadQuoteSettingsAsync());
     return {
       total: list.length,
       premium: list.filter((v) => v.is_premium).length,
@@ -331,7 +333,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const settings = {
-      ...loadQuoteSettings(),
+      ...(await loadQuoteSettingsAsync()),
       ...(data.termMonths ? { termMonths: data.termMonths } : {}),
       ...(typeof data.downPaymentRate === "number"
         ? { downPaymentRate: data.downPaymentRate }

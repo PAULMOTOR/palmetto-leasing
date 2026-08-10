@@ -1,11 +1,14 @@
 /**
- * Portal / quote helpers for the marketing site (no database).
+ * Portal / quote helpers for the marketing site.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { loadQuoteSettings } from "./quote-config";
-import { activeDealers, listCatalogDealerSummaries } from "./catalog";
-import { calculateLease, type QuoteSettings } from "./calc";
+import {
+  loadQuoteSettings,
+  loadQuoteSettingsAsync,
+  saveQuoteSettings,
+} from "./quote-config";
+import { activeDealers } from "./catalog";
 import { DEALERS } from "./seed";
 
 const ADMIN_PIN = () => process.env.ADMIN_PIN?.trim() || "palmetto";
@@ -14,10 +17,10 @@ const DEALER_PIN = () => process.env.DEALER_PIN?.trim() || "dealer";
 export { loadQuoteSettings };
 
 export const getQuoteSettings = createServerFn({ method: "GET" }).handler(async () => {
-  return loadQuoteSettings();
+  return loadQuoteSettingsAsync();
 });
 
-/** Quote defaults are env-driven on Vercel — this endpoint documents them only. */
+/** Persist quote defaults to Neon (admin panel). */
 export const updateQuoteSettings = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
@@ -32,13 +35,13 @@ export const updateQuoteSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
-    // Marketing site has no DB — settings come from Vercel env vars.
-    return {
-      ok: false as const,
-      message:
-        "Set QUOTE_BASE_INTEREST_RATE, QUOTE_TERM_MONTHS, QUOTE_RESIDUAL_RATE, QUOTE_DOWN_PAYMENT_RATE in Vercel env, then redeploy.",
-      settings: loadQuoteSettings(),
-    };
+    const settings = await saveQuoteSettings({
+      baseInterestRate: data.baseInterestRate,
+      termMonths: data.termMonths,
+      residualRate: data.residualRate,
+      downPaymentRate: data.downPaymentRate,
+    });
+    return { ok: true as const, settings };
   });
 
 export const verifyAdminPin = createServerFn({ method: "POST" })
@@ -81,7 +84,6 @@ export const updateDealerPortalSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     if (!data.token.startsWith("dealer:")) throw new Error("Unauthorized");
-    // Preferences will live in the CRM project; accept UI saves for UX only.
     return {
       ok: true as const,
       message: "Saved for this session. Wire to CRM handoff for permanent dealer economics.",
@@ -128,81 +130,37 @@ export const listActiveDealersForLogin = createServerFn({ method: "GET" }).handl
   }));
 });
 
-/** Client status lives in CRM — marketing site only acknowledges handoff wiring. */
 export const clientLookup = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ email: z.string().email() }).parse(input))
   .handler(async ({ data }) => {
     const email = data.email.trim().toLowerCase();
-    // No CRM DB here. When CRM exposes a status API, call it with CRM_HANDOFF_SECRET.
     const statusUrl = process.env.CRM_STATUS_URL?.trim();
     if (statusUrl) {
       try {
         const secret = process.env.CRM_HANDOFF_SECRET?.trim();
-        const res = await fetch(
-          `${statusUrl}?email=${encodeURIComponent(email)}`,
-          {
-            headers: secret ? { authorization: `Bearer ${secret}` } : {},
-          },
-        );
+        const res = await fetch(`${statusUrl}?email=${encodeURIComponent(email)}`, {
+          headers: secret ? { authorization: `Bearer ${secret}` } : {},
+        });
         if (res.ok) {
           const body = (await res.json()) as { applications?: unknown[] };
           if (Array.isArray(body.applications)) {
             return { email, applications: body.applications as never[] };
           }
         }
-      } catch (err) {
-        console.error("[client-status]", err);
+      } catch {
+        /* fall through */
       }
     }
     return {
       email,
       applications: [] as {
-        id: number;
+        id: string;
         vehicleLabel: string;
-        dealerName: string;
-        priceCents: number;
-        monthlyPaymentCents: number;
-        termMonths: number;
-        residualCents: number;
         status: string;
-        contractStatus: string;
         missingDocs: string[];
-        buyoutCents: number;
-        monthsElapsed: number;
-        createdAt: string;
-        customerName: string;
+        contractStatus: string;
+        monthlyPaymentCents: number;
+        buyoutCents: number | null;
       }[],
-      note: "Application status is tracked in the Paul Motor CRM. Connect CRM_STATUS_URL when ready.",
     };
   });
-
-export function estimateBuyout(
-  priceCents: number,
-  monthsElapsed: number,
-  settings?: QuoteSettings,
-): number {
-  const s = settings ?? loadQuoteSettings();
-  const q = calculateLease(priceCents, s);
-  const elapsed = Math.min(Math.max(0, monthsElapsed), q.termMonths);
-  const remaining = q.termMonths - elapsed;
-  const paidDep = Math.round((q.depreciationCents * elapsed) / q.termMonths);
-  const remainingDep = Math.max(0, q.depreciationCents - paidDep);
-  return Math.round(q.residualCents + remainingDep * (remaining / Math.max(1, q.termMonths)));
-}
-
-export function adminDealerList() {
-  return DEALERS.map((d) => ({
-    id: d.id,
-    name: d.name,
-    city: d.city,
-    province: d.province,
-    brands: d.brands,
-    website_url: d.website_url,
-    inventory_url: d.inventory_url,
-    active: d.active,
-    vehicle_count: listCatalogDealerSummaries().find((x) => x.id === d.id)?.count
-      ?? (d.active
-        ? 0
-        : 0),
-  }));
-}

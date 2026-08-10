@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Loader2, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   addDealer,
+  deleteDealer,
   listAdminDealers,
   updateDealer,
   type AdminDealer,
@@ -143,20 +144,15 @@ function AdminPage() {
   async function onImagine() {
     setImagining(true);
     try {
-      // force=true re-renders with locked nose-up / pure white template
       const r = await triggerImagineThumbs({ data: { limit: 12, force: true } });
       if (!r.hasApiKey) {
-        toast.error("XAI_API_KEY missing on Vercel", {
-          description: "Add the key from console.x.ai, redeploy, then try again.",
-        });
+        toast.error("XAI_API_KEY missing on Vercel");
         return;
       }
-      toast.success("Imagine batch done (locked template)", {
-        description: `${r.succeeded}/${r.attempted} studio tiles · ${r.skipped} skipped`,
+      toast.success("Imagine batch done", {
+        description: `${r.succeeded}/${r.attempted} studio tiles`,
       });
-      if (r.errors?.length) {
-        toast.message("Some failed", { description: r.errors[0] });
-      }
+      if (r.errors?.length) toast.message("Some failed", { description: r.errors[0] });
       if (token) await refresh(token);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Imagine failed");
@@ -170,6 +166,21 @@ function AdminPage() {
     await updateDealer({ data: { token, id: d.id, active: !d.active } });
     toast.success(d.active ? "Dealer offline" : "Dealer live");
     await refresh(token);
+  }
+
+  async function onDelete(d: AdminDealer) {
+    if (!token) return;
+    const ok = window.confirm(
+      `Delete ${d.name}? This removes the dealer and marks their ${d.vehicle_count} vehicles as removed. This cannot be undone.`,
+    );
+    if (!ok) return;
+    try {
+      await deleteDealer({ data: { token, id: d.id } });
+      toast.success("Dealer deleted", { description: d.name });
+      await refresh(token);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    }
   }
 
   async function onSaveUrls(d: AdminDealer, website_url: string, inventory_url: string) {
@@ -188,7 +199,7 @@ function AdminPage() {
         >
           <img src="/palmetto-logo.png" alt="Palmetto" className="mx-auto h-12 w-auto object-contain" />
           <h1 className="mt-3 text-center text-lg font-medium">Admin</h1>
-          <p className="mt-1 text-center text-xs text-fg-subtle">Inventory · crawl · Imagine</p>
+          <p className="mt-1 text-center text-xs text-fg-subtle">Inventory · quotes · dealers</p>
           <div className="mt-6 space-y-2">
             <Label htmlFor="pin">PIN</Label>
             <Input id="pin" type="password" value={pin} onChange={(e) => setPin(e.target.value)} required />
@@ -207,13 +218,11 @@ function AdminPage() {
         <div>
           <h1 className="text-lg font-medium tracking-tight">Admin</h1>
           <p className="mt-1 text-sm text-fg-muted">
-            Live inventory · locked Imagine tiles · partner pool
+            Live inventory · quote defaults · partner pool
           </p>
           {hasImagineKey != null && (
             <p className={cn("mt-1 text-[11px]", hasImagineKey ? "text-success" : "text-fg-subtle")}>
-              {hasImagineKey
-                ? "XAI_API_KEY detected — Generate re-renders with pure white / nose-up lock"
-                : "XAI_API_KEY not set — tiles use dealer photos until you add the key + redeploy"}
+              {hasImagineKey ? "XAI_API_KEY detected" : "XAI_API_KEY not set"}
             </p>
           )}
         </div>
@@ -240,16 +249,12 @@ function AdminPage() {
         </div>
       </div>
 
-      {settings && (
-        <div className="mb-6 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
-          <h2 className="text-sm font-medium">Quote defaults</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-4">
-            <Stat label="APR" value={`${(settings.baseInterestRate * 100).toFixed(2)}%`} />
-            <Stat label="Term" value={`${settings.termMonths} mo`} />
-            <Stat label="Residual" value={`${(settings.residualRate * 100).toFixed(0)}%`} />
-            <Stat label="Down" value={`${(settings.downPaymentRate * 100).toFixed(0)}%`} />
-          </div>
-        </div>
+      {settings && token && (
+        <QuoteSettingsEditor
+          token={token}
+          initial={settings}
+          onSaved={(s) => setSettings(s)}
+        />
       )}
 
       {runs.length > 0 && (
@@ -273,7 +278,13 @@ function AdminPage() {
       <h2 className="mb-3 text-sm font-medium">Dealership pool</h2>
       <div className="space-y-3">
         {dealers.map((d) => (
-          <DealerRow key={d.id} dealer={d} onToggle={() => onToggle(d)} onSaveUrls={onSaveUrls} />
+          <DealerRow
+            key={d.id}
+            dealer={d}
+            onToggle={() => onToggle(d)}
+            onDelete={() => onDelete(d)}
+            onSaveUrls={onSaveUrls}
+          />
         ))}
       </div>
 
@@ -291,22 +302,168 @@ function AdminPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function QuoteSettingsEditor({
+  token,
+  initial,
+  onSaved,
+}: {
+  token: string;
+  initial: QuoteSettings;
+  onSaved: (s: QuoteSettings) => void;
+}) {
+  const [apr, setApr] = useState(String((initial.baseInterestRate * 100).toFixed(2)));
+  const [term, setTerm] = useState(String(initial.termMonths));
+  const [residual, setResidual] = useState(String((initial.residualRate * 100).toFixed(0)));
+  const [down, setDown] = useState(String((initial.downPaymentRate * 100).toFixed(0)));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setApr(String((initial.baseInterestRate * 100).toFixed(2)));
+    setTerm(String(initial.termMonths));
+    setResidual(String((initial.residualRate * 100).toFixed(0)));
+    setDown(String((initial.downPaymentRate * 100).toFixed(0)));
+  }, [initial]);
+
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const baseInterestRate = Number(apr) / 100;
+      const termMonths = Math.round(Number(term));
+      const residualRate = Number(residual) / 100;
+      const downPaymentRate = Number(down) / 100;
+      if (!Number.isFinite(baseInterestRate) || baseInterestRate < 0 || baseInterestRate > 0.4) {
+        toast.error("APR must be between 0 and 40%");
+        return;
+      }
+      if (!Number.isFinite(termMonths) || termMonths < 12 || termMonths > 72) {
+        toast.error("Term must be 12–72 months");
+        return;
+      }
+      if (!Number.isFinite(residualRate) || residualRate < 0.1 || residualRate > 0.9) {
+        toast.error("Residual must be 10–90%");
+        return;
+      }
+      if (!Number.isFinite(downPaymentRate) || downPaymentRate < 0 || downPaymentRate > 0.5) {
+        toast.error("Down must be 0–50%");
+        return;
+      }
+      const res = await updateQuoteSettings({
+        data: {
+          token,
+          baseInterestRate,
+          termMonths,
+          residualRate,
+          downPaymentRate,
+        },
+      });
+      if (!res.ok) {
+        toast.error("Could not save quote settings");
+        return;
+      }
+      onSaved(res.settings);
+      toast.success("Quote defaults saved", {
+        description: "Live on inventory quotes immediately (no redeploy).",
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border/80 bg-surface-2/40 px-3 py-2">
-      <p className="text-[10px] tracking-wide text-fg-subtle uppercase">{label}</p>
-      <p className="mt-0.5 text-sm font-medium tabular-nums">{value}</p>
-    </div>
+    <form
+      onSubmit={onSave}
+      className="mb-6 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)]"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-medium">Quote defaults</h2>
+          <p className="mt-0.5 text-[11px] text-fg-subtle">
+            Base APR, term, residual & down used for every lease estimate
+          </p>
+        </div>
+        <Button type="submit" size="sm" disabled={saving}>
+          {saving ? <Loader2 className="animate-spin" /> : null}
+          Save quote settings
+        </Button>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className="mb-1 block text-[10px] tracking-wide text-fg-subtle uppercase">
+            Base APR (%)
+          </span>
+          <input
+            type="number"
+            step="0.01"
+            min={0}
+            max={40}
+            value={apr}
+            onChange={(e) => setApr(e.target.value)}
+            className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm tabular-nums outline-none focus:border-accent"
+            required
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] tracking-wide text-fg-subtle uppercase">
+            Term (months)
+          </span>
+          <input
+            type="number"
+            step={1}
+            min={12}
+            max={72}
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm tabular-nums outline-none focus:border-accent"
+            required
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] tracking-wide text-fg-subtle uppercase">
+            Residual (%)
+          </span>
+          <input
+            type="number"
+            step={1}
+            min={10}
+            max={90}
+            value={residual}
+            onChange={(e) => setResidual(e.target.value)}
+            className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm tabular-nums outline-none focus:border-accent"
+            required
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] tracking-wide text-fg-subtle uppercase">
+            Default down (%)
+          </span>
+          <input
+            type="number"
+            step={1}
+            min={0}
+            max={50}
+            value={down}
+            onChange={(e) => setDown(e.target.value)}
+            className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm tabular-nums outline-none focus:border-accent"
+            required
+          />
+        </label>
+      </div>
+    </form>
   );
 }
 
 function DealerRow({
   dealer,
   onToggle,
+  onDelete,
   onSaveUrls,
 }: {
   dealer: AdminDealer;
   onToggle: () => void;
+  onDelete: () => void;
   onSaveUrls: (d: AdminDealer, website: string, inventory: string) => Promise<void>;
 }) {
   const [website, setWebsite] = useState(dealer.website_url);
@@ -344,18 +501,28 @@ function DealerRow({
           </div>
           <p className="mt-0.5 text-xs text-fg-muted">{dealer.brands}</p>
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          className={cn(
-            "inline-flex h-9 items-center rounded-full border px-4 text-xs font-medium",
-            dealer.active
-              ? "border-border text-fg-muted hover:bg-surface-2"
-              : "border-accent text-accent hover:bg-accent hover:text-accent-fg",
-          )}
-        >
-          {dealer.active ? "Turn off" : "Turn on"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            className={cn(
+              "inline-flex h-9 items-center rounded-full border px-4 text-xs font-medium",
+              dealer.active
+                ? "border-border text-fg-muted hover:bg-surface-2"
+                : "border-accent text-accent hover:bg-accent hover:text-accent-fg",
+            )}
+          >
+            {dealer.active ? "Turn off" : "Turn on"}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <Trash2 className="size-3.5" />
+            Delete
+          </button>
+        </div>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -494,5 +661,3 @@ function Field({
     </label>
   );
 }
-
-void updateQuoteSettings;

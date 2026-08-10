@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { DEALERS } from "@/lib/leasing/seed";
 import { ensureSeededInventory } from "@/lib/crawler/run";
+import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 
 export type AdminDealer = {
   id: string;
@@ -35,6 +36,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
     try {
       await ensureSeededInventory();
+      await ensurePortalSchema();
       const sql = await getSql();
       const rows = await sql<{
         id: string;
@@ -58,7 +60,6 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         vehicle_count: Number(r.vehicle_count),
       }));
     } catch {
-      // seed fallback
       return DEALERS.map((d) => ({
         id: d.id,
         name: d.name,
@@ -107,6 +108,34 @@ export const updateDealer = createServerFn({ method: "POST" })
       where id = ${data.id}
     `;
     return { ok: true as const };
+  });
+
+export const deleteDealer = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        token: z.string().min(1),
+        id: z.string().min(1),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    if (data.token !== "admin-ok") throw new Error("Unauthorized");
+    const sql = await getSql();
+    const cur = await sql<{ id: string; name: string }>`
+      select id, name from dealerships where id = ${data.id} limit 1
+    `;
+    if (!cur[0]) throw new Error("Dealer not found");
+
+    // Soft-remove inventory, then drop dealer row
+    await sql`
+      update vehicles
+      set status = 'removed', removed_at = now(), updated_at = now()
+      where dealership_id = ${data.id}
+    `;
+    await sql`delete from dealerships where id = ${data.id}`;
+
+    return { ok: true as const, id: data.id, name: cur[0].name };
   });
 
 export const addDealer = createServerFn({ method: "POST" })
