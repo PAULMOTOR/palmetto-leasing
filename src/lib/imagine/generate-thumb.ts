@@ -1,8 +1,14 @@
 /**
  * Generate unique Palmetto studio thumbnails via xAI Grok Imagine API.
- * Requires XAI_API_KEY. Downloads dealer photos server-side (CDN-safe) then edits.
+ * Locked composition: pure #FFFFFF, nose-up top-down, consistent scale.
+ * Subject photo (dealer) + optional style-lock reference.
  */
-import { buildThumbEditPrompt, buildThumbTextPrompt, type ThumbSubject } from "./thumb-prompt";
+import {
+  buildThumbEditPrompt,
+  buildThumbTextPrompt,
+  buildStyleLockAddendum,
+  type ThumbSubject,
+} from "./thumb-prompt";
 
 export type ImagineThumbResult = {
   ok: boolean;
@@ -22,42 +28,74 @@ const EDIT_URL = "https://api.x.ai/v1/images/edits";
 const GEN_URL = "https://api.x.ai/v1/images/generations";
 const MODEL = "grok-imagine-image-quality";
 
+/** Public URL path for composition lock (served by this site). */
+const STYLE_LOCK_PATH = "/vehicles/palmetto-style-lock.jpg";
+
 export async function generateVehicleThumbnail(opts: {
   car: ThumbSubject;
-  /** Real dealer photo URLs (prefer exterior). */
   referencePhotoUrls?: string[];
+  /** Absolute site origin for style-lock, e.g. https://www.palmettoleasing.com */
+  publicOrigin?: string;
 }): Promise<ImagineThumbResult> {
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) {
     return {
       ok: false,
       mode: "skipped",
-      error: "XAI_API_KEY not set — using dealer source photo as tile until Imagine is configured",
+      error: "XAI_API_KEY not set",
     };
   }
 
   const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 2);
+  const origin =
+    opts.publicOrigin ||
+    process.env.PUBLIC_SITE_URL ||
+    process.env.VITE_PUBLIC_SITE_URL ||
+    "https://www.palmettoleasing.com";
+  const styleLockUrl = `${origin.replace(/\/$/, "")}${STYLE_LOCK_PATH}`;
+
+  const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
   try {
     for (const ref of refs) {
-      const dataUri = await fetchImageAsDataUri(ref);
-      if (!dataUri) continue;
+      const subjectUri = await fetchImageAsDataUri(ref);
+      if (!subjectUri) continue;
 
-      const editResult = await callXaiJson(EDIT_URL, key, {
-        model: MODEL,
-        prompt: buildThumbEditPrompt(opts.car),
-        aspect_ratio: "1:1",
-        response_format: "url",
-        image: { url: dataUri, type: "image_url" },
-      });
+      const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
 
-      if (editResult.ok && (editResult.url || editResult.b64)) {
-        return { ok: true, url: editResult.url, b64: editResult.b64, mode: "edit" };
+      // Preferred: subject + style lock (up to 2 images)
+      if (styleUri) {
+        const dual = await callXaiJson(EDIT_URL, key, {
+          model: MODEL,
+          prompt,
+          aspect_ratio: "1:1",
+          response_format: "url",
+          image: [
+            { url: subjectUri, type: "image_url" },
+            { url: styleUri, type: "image_url" },
+          ],
+        });
+        if (dual.ok && (dual.url || dual.b64)) {
+          return { ok: true, url: dual.url, b64: dual.b64, mode: "edit" };
+        }
       }
 
+      // Single subject edit with locked prompt
+      const single = await callXaiJson(EDIT_URL, key, {
+        model: MODEL,
+        prompt,
+        aspect_ratio: "1:1",
+        response_format: "url",
+        image: { url: subjectUri, type: "image_url" },
+      });
+      if (single.ok && (single.url || single.b64)) {
+        return { ok: true, url: single.url, b64: single.b64, mode: "edit" };
+      }
+
+      // Public URL fallback
       const byUrl = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
-        prompt: buildThumbEditPrompt(opts.car),
+        prompt,
         aspect_ratio: "1:1",
         response_format: "url",
         image: { url: ref, type: "image_url" },
@@ -78,11 +116,7 @@ export async function generateVehicleThumbnail(opts: {
       return { ok: true, url: gen.url, b64: gen.b64, mode: "generate" };
     }
 
-    return {
-      ok: false,
-      mode: "error",
-      error: gen.error || "Imagine returned no image",
-    };
+    return { ok: false, mode: "error", error: gen.error || "Imagine returned no image" };
   } catch (err) {
     return {
       ok: false,
@@ -149,7 +183,13 @@ async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
         "user-agent":
           "Mozilla/5.0 (compatible; PalmettoLeasingBot/2.0; +https://palmettoleasing.com)",
         accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        referer: new URL(imageUrl).origin + "/",
+        referer: (() => {
+          try {
+            return new URL(imageUrl).origin + "/";
+          } catch {
+            return "https://www.palmettoleasing.com/";
+          }
+        })(),
       },
       signal: AbortSignal.timeout(20_000),
       redirect: "follow",

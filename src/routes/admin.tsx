@@ -130,7 +130,7 @@ function AdminPage() {
     try {
       const r = await triggerCrawl();
       toast.success("Inventory pool refreshed", {
-        description: `${r.dealersScanned} dealers · ${r.listingsFound} listings · +${r.added} / ~${r.updated} / −${r.removed}${r.imagined ? ` · ${r.imagined} Imagine` : ""}`,
+        description: `${r.dealersScanned} dealers · ${r.listingsFound} listings · +${r.added} / ~${r.updated} / −${r.removed}`,
       });
       if (token) await refresh(token);
     } catch (err) {
@@ -143,14 +143,15 @@ function AdminPage() {
   async function onImagine() {
     setImagining(true);
     try {
-      const r = await triggerImagineThumbs({ data: { limit: 20 } });
+      // force=true re-renders with locked nose-up / pure white template
+      const r = await triggerImagineThumbs({ data: { limit: 12, force: true } });
       if (!r.hasApiKey) {
         toast.error("XAI_API_KEY missing on Vercel", {
           description: "Add the key from console.x.ai, redeploy, then try again.",
         });
         return;
       }
-      toast.success("Imagine batch done", {
+      toast.success("Imagine batch done (locked template)", {
         description: `${r.succeeded}/${r.attempted} studio tiles · ${r.skipped} skipped`,
       });
       if (r.errors?.length) {
@@ -206,17 +207,12 @@ function AdminPage() {
         <div>
           <h1 className="text-lg font-medium tracking-tight">Admin</h1>
           <p className="mt-1 text-sm text-fg-muted">
-            Live inventory · Imagine studio tiles · partner pool
+            Live inventory · locked Imagine tiles · partner pool
           </p>
           {hasImagineKey != null && (
-            <p
-              className={cn(
-                "mt-1 text-[11px]",
-                hasImagineKey ? "text-success" : "text-fg-subtle",
-              )}
-            >
+            <p className={cn("mt-1 text-[11px]", hasImagineKey ? "text-success" : "text-fg-subtle")}>
               {hasImagineKey
-                ? "XAI_API_KEY detected — Imagine ready"
+                ? "XAI_API_KEY detected — Generate re-renders with pure white / nose-up lock"
                 : "XAI_API_KEY not set — tiles use dealer photos until you add the key + redeploy"}
             </p>
           )}

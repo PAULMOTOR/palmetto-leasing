@@ -59,13 +59,15 @@ export function VehicleCard({
     >
       <div className={cn("grid", expanded ? "lg:grid-cols-2" : "grid-cols-1")}>
         <div className="flex flex-col">
+          {/* Pure white tile canvas — must blend with white card, contrast from page grey */}
           <div className="relative aspect-[4/5] overflow-hidden bg-white sm:aspect-[3/4]">
             <img
               src={vehicle.thumbnail_url || vehicle.photos[0] || "/vehicles/top-porsche-911.jpg"}
               alt={title}
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-contain object-center p-3 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:p-5"
+              className="h-full w-full bg-white object-contain object-center p-2 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:p-3"
+              style={{ backgroundColor: "#FFFFFF" }}
             />
           </div>
 
@@ -203,7 +205,14 @@ function InCardQuote({
     return () => {
       cancelled = true;
     };
-  }, [vehicle.id, vehicle.dealer_listing_url, vehicle.make, vehicle.model, vehicle.photos, vehicle.thumbnail_url]);
+  }, [
+    vehicle.id,
+    vehicle.dealer_listing_url,
+    vehicle.make,
+    vehicle.model,
+    vehicle.photos,
+    vehicle.thumbnail_url,
+  ]);
 
   async function onApply(e: React.FormEvent) {
     e.preventDefault();
@@ -289,7 +298,6 @@ function InCardQuote({
         </button>
       </div>
 
-      {/* Playable term / down controls */}
       <div className="mb-4 space-y-3">
         <div>
           <p className="mb-1.5 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Term</p>
@@ -305,9 +313,7 @@ function InCardQuote({
           </div>
         </div>
         <div>
-          <p className="mb-1.5 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">
-            Cash down
-          </p>
+          <p className="mb-1.5 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Cash down</p>
           <div className="flex flex-wrap gap-1.5">
             {DOWN_OPTIONS.map((d) => (
               <Chip
@@ -322,8 +328,7 @@ function InCardQuote({
             Down payment{" "}
             <span className="font-medium text-fg">{formatCad(quote.downPaymentCents)}</span>
             <span className="mx-1 text-fg-subtle">·</span>
-            Residual{" "}
-            <span className="font-medium text-fg">{formatCad(quote.residualCents)}</span>
+            Residual <span className="font-medium text-fg">{formatCad(quote.residualCents)}</span>
           </p>
         </div>
       </div>
@@ -343,7 +348,6 @@ function InCardQuote({
         </div>
       </dl>
 
-      {/* Vehicle facts — fills blank space */}
       {step === "quote" && (
         <>
           <div className="mb-4">
@@ -363,9 +367,7 @@ function InCardQuote({
               </div>
               <div className="flex justify-between gap-2 border-b border-border/40 py-1">
                 <span className="text-fg-muted">Dealer</span>
-                <span className="truncate text-right font-medium text-fg">
-                  {vehicle.dealer_name}
-                </span>
+                <span className="truncate text-right font-medium text-fg">{vehicle.dealer_name}</span>
               </div>
             </div>
           </div>
@@ -401,9 +403,6 @@ function InCardQuote({
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-[10px] leading-snug text-fg-subtle">
-              Spaced sample up to 12 · interiors preferred when labeled on dealer listing
-            </p>
           </div>
         </>
       )}
@@ -413,9 +412,7 @@ function InCardQuote({
           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
           <div>
             <p className="font-medium">Application #{leadId}</p>
-            <p className="mt-0.5 text-xs text-fg-muted">
-              Track status anytime via Login → Client.
-            </p>
+            <p className="mt-0.5 text-xs text-fg-muted">Track status anytime via Login → Client.</p>
           </div>
         </div>
       ) : step === "quote" ? (
@@ -435,7 +432,9 @@ function InCardQuote({
         <form onSubmit={onApply} className="mt-auto space-y-2.5">
           <p className="text-[11px] text-fg-muted">
             Quote locked at{" "}
-            <span className="font-medium text-fg">{formatCadExact(quote.monthlyPaymentCents)}/mo</span>
+            <span className="font-medium text-fg">
+              {formatCadExact(quote.monthlyPaymentCents)}/mo
+            </span>
             {" · "}
             {termMonths} mo · {(downRate * 100).toFixed(0)}% down
           </p>
@@ -634,5 +633,4 @@ function LearnMoreDialog({
   );
 }
 
-// re-export type use silence
 void (0 as unknown as LeaseQuote);

@@ -1,5 +1,6 @@
 /**
  * Extract real vehicle listings from dealer HTML (JSON-LD Vehicle + embedded).
+ * Strong dedupe so the same unit never appears twice.
  */
 import { PREMIUM_MIN_CENTS, type SeedVehicle } from "@/lib/leasing/seed";
 
@@ -22,7 +23,6 @@ export type RawListing = {
 export function parseVehiclesFromHtml(html: string, pageUrl: string): RawListing[] {
   const out: RawListing[] = [];
 
-  // 1) application/ld+json blocks
   for (const block of html.matchAll(
     /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
   )) {
@@ -33,7 +33,6 @@ export function parseVehiclesFromHtml(html: string, pageUrl: string): RawListing
     }
   }
 
-  // 2) bare {"@type":"Vehicle" ... } objects (d2cmedia style)
   let idx = 0;
   while ((idx = html.indexOf('"@type":"Vehicle"', idx)) !== -1) {
     const start = html.lastIndexOf("{", idx);
@@ -52,17 +51,68 @@ export function parseVehiclesFromHtml(html: string, pageUrl: string): RawListing
     idx += 10;
   }
 
-  // dedupe by vin or name+price
+  return dedupeRawListings(out);
+}
+
+/** Fingerprint for one physical unit at one dealer. */
+export function listingFingerprint(r: {
+  vin?: string;
+  stock?: string;
+  url?: string;
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  priceCents: number;
+  mileage?: number;
+}): string {
+  if (r.vin && r.vin.length >= 8) return `VIN:${r.vin.toUpperCase()}`;
+  if (r.stock && r.stock.length >= 2) return `STK:${r.stock.toUpperCase()}`;
+  const fromUrl = extractIdFromUrl(r.url || "");
+  if (fromUrl) return `URL:${fromUrl}`;
+  return [
+    r.year,
+    r.make,
+    r.model,
+    r.trim || "",
+    r.priceCents,
+    r.mileage ?? 0,
+  ]
+    .join("|")
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+export function dedupeRawListings(out: RawListing[]): RawListing[] {
   const seen = new Set<string>();
   const unique: RawListing[] = [];
   for (const r of out) {
     if (r.priceCents < PREMIUM_MIN_CENTS) continue;
-    const key = (r.vin || `${r.year}-${r.make}-${r.model}-${r.priceCents}`).toUpperCase();
+    const key = listingFingerprint(r);
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(r);
   }
   return unique;
+}
+
+function extractIdFromUrl(url: string): string | null {
+  if (!url) return null;
+  // dealer.com style: ...-id13356253.html
+  const m1 = url.match(/-id(\d+)\.html/i);
+  if (m1) return m1[1]!;
+  // magnetis: /pre-owned/2024/make/model/2124
+  const m2 = url.match(/\/(\d{3,})\/?$/);
+  if (m2) return m2[1]!;
+  // query id=
+  try {
+    const u = new URL(url, "https://example.com");
+    const q = u.searchParams.get("id") || u.searchParams.get("vehicleId");
+    if (q) return q;
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 function extractBalancedJson(html: string, start: number): string | null {
@@ -97,9 +147,10 @@ function walkJsonLd(node: unknown, out: RawListing[], pageUrl: string, depth = 0
   const o = node as Record<string, unknown>;
   const type = o["@type"] || o.type;
   const types = Array.isArray(type) ? type.map(String) : [String(type || "")];
-  const isVehicle = types.some((t) => /Vehicle|Car|Product/i.test(t));
+  // Only Vehicle/Car — skip bare Offer/Product to reduce duplicate nodes
+  const isVehicle = types.some((t) => /^(Vehicle|Car)$/i.test(t));
 
-  if (isVehicle || o.vehicleIdentificationNumber || (o.name && o.offers)) {
+  if (isVehicle || o.vehicleIdentificationNumber) {
     const listing = toListing(o, pageUrl);
     if (listing) out.push(listing);
   }
@@ -129,12 +180,6 @@ function toListing(o: Record<string, unknown>, pageUrl: string): RawListing | nu
   const vin = o.vehicleIdentificationNumber ? String(o.vehicleIdentificationNumber) : undefined;
   const stock = o.sku ? String(o.sku) : o.productID != null ? String(o.productID) : undefined;
   const mileage = extractMileage(o);
-  const exterior =
-    typeof o.color === "string"
-      ? o.color
-      : typeof o.vehicleInteriorColor === "string"
-        ? undefined
-        : undefined;
 
   return {
     year,
@@ -145,7 +190,7 @@ function toListing(o: Record<string, unknown>, pageUrl: string): RawListing | nu
     mileage,
     vin,
     stock,
-    exterior: exterior || parsed.color,
+    exterior: typeof o.color === "string" ? o.color : parsed.color,
     body: typeof o.bodyType === "string" ? o.bodyType : undefined,
     description: typeof o.description === "string" ? o.description.slice(0, 800) : undefined,
     url,
@@ -236,7 +281,10 @@ function parseName(name: string, brand: string): {
   trim: string;
   color?: string;
 } {
-  const clean = name.replace(/\|\s*\*?Pre-?owned\*?.*/i, "").trim();
+  const clean = name
+    .replace(/\|\s*\*?Pre-?owned\*?.*/i, "")
+    .replace(/[_-]/g, " ")
+    .trim();
   const ym = clean.match(/^(20[12]\d)\s+(.+)$/i);
   let year: number | undefined;
   let rest = clean;
@@ -244,51 +292,42 @@ function parseName(name: string, brand: string): {
     year = Number(ym[1]);
     rest = ym[2]!.trim();
   }
-  // brand first
   let make = brand;
   let modelPart = rest;
   if (brand && rest.toLowerCase().startsWith(brand.toLowerCase())) {
     modelPart = rest.slice(brand.length).trim();
-  } else {
+  } else if (!make) {
     const parts = rest.split(/\s+/);
-    if (parts.length >= 2 && !year) {
-      // maybe year missing and brand in name
-    }
-    if (!make && parts[0]) {
-      // multi-word brands
-      if (/^(aston|land|rolls|alfa|mercedes)/i.test(parts[0]!)) {
-        make = parts.slice(0, 2).join(" ");
-        modelPart = parts.slice(2).join(" ");
-      } else {
-        make = parts[0];
-        modelPart = parts.slice(1).join(" ");
-      }
+    if (/^(aston|land|rolls|alfa|mercedes)/i.test(parts[0] || "")) {
+      make = parts.slice(0, 2).join(" ");
+      modelPart = parts.slice(2).join(" ");
+    } else {
+      make = parts[0];
+      modelPart = parts.slice(1).join(" ");
     }
   }
-  // model + trim: first token model-ish, rest trim
-  const mp = modelPart.replace(/[_-]/g, " ").split(/\s+/).filter(Boolean);
+  const mp = modelPart.split(/\s+/).filter(Boolean);
   const model = mp[0] || "Model";
   const trim = mp.slice(1).join(" ");
   return { year, make: make || undefined, model, trim };
 }
 
-/** Convert raw listings into SeedVehicle-shaped rows for a dealer. */
 export function rawToSeedVehicles(dealerId: string, raw: RawListing[]): SeedVehicle[] {
-  return raw.map((r, i) => {
-    const external_id =
-      (r.vin && r.vin.replace(/[^A-Za-z0-9]/g, "").slice(-14)) ||
-      (r.stock && `STK-${r.stock}`) ||
-      `LIVE-${r.year}-${r.make}-${r.model}-${r.priceCents}-${i}`.replace(/[^A-Za-z0-9\-]/g, "").slice(0, 48);
+  const deduped = dedupeRawListings(raw);
+  return deduped.map((r) => {
+    const fp = listingFingerprint(r);
+    const external_id = fp
+      .replace(/[^A-Za-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 64);
 
     const photos = r.images.length ? r.images : [];
-    // Tile uses first real photo until Imagine thumb is generated
     const thumbnail = photos[0] || "/vehicles/top-porsche-911.jpg";
 
     let listing_path = r.url || "/";
     try {
       if (listing_path.startsWith("http")) {
-        const u = new URL(listing_path);
-        listing_path = u.pathname + u.search;
+        /* keep full URL for absolute listings */
       }
     } catch {
       listing_path = "/";
@@ -330,7 +369,7 @@ export function rawToSeedVehicles(dealerId: string, raw: RawListing[]): SeedVehi
 
 function guessBody(model: string): string {
   const m = model.toLowerCase();
-  if (/urus|dbx|cayenne|macan|bentayga|cullinan|range|defender|g.?63|gle|x[567]|q[578]|xm/.test(m))
+  if (/urus|dbx|cayenne|macan|bentayga|cullinan|range|defender|g.?63|gle|x[567]|q[578]|xm|purosangue/.test(m))
     return "SUV";
   if (/spider|spyder|volante|roadster|convertible|cabrio|targa/.test(m)) return "Convertible";
   if (/avant|wagon/.test(m)) return "Wagon";

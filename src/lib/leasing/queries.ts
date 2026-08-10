@@ -42,6 +42,31 @@ async function toCard(
   };
 }
 
+/** Collapse exact duplicate cards (same dealer + year/make/model + price). */
+function dedupeCards(list: VehicleCard[]): VehicleCard[] {
+  const seen = new Set<string>();
+  const out: VehicleCard[] = [];
+  for (const v of list) {
+    const key = [
+      v.dealership_id,
+      v.year,
+      v.make,
+      v.model,
+      v.trim,
+      v.price_cents,
+      v.mileage,
+      v.vin || "",
+    ]
+      .join("|")
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
 export const bootstrapInventory = createServerFn({ method: "POST" }).handler(async () => {
   try {
     return { ...(await ensureSeededInventory()), mode: dbSource };
@@ -92,6 +117,8 @@ export const listVehicles = createServerFn({ method: "GET" })
       console.warn("[listVehicles] DB unavailable, static catalog:", err);
       list = listCatalogVehicles(loadQuoteSettings());
     }
+
+    list = dedupeCards(list);
 
     if (filters.q) {
       const q = filters.q.toLowerCase();
@@ -230,7 +257,6 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
   }
 });
 
-/** Smart gallery for lease panel — dealer VDP first, then local pool. */
 export const getVehicleGallery = createServerFn({ method: "GET" })
   .validator((input: unknown) =>
     z
@@ -385,18 +411,21 @@ export const triggerCrawl = createServerFn({ method: "POST" }).handler(async () 
   return runInventoryCrawl({ forceIncludeAll: false, generateThumbs: true });
 });
 
-/** Admin: run Imagine on cars still using raw dealer photos. */
 export const triggerImagineThumbs = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
       .object({
         limit: z.number().int().min(1).max(50).optional(),
+        force: z.boolean().optional(),
       })
       .optional()
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    return generateMissingImagineThumbs({ limit: data?.limit ?? 20 });
+    return generateMissingImagineThumbs({
+      limit: data?.limit ?? 12,
+      force: data?.force ?? true, // default force re-render with locked template
+    });
   });
 
 export const getRecentCrawlRuns = createServerFn({ method: "GET" }).handler(async () => {

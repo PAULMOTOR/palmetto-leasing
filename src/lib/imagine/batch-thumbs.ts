@@ -1,5 +1,5 @@
 /**
- * Generate Imagine studio tiles for vehicles that still use raw dealer photos.
+ * Generate / force-regenerate Imagine studio tiles with locked composition.
  */
 import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
@@ -7,12 +7,10 @@ import { parsePhotos } from "@/lib/leasing/types";
 
 const MAX = Number(process.env.IMAGINE_MAX_PER_CRAWL || 12);
 
-function looksLikeImagine(url: string): boolean {
-  return /imagine|x\.ai|fal\.|generated|imgen|blob\.core|grok/i.test(url || "");
-}
-
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
+  /** When true, overwrite existing imgen.x.ai thumbs with the new locked template. */
+  force?: boolean;
 }): Promise<{
   attempted: number;
   succeeded: number;
@@ -32,6 +30,7 @@ export async function generateMissingImagineThumbs(opts?: {
   }
 
   const limit = Math.min(opts?.limit ?? MAX, 20);
+  const force = Boolean(opts?.force);
   const sql = await getSql();
   const rows = await sql<{
     id: string;
@@ -57,7 +56,11 @@ export async function generateMissingImagineThumbs(opts?: {
       const hasDealer =
         photos.some((p) => /^https?:\/\//i.test(p)) ||
         /^https?:\/\//i.test(r.thumbnail_url || "");
-      return hasDealer && !looksLikeImagine(r.thumbnail_url || "");
+      if (!hasDealer) return false;
+      if (force) return true;
+      // Skip only if already imagine-generated with style-lock era is hard to detect —
+      // regenerate greyscale-looking / non-imgen always
+      return !/imgen\.x\.ai|xai-tmp-imgen/i.test(r.thumbnail_url || "");
     })
     .slice(0, limit);
 
@@ -69,7 +72,9 @@ export async function generateMissingImagineThumbs(opts?: {
     const photos = parsePhotos(r.photo_urls);
     const refs = [
       ...photos.filter((p) => /^https?:\/\//i.test(p)),
-      ...(r.thumbnail_url?.startsWith("http") ? [r.thumbnail_url] : []),
+      ...(r.thumbnail_url?.startsWith("http") && !/imgen\.x\.ai/i.test(r.thumbnail_url)
+        ? [r.thumbnail_url]
+        : []),
     ].slice(0, 2);
 
     if (refs.length === 0) {
@@ -98,7 +103,6 @@ export async function generateMissingImagineThumbs(opts?: {
         `;
         succeeded += 1;
       } else if (imag.ok && imag.b64) {
-        // Persist as data URL only if small enough for a thumb
         const dataUrl = imag.b64.startsWith("data:")
           ? imag.b64
           : `data:image/jpeg;base64,${imag.b64}`;

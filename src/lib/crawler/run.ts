@@ -9,11 +9,10 @@ import {
 } from "@/lib/leasing/seed";
 import { fetchDealerInventory } from "./fetch-dealer";
 import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
+import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "6-live-jsonld"; // bump re-syncs dealer URLs from seed
-
-/** Max Imagine generations per crawl (cost control). */
+const POOL_VERSION = "7-dedupe-stylelock";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
 
 let seedChain: Promise<unknown> = Promise.resolve();
@@ -116,31 +115,54 @@ async function runInventoryCrawlInner(opts?: {
     const activeIds = new Set(activeDealers.map((d) => d.id));
 
     const liveFeed: SeedVehicle[] = [];
-    let anyLive = false;
     for (const d of activeDealers) {
       const result = await fetchDealerInventory(d.id, d.inventory_url);
       sources[d.id] = result.source;
       notes.push(`${d.name}: ${result.source} · ${result.items.length} · ${result.notes.join("; ")}`);
-      if (result.source === "live") anyLive = true;
       liveFeed.push(...result.items.filter((v) => v.price_cents >= PREMIUM_THRESHOLD_CENTS));
     }
 
-    // Only inject full seed if *every* dealer failed live AND force/empty
-    if (liveFeed.length === 0) {
+    // Global dedupe across all dealers by fingerprint (same unit never twice)
+    const globalSeen = new Set<string>();
+    const uniqueFeed: SeedVehicle[] = [];
+    for (const item of liveFeed) {
+      const fp = listingFingerprint({
+        vin: item.vin,
+        stock: item.stock_number,
+        url: item.listing_path,
+        year: item.year,
+        make: item.make,
+        model: item.model,
+        trim: item.trim,
+        priceCents: item.price_cents,
+        mileage: item.mileage,
+      });
+      // Also key by dealer+price+year+model to catch double-parse
+      const soft = `${item.dealership_id}|${item.year}|${item.make}|${item.model}|${item.price_cents}|${item.mileage}`
+        .toUpperCase()
+        .replace(/\s+/g, "");
+      if (globalSeen.has(fp) || globalSeen.has(soft)) continue;
+      globalSeen.add(fp);
+      globalSeen.add(soft);
+      uniqueFeed.push(item);
+    }
+    if (uniqueFeed.length < liveFeed.length) {
+      notes.push(`Dedupe removed ${liveFeed.length - uniqueFeed.length} duplicate listings`);
+    }
+
+    if (uniqueFeed.length === 0) {
       const seedAll = BASE_INVENTORY.filter(
         (v) => activeIds.has(v.dealership_id) && v.price_cents >= PREMIUM_THRESHOLD_CENTS,
       );
-      liveFeed.push(...seedAll);
+      uniqueFeed.push(...seedAll);
       notes.push(`EMERGENCY seed only — no live dealers returned data (${seedAll.length})`);
-    } else if (opts?.forceIncludeAll && !anyLive) {
-      notes.push("forceIncludeAll ignored seed merge because live path preferred");
     }
 
-    listingsFound = liveFeed.length;
+    listingsFound = uniqueFeed.length;
     const seenExternal = new Set<string>();
     const newForImagine: SeedVehicle[] = [];
 
-    for (const item of liveFeed) {
+    for (const item of uniqueFeed) {
       const key = `${item.dealership_id}::${item.external_id}`;
       seenExternal.add(key);
       const result = await upsertVehicle(sql, item, runId);
@@ -150,7 +172,6 @@ async function runInventoryCrawlInner(opts?: {
       } else if (result === "updated") updated += 1;
     }
 
-    // Imagine unique studio thumbs for new live cars (reference = dealer photos)
     if (wantThumbs && process.env.XAI_API_KEY?.trim()) {
       const batch = newForImagine
         .filter((v) => v.photos.some((p) => p.startsWith("http")))
@@ -186,6 +207,7 @@ async function runInventoryCrawlInner(opts?: {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
     }
 
+    // Remove anything not in this crawl feed (strict)
     const active = await sql<{ id: string; dealership_id: string; external_id: string }>`
       select id, dealership_id, external_id from vehicles where status = 'active'
     `;
@@ -277,7 +299,6 @@ async function upsertVehicle(
     : dealerListingUrl(item.dealership_id, item.listing_path);
   const specsJson = JSON.stringify(item.specs);
   const photosJson = JSON.stringify(item.photos.length ? item.photos : [item.thumbnail]);
-  // Prefer real dealer photo as tile until Imagine overwrites
   const thumbnail = item.thumbnail.startsWith("http")
     ? item.thumbnail
     : item.photos.find((p) => p.startsWith("http")) || item.thumbnail;
@@ -286,11 +307,11 @@ async function upsertVehicle(
     select id, thumbnail_url from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
-  // Keep prior Imagine thumb if we already generated one (x.ai or our CDN)
+  // Keep prior Imagine thumb only if still present (force reimagine handled separately)
   const keepThumb =
     !isNew &&
     existing[0]?.thumbnail_url &&
-    /imagine|x\.ai|generated|palmetto/i.test(existing[0].thumbnail_url)
+    /imgen\.x\.ai|imagine|xai-tmp-imgen/i.test(existing[0].thumbnail_url)
       ? existing[0].thumbnail_url
       : thumbnail;
 
