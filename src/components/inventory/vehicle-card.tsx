@@ -66,11 +66,13 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
-          {/* Tight side margins; minimal top pad so front-half studio crops fill evenly */}
+          {/* Image fills the media area edge-to-edge; meta lives below */}
           <div
             className={cn(
-              "relative overflow-hidden bg-white",
-              expanded ? "aspect-[4/5] md:aspect-auto md:min-h-[320px] md:flex-1" : "aspect-[4/5] sm:aspect-[3/4]",
+              "relative w-full overflow-hidden bg-white",
+              expanded
+                ? "aspect-[5/4] md:aspect-auto md:min-h-[280px] md:flex-1"
+                : "aspect-[5/4]",
             )}
           >
             <img
@@ -78,33 +80,34 @@ export function VehicleCard({
               alt={title}
               loading="lazy"
               decoding="async"
-              className="h-full w-full bg-white object-contain object-top px-2 pt-1 pb-2 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:px-2.5 sm:pt-1.5 sm:pb-2.5"
+              className="absolute inset-0 h-full w-full bg-white object-cover object-top transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02]"
               style={{ backgroundColor: "#FFFFFF" }}
             />
           </div>
 
-          <div className="flex flex-1 flex-col items-center px-4 pt-2 pb-5 text-center sm:px-5 sm:pb-6">
-            <p className="mb-3 max-w-[92%] text-[9px] font-medium tracking-[0.22em] text-fg-subtle uppercase sm:text-[10px] sm:tracking-[0.28em]">
+          {/* Compact meta strip under thumbnail */}
+          <div className="flex flex-col items-center px-3 pt-1.5 pb-3 text-center sm:px-3.5 sm:pb-3.5">
+            <p className="mb-1 max-w-[94%] text-[8px] font-medium tracking-[0.2em] text-fg-subtle uppercase sm:text-[9px] sm:tracking-[0.24em]">
               {dealerLabel}
             </p>
 
-            <h3 className="text-[13px] font-normal tracking-wide text-fg-muted sm:text-sm">
+            <h3 className="text-[12px] leading-snug font-normal tracking-wide text-fg-muted sm:text-[13px]">
               {shortTitle}
               {vehicle.trim ? ` ${vehicle.trim}` : ""}
             </h3>
 
-            <p className="mt-1.5 text-[13px] font-medium tabular-nums tracking-wide text-price sm:text-sm">
+            <p className="mt-0.5 text-[12px] font-medium tabular-nums tracking-wide text-price sm:text-[13px]">
               {formatCad(vehicle.price_cents)}
-              <span className="mx-1.5 text-fg-subtle">-</span>
+              <span className="mx-1 text-fg-subtle">-</span>
               <span className="tabular-nums">{formatNumber(vehicle.mileage)} KM</span>
             </p>
 
-            <div className="mt-4 flex w-full items-center justify-center gap-4">
+            <div className="mt-2.5 flex w-full items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={onToggleLease}
                 className={cn(
-                  "inline-flex h-9 min-w-[5.5rem] items-center justify-center rounded-full border px-5 text-[13px] font-medium transition-[background-color,color,transform,border-color] duration-[var(--motion-quick)] active:scale-[0.96]",
+                  "inline-flex h-8 min-w-[5rem] items-center justify-center rounded-full border px-4 text-[12px] font-medium transition-[background-color,color,transform,border-color] duration-[var(--motion-quick)] active:scale-[0.96] sm:h-9 sm:text-[13px]",
                   expanded
                     ? "border-fg bg-fg text-primary-fg"
                     : "border-accent text-accent hover:bg-accent hover:text-accent-fg",
@@ -115,7 +118,7 @@ export function VehicleCard({
               <button
                 type="button"
                 onClick={() => setLearnOpen(true)}
-                className="inline-flex items-center gap-0.5 text-[13px] font-medium text-fg-muted transition-colors duration-[var(--motion-quick)] hover:text-fg"
+                className="inline-flex items-center gap-0.5 text-[12px] font-medium text-fg-muted transition-colors duration-[var(--motion-quick)] hover:text-fg sm:text-[13px]"
               >
                 Learn More
                 <ChevronRight className="size-3.5 opacity-60" aria-hidden />
@@ -192,12 +195,10 @@ function InCardQuote({
   );
 
   useEffect(() => {
-    // Keep expanded quote in view when opened
-    const el = document.activeElement;
-    void el;
     requestAnimationFrame(() => {
-      const node = document.getElementById(`quote-panel-${vehicle.id}`);
-      node?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      document
+        .getElementById(`quote-panel-${vehicle.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }, [vehicle.id]);
 
@@ -408,7 +409,7 @@ function InCardQuote({
                 <span className="text-[10px] text-fg-subtle">{gallery.length} photos</span>
               )}
             </div>
-            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-6">
+            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
               {gallery.slice(0, 12).map((src, i) => (
                 <button
                   key={`${src}-${i}`}
