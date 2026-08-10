@@ -1,5 +1,5 @@
 /**
- * Live dealer inventory fetch — real JSON-LD / Vehicle schema.
+ * Live dealer inventory fetch — JSON-LD / AutoTrader / partner APIs.
  * Seed fallback only when the partner site returns nothing usable.
  */
 import {
@@ -8,9 +8,11 @@ import {
   type SeedVehicle,
 } from "@/lib/leasing/seed";
 import { parseVehiclesFromHtml, rawToSeedVehicles } from "./parse-vehicles";
+import { isAutoTraderUrl, parseAutoTraderHtml } from "./parse-autotrader";
+import { fetchSigmaVehicles } from "./parse-sigma";
 
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; PalmettoLeasingBot/2.0; +https://palmettoleasing.com; inventory aggregator)";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 export type FetchResult = {
   dealerId: string;
@@ -32,6 +34,25 @@ export async function fetchDealerInventory(
   let live: SeedVehicle[] = [];
   let httpStatus: number | undefined;
 
+  // Sigma custom API (SPA — no JSON-LD)
+  if (/sigmaautomotive\.ca/i.test(inventoryUrl) || dealerId.includes("sigma")) {
+    try {
+      const sigma = await fetchSigmaVehicles(dealerId);
+      live = sigma.items;
+      notes.push(...sigma.notes);
+      if (live.length >= 1) {
+        return {
+          dealerId,
+          source: "live",
+          items: live,
+          notes: [...notes, `LIVE Sigma API (${live.length} ≥ $150k)`],
+        };
+      }
+    } catch (err) {
+      notes.push(`Sigma API: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   try {
     const res = await fetch(inventoryUrl, {
       headers: {
@@ -39,7 +60,7 @@ export async function fetchDealerInventory(
         accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
         "accept-language": "en-CA,en;q=0.9",
       },
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(30_000),
       redirect: "follow",
     });
     httpStatus = res.status;
@@ -47,6 +68,9 @@ export async function fetchDealerInventory(
 
     if (!res.ok) {
       notes.push(`HTTP ${res.status}`);
+    } else if (isAutoTraderUrl(inventoryUrl) || isAutoTraderUrl(res.url)) {
+      live = parseAutoTraderHtml(text, res.url || inventoryUrl, dealerId);
+      notes.push(`AutoTrader parse: ${live.length} ≥ $150k from dealer page`);
     } else {
       const raw = parseVehiclesFromHtml(text, res.url || inventoryUrl);
       live = rawToSeedVehicles(dealerId, raw);
@@ -56,7 +80,6 @@ export async function fetchDealerInventory(
     notes.push(`Fetch error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Live wins when we have a real haul. Seed only fills empty dealers (blocked sites).
   if (live.length >= 1) {
     return {
       dealerId,

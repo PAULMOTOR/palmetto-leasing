@@ -155,6 +155,27 @@ export const DEALERS: SeedDealer[] = [
     inventory_url: "https://www.bentleytoronto.com/en/inventory",
     active: true,
   },
+  {
+    id: "paul-motor",
+    name: "Paul Motor Leasing",
+    city: "Montréal",
+    province: "QC",
+    brands: "Multi-marque · High performance",
+    website_url: "https://www.paulmotorleasing.com",
+    inventory_url: "https://www.autotrader.ca/dealers/47941991?cid=47941991",
+    active: true,
+  },
+  {
+    id: "sigma-auto",
+    name: "Sigma Auto",
+    city: "Edmonton",
+    province: "AB",
+    brands: "Exotic · Luxury",
+    website_url: "https://www.sigmaautomotive.ca",
+    inventory_url: "https://www.sigmaautomotive.ca/autos",
+    active: true,
+  },
+
 ];
 
 /** Full pooled inventory (≥ $150k CAD). */

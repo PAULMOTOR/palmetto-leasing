@@ -12,7 +12,7 @@ import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
 import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "7-dedupe-stylelock";
+const POOL_VERSION = "8-autotrader-sigma";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
 
 let seedChain: Promise<unknown> = Promise.resolve();
@@ -122,7 +122,6 @@ async function runInventoryCrawlInner(opts?: {
       liveFeed.push(...result.items.filter((v) => v.price_cents >= PREMIUM_THRESHOLD_CENTS));
     }
 
-    // Global dedupe across all dealers by fingerprint (same unit never twice)
     const globalSeen = new Set<string>();
     const uniqueFeed: SeedVehicle[] = [];
     for (const item of liveFeed) {
@@ -137,7 +136,6 @@ async function runInventoryCrawlInner(opts?: {
         priceCents: item.price_cents,
         mileage: item.mileage,
       });
-      // Also key by dealer+price+year+model to catch double-parse
       const soft = `${item.dealership_id}|${item.year}|${item.make}|${item.model}|${item.price_cents}|${item.mileage}`
         .toUpperCase()
         .replace(/\s+/g, "");
@@ -207,7 +205,6 @@ async function runInventoryCrawlInner(opts?: {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
     }
 
-    // Remove anything not in this crawl feed (strict)
     const active = await sql<{ id: string; dealership_id: string; external_id: string }>`
       select id, dealership_id, external_id from vehicles where status = 'active'
     `;
@@ -307,7 +304,6 @@ async function upsertVehicle(
     select id, thumbnail_url from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
-  // Keep prior Imagine thumb only if still present (force reimagine handled separately)
   const keepThumb =
     !isNew &&
     existing[0]?.thumbnail_url &&
