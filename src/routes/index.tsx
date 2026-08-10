@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { VehicleCard } from "@/components/inventory/vehicle-card";
 import {
@@ -33,10 +33,7 @@ function InventoryFunnel() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([
-      listVehicles({ data: { sort: "price_desc" } }),
-      getQuoteSettings(),
-    ])
+    Promise.all([listVehicles({ data: { sort: "price_desc" } }), getQuoteSettings()])
       .then(([rows, qs]) => {
         if (cancelled) return;
         setVehicles(rows);
@@ -63,6 +60,15 @@ function InventoryFunnel() {
     return Array.from(new Set(pool.map((v) => v.model))).sort();
   }, [vehicles, make]);
 
+  const filtersActive = Boolean(year || make || model || monthlyRange);
+
+  function clearFilters() {
+    setYear("");
+    setMake("");
+    setModel("");
+    setMonthlyRange("");
+  }
+
   const filtered = useMemo(() => {
     let list = [...vehicles];
     if (year) list = list.filter((v) => String(v.year) === year);
@@ -79,7 +85,7 @@ function InventoryFunnel() {
     : "All ranges assume 20% downpayment · 50% residual · 36 months";
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8">
       <p className="mb-3 text-sm text-fg-muted">
         {loading ? "…" : `${formatNumber(filtered.length)} Available Vehicles`}
       </p>
@@ -113,12 +119,22 @@ function InventoryFunnel() {
           options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
           active={Boolean(monthlyRange)}
         />
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
+          >
+            <X className="size-3.5" aria-hidden />
+            Clear
+          </button>
+        )}
       </div>
       <p className="mb-6 text-[11px] text-fg-subtle">{downNote}</p>
 
       {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
               className="aspect-[3/4] animate-pulse rounded-[var(--radius-xl)] bg-surface"
@@ -128,9 +144,18 @@ function InventoryFunnel() {
       ) : filtered.length === 0 ? (
         <div className="rounded-[var(--radius-xl)] bg-surface px-6 py-20 text-center">
           <p className="text-sm text-fg-muted">No vehicles match.</p>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-3 text-sm font-medium text-accent hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
           {filtered.map((v, i) => (
             <VehicleCard
               key={v.id}

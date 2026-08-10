@@ -52,21 +52,33 @@ export function VehicleCard({
       className={cn(
         "stagger-item group flex flex-col overflow-hidden rounded-[var(--radius-xl)] border border-border/80 bg-surface shadow-[var(--shadow-card)] transition-[transform,box-shadow,border-color] duration-[var(--motion-fast)] ease-[var(--ease-smooth-out)]",
         expanded
-          ? "border-accent/40 shadow-[var(--shadow-card-hover)] sm:col-span-2 lg:col-span-2"
+          ? "z-20 col-span-full border-accent/40 shadow-[var(--shadow-card-hover)]"
           : "hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]",
       )}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className={cn("grid", expanded ? "lg:grid-cols-2" : "grid-cols-1")}>
+      <div
+        className={cn(
+          "grid",
+          expanded
+            ? "md:grid-cols-[minmax(240px,38%)_1fr] lg:grid-cols-[minmax(280px,34%)_1fr]"
+            : "grid-cols-1",
+        )}
+      >
         <div className="flex flex-col">
-          {/* Pure white tile canvas — must blend with white card, contrast from page grey */}
-          <div className="relative aspect-[4/5] overflow-hidden bg-white sm:aspect-[3/4]">
+          {/* Tight side margins; minimal top pad so front-half studio crops fill evenly */}
+          <div
+            className={cn(
+              "relative overflow-hidden bg-white",
+              expanded ? "aspect-[4/5] md:aspect-auto md:min-h-[320px] md:flex-1" : "aspect-[4/5] sm:aspect-[3/4]",
+            )}
+          >
             <img
               src={vehicle.thumbnail_url || vehicle.photos[0] || "/vehicles/top-porsche-911.jpg"}
               alt={title}
               loading="lazy"
               decoding="async"
-              className="h-full w-full bg-white object-contain object-center p-2 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:p-3"
+              className="h-full w-full bg-white object-contain object-top px-2 pt-1 pb-2 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:px-2.5 sm:pt-1.5 sm:pb-2.5"
               style={{ backgroundColor: "#FFFFFF" }}
             />
           </div>
@@ -113,7 +125,7 @@ export function VehicleCard({
         </div>
 
         {expanded && (
-          <div className="border-t border-border bg-surface-2/40 lg:border-t-0 lg:border-l">
+          <div className="border-t border-border bg-surface-2/40 md:border-t-0 md:border-l">
             <InCardQuote vehicle={vehicle} baseSettings={settings} onClose={onToggleLease} />
           </div>
         )}
@@ -178,6 +190,16 @@ function InCardQuote({
       }),
     [vehicle.price_cents, baseSettings, termMonths, downRate],
   );
+
+  useEffect(() => {
+    // Keep expanded quote in view when opened
+    const el = document.activeElement;
+    void el;
+    requestAnimationFrame(() => {
+      const node = document.getElementById(`quote-panel-${vehicle.id}`);
+      node?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, [vehicle.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,13 +294,16 @@ function InCardQuote({
   ].filter(([, v]) => v && v !== "—") as [string, string][];
 
   return (
-    <div className="flex h-full max-h-[min(92vh,920px)] flex-col overflow-y-auto p-4 sm:p-5">
+    <div
+      id={`quote-panel-${vehicle.id}`}
+      className="flex h-full max-h-[min(92vh,920px)] flex-col overflow-y-auto p-4 sm:p-5 lg:p-6"
+    >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <p className="text-[10px] tracking-[0.16em] text-fg-subtle uppercase">Est. monthly</p>
           <p
             key={quote.monthlyPaymentCents}
-            className="font-display text-3xl font-semibold tabular-nums tracking-tight text-price transition-all duration-200"
+            className="font-display text-3xl font-semibold tabular-nums tracking-tight text-price transition-all duration-200 lg:text-4xl"
           >
             {formatCadExact(quote.monthlyPaymentCents)}
             <span className="ml-1 text-sm font-normal text-fg-muted">/mo</span>
@@ -333,16 +358,16 @@ function InCardQuote({
         </div>
       </div>
 
-      <dl className="mb-4 grid grid-cols-2 gap-x-3 gap-y-1.5 border-b border-border/70 pb-3 text-[12px]">
-        <div className="col-span-2 flex justify-between gap-2">
+      <dl className="mb-4 grid grid-cols-2 gap-x-3 gap-y-1.5 border-b border-border/70 pb-3 text-[12px] sm:grid-cols-3">
+        <div className="col-span-2 flex justify-between gap-2 sm:col-span-1 sm:flex-col sm:justify-start">
           <dt className="text-fg-muted">Price</dt>
           <dd className="tabular-nums text-fg">{formatCad(quote.priceCents)}</dd>
         </div>
-        <div className="flex justify-between gap-2">
+        <div className="flex justify-between gap-2 sm:flex-col sm:justify-start">
           <dt className="text-fg-muted">Cap cost</dt>
           <dd className="tabular-nums text-fg">{formatCad(quote.capCostCents)}</dd>
         </div>
-        <div className="flex justify-between gap-2">
+        <div className="flex justify-between gap-2 sm:flex-col sm:justify-start">
           <dt className="text-fg-muted">Finance / mo</dt>
           <dd className="tabular-nums text-fg">{formatCadExact(quote.financeChargeCents)}</dd>
         </div>
@@ -352,7 +377,7 @@ function InCardQuote({
         <>
           <div className="mb-4">
             <p className="mb-2 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Vehicle</p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:text-[12px]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:grid-cols-3 sm:text-[12px]">
               {specRows.map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-2 border-b border-border/40 py-1">
                   <span className="text-fg-muted">{k}</span>
@@ -383,7 +408,7 @@ function InCardQuote({
                 <span className="text-[10px] text-fg-subtle">{gallery.length} photos</span>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-6">
               {gallery.slice(0, 12).map((src, i) => (
                 <button
                   key={`${src}-${i}`}
@@ -438,7 +463,7 @@ function InCardQuote({
             {" · "}
             {termMonths} mo · {(downRate * 100).toFixed(0)}% down
           </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Full name" value={name} onChange={setName} required />
             <Field label="Email" value={email} onChange={setEmail} type="email" required />
             <Field label="Phone" value={phone} onChange={setPhone} type="tel" />
