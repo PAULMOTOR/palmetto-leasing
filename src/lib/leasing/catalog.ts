@@ -1,13 +1,11 @@
 /**
- * Static inventory catalog for the public marketing site.
- * No database — curated partner inventory ships with the deploy.
- * Goal: every vehicle ≥ $150,000 CAD from partner dealerships.
+ * Static fallback catalog when Neon is unavailable.
+ * Live inventory is preferred; seed stock is intentionally empty.
  */
 import {
   BASE_INVENTORY,
   DEALERS,
   PREMIUM_MIN_CENTS,
-  ROTATING_ARRIVALS,
   dealerListingUrl,
   slugifyVehicle,
   type SeedDealer,
@@ -22,9 +20,7 @@ export function activeDealers(): SeedDealer[] {
 }
 
 export function allSeedVehicles(): SeedVehicle[] {
-  return [...BASE_INVENTORY, ...ROTATING_ARRIVALS].filter(
-    (v) => v.price_cents >= PREMIUM_MIN_CENTS,
-  );
+  return BASE_INVENTORY.filter((v) => v.price_cents >= PREMIUM_MIN_CENTS);
 }
 
 function toVehicleCard(item: SeedVehicle, dealer: SeedDealer, settings: QuoteSettings): VehicleCard {
