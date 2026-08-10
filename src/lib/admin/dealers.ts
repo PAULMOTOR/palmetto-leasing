@@ -1,9 +1,11 @@
 /**
- * Admin dealer list for the marketing site — curated seed inventory (no DB).
+ * Admin dealer management — backed by Neon/PGLite dealerships table.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { DEALERS, BASE_INVENTORY, ROTATING_ARRIVALS } from "@/lib/leasing/seed";
+import { getSql } from "@/lib/db";
+import { DEALERS } from "@/lib/leasing/seed";
+import { ensureSeededInventory } from "@/lib/crawler/run";
 
 export type AdminDealer = {
   id: string;
@@ -16,15 +18,6 @@ export type AdminDealer = {
   active: boolean;
   vehicle_count: number;
 };
-
-function counts() {
-  const all = [...BASE_INVENTORY, ...ROTATING_ARRIVALS];
-  const m = new Map<string, number>();
-  for (const v of all) {
-    m.set(v.dealership_id, (m.get(v.dealership_id) || 0) + 1);
-  }
-  return m;
-}
 
 export const verifyAdminPin = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ pin: z.string().min(1).max(64) }).parse(input))
@@ -40,9 +33,33 @@ export const listAdminDealers = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
-    const c = counts();
-    return DEALERS.map(
-      (d): AdminDealer => ({
+    try {
+      await ensureSeededInventory();
+      const sql = await getSql();
+      const rows = await sql<{
+        id: string;
+        name: string;
+        city: string;
+        province: string;
+        brands: string;
+        website_url: string;
+        inventory_url: string;
+        active: boolean;
+        vehicle_count: number;
+      }>`
+        select d.*,
+          (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as vehicle_count
+        from dealerships d
+        order by d.name
+      `;
+      return rows.map((r) => ({
+        ...r,
+        active: Boolean(r.active),
+        vehicle_count: Number(r.vehicle_count),
+      }));
+    } catch {
+      // seed fallback
+      return DEALERS.map((d) => ({
         id: d.id,
         name: d.name,
         city: d.city,
@@ -51,9 +68,9 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         website_url: d.website_url,
         inventory_url: d.inventory_url,
         active: d.active,
-        vehicle_count: d.active ? c.get(d.id) || 0 : 0,
-      }),
-    );
+        vehicle_count: 0,
+      }));
+    }
   });
 
 export const updateDealer = createServerFn({ method: "POST" })
@@ -74,12 +91,22 @@ export const updateDealer = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
-    // Marketing site has no DB — dealer roster is edited in seed + redeploy.
-    return {
-      ok: false as const,
-      message:
-        "Dealership roster is curated in src/lib/leasing/seed.ts for this marketing deploy. Edit + redeploy (or later wire a CMS). URLs shown are current seed values.",
-    };
+    const sql = await getSql();
+    const cur = await sql<{ id: string }>`select id from dealerships where id = ${data.id} limit 1`;
+    if (!cur[0]) throw new Error("Dealer not found");
+
+    await sql`
+      update dealerships set
+        name = coalesce(${data.name ?? null}, name),
+        website_url = coalesce(${data.website_url ?? null}, website_url),
+        inventory_url = coalesce(${data.inventory_url ?? null}, inventory_url),
+        brands = coalesce(${data.brands ?? null}, brands),
+        city = coalesce(${data.city ?? null}, city),
+        province = coalesce(${data.province ?? null}, province),
+        active = coalesce(${data.active ?? null}, active)
+      where id = ${data.id}
+    `;
+    return { ok: true as const };
   });
 
 export const addDealer = createServerFn({ method: "POST" })
@@ -99,8 +126,26 @@ export const addDealer = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
-    return {
-      ok: false as const,
-      message: "Add dealers in seed.ts and redeploy. No database on this marketing project.",
-    };
+    const id = data.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48);
+    const sql = await getSql();
+    await sql`
+      insert into dealerships (id, name, city, province, brands, website_url, inventory_url, active)
+      values (
+        ${id}, ${data.name}, ${data.city}, ${data.province}, ${data.brands},
+        ${data.website_url}, ${data.inventory_url}, ${data.active}
+      )
+      on conflict (id) do update set
+        name = excluded.name,
+        city = excluded.city,
+        province = excluded.province,
+        brands = excluded.brands,
+        website_url = excluded.website_url,
+        inventory_url = excluded.inventory_url,
+        active = excluded.active
+    `;
+    return { ok: true as const, id };
   });

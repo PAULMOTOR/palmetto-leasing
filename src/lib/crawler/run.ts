@@ -2,23 +2,15 @@ import { getSql } from "@/lib/db";
 import {
   BASE_INVENTORY,
   DEALERS,
-  ROTATING_ARRIVALS,
+  PREMIUM_MIN_CENTS,
   dealerListingUrl,
   slugifyVehicle,
   type SeedVehicle,
 } from "@/lib/leasing/seed";
+import { fetchDealerInventory } from "./fetch-dealer";
 
-const PREMIUM_THRESHOLD_CENTS = 150_000_00; // $150,000 CAD
-const POOL_VERSION = "4"; // bump to re-sync seed active flags once
-
-function stableHash(input: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
+const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
+const POOL_VERSION = "5-neon-live"; // bump to re-sync dealer seed rows
 
 let seedChain: Promise<unknown> = Promise.resolve();
 function enqueueSeed<T>(fn: () => Promise<T>): Promise<T> {
@@ -30,30 +22,42 @@ function enqueueSeed<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+export type CrawlResult = {
+  runId: number;
+  status: "completed" | "failed";
+  dealersScanned: number;
+  listingsFound: number;
+  added: number;
+  updated: number;
+  removed: number;
+  sources?: Record<string, string>;
+  notes?: string[];
+};
+
 /**
- * Pool inventory from active dealerships only.
- * Admin can toggle dealers / edit inventory URLs — those DB values win over seed
- * after the pool_version sync.
+ * Crawl active dealership inventory URLs → Neon (or PGLite fallback).
+ * Live HTTP first; curated seed fills gaps when sites block bots.
  */
 export async function runInventoryCrawl(opts?: { forceIncludeAll?: boolean }) {
   return enqueueSeed(() => runInventoryCrawlInner(opts));
 }
 
-async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }) {
+async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }): Promise<CrawlResult> {
   const sql = await getSql();
 
   const runRows = await sql<{ id: number }>`
     insert into crawl_runs (status) values ('running') returning id
   `;
-  const runId = runRows[0]!.id;
+  const runId = Number(runRows[0]!.id);
 
   let added = 0;
   let updated = 0;
   let removed = 0;
   let listingsFound = 0;
+  const sources: Record<string, string> = {};
+  const notes: string[] = [];
 
   try {
-    // One-time (per POOL_VERSION) sync of seed dealers + active flags
     const ver = await sql<{ value: string }>`
       select value from app_meta where key = 'pool_version' limit 1
     `;
@@ -100,16 +104,31 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }) {
       `;
     }
 
-    const activeDealers = await sql<{ id: string; inventory_url: string }>`
-      select id, inventory_url from dealerships where active = true
+    const activeDealers = await sql<{ id: string; inventory_url: string; name: string }>`
+      select id, inventory_url, name from dealerships where active = true
     `;
     const activeIds = new Set(activeDealers.map((d) => d.id));
 
-    const now = new Date();
-    const dayBucket = Math.floor(now.getTime() / (8 * 60 * 60 * 1000));
-    const liveFeed = buildLiveFeed(dayBucket, opts?.forceIncludeAll || needsPoolSync).filter((v) =>
-      activeIds.has(v.dealership_id),
-    );
+    const liveFeed: SeedVehicle[] = [];
+    for (const d of activeDealers) {
+      const result = await fetchDealerInventory(d.id, d.inventory_url);
+      sources[d.id] = result.source;
+      notes.push(`${d.name}: ${result.source} · ${result.items.length} · ${result.notes.join("; ")}`);
+      liveFeed.push(...result.items.filter((v) => v.price_cents >= PREMIUM_THRESHOLD_CENTS));
+    }
+
+    // Safety net: if crawl completely empty, force full seed
+    if (liveFeed.length === 0 || opts?.forceIncludeAll) {
+      const seedAll = BASE_INVENTORY.filter(
+        (v) => activeIds.has(v.dealership_id) && v.price_cents >= PREMIUM_THRESHOLD_CENTS,
+      );
+      const keys = new Set(liveFeed.map((v) => `${v.dealership_id}::${v.external_id}`));
+      for (const s of seedAll) {
+        const k = `${s.dealership_id}::${s.external_id}`;
+        if (!keys.has(k)) liveFeed.push(s);
+      }
+      notes.push(`Seed safety net applied · feed size ${liveFeed.length}`);
+    }
 
     listingsFound = liveFeed.length;
     const seenExternal = new Set<string>();
@@ -144,11 +163,12 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }) {
       `;
       await sql`
         insert into crawl_events (crawl_run_id, dealership_id, vehicle_id, event_type, detail)
-        values (${runId}, ${row.dealership_id}, ${row.id}, 'removed', 'Listing no longer on dealer site')
+        values (${runId}, ${row.dealership_id}, ${row.id}, 'removed', 'Listing no longer in crawl feed')
       `;
       removed += 1;
     }
 
+    const now = new Date();
     await sql`
       update crawl_runs set
         finished_at = now(),
@@ -169,12 +189,14 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }) {
 
     return {
       runId,
-      status: "completed" as const,
+      status: "completed",
       dealersScanned: activeDealers.length,
       listingsFound,
       added,
       updated,
       removed,
+      sources,
+      notes,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -194,26 +216,6 @@ async function runInventoryCrawlInner(opts?: { forceIncludeAll?: boolean }) {
   }
 }
 
-function buildLiveFeed(dayBucket: number, forceAll?: boolean): SeedVehicle[] {
-  if (forceAll) return [...BASE_INVENTORY, ...ROTATING_ARRIVALS];
-
-  const feed = [...BASE_INVENTORY];
-
-  const dropCount = dayBucket % 3 === 0 ? 1 : dayBucket % 5 === 0 ? 2 : 0;
-  const droppable = BASE_INVENTORY.filter((_, i) => stableHash(`${dayBucket}-drop-${i}`) % 7 === 0);
-  const toDrop = new Set(droppable.slice(0, dropCount).map((v) => v.external_id));
-  const filtered = feed.filter((v) => !toDrop.has(v.external_id));
-
-  const arrivals = ROTATING_ARRIVALS.filter(
-    (_, i) => stableHash(`${dayBucket}-arr-${i}`) % 2 === dayBucket % 2,
-  );
-  if (arrivals.length === 0 && ROTATING_ARRIVALS[0]) {
-    arrivals.push(ROTATING_ARRIVALS[dayBucket % ROTATING_ARRIVALS.length]!);
-  }
-
-  return [...filtered, ...arrivals];
-}
-
 type Sql = Awaited<ReturnType<typeof getSql>>;
 
 async function upsertVehicle(
@@ -224,7 +226,9 @@ async function upsertVehicle(
   const id = `${item.dealership_id}_${item.external_id}`.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
   const slug = slugifyVehicle(item);
   const isPremium = item.price_cents >= PREMIUM_THRESHOLD_CENTS;
-  const listingUrl = dealerListingUrl(item.dealership_id, item.listing_path);
+  const listingUrl = item.listing_path.startsWith("http")
+    ? item.listing_path
+    : dealerListingUrl(item.dealership_id, item.listing_path);
   const specsJson = JSON.stringify(item.specs);
   const photosJson = JSON.stringify(item.photos.length ? item.photos : [item.thumbnail]);
   const thumbnail = item.thumbnail;
@@ -290,16 +294,16 @@ async function upsertVehicle(
 export async function ensureSeededInventory() {
   return enqueueSeed(async () => {
     const sql = await getSql();
-    const rows = await sql<{ c: number }>`select count(*)::int as c from vehicles`;
-    if ((rows[0]?.c ?? 0) > 0) {
-      // Still apply pool_version sync + thumbnail refresh via crawl when needed
+    const rows = await sql<{ c: number }>`select count(*)::int as c from vehicles where status = 'active'`;
+    const count = Number(rows[0]?.c ?? 0);
+    if (count > 0) {
       const ver = await sql<{ value: string }>`
         select value from app_meta where key = 'pool_version' limit 1
       `;
       if (ver[0]?.value !== POOL_VERSION) {
         return runInventoryCrawlInner({ forceIncludeAll: true });
       }
-      return { seeded: false as const };
+      return { seeded: false as const, count };
     }
     const result = await runInventoryCrawlInner({ forceIncludeAll: true });
     return { seeded: true as const, ...result };

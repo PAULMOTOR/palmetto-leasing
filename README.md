@@ -8,7 +8,7 @@ Public marketing site for **[palmettoleasing.com](https://palmettoleasing.com)**
 
 **Stack:** React 19 · TanStack Start · Vite · Tailwind · Vercel (Nitro)
 
-**Database:** none by default. Do not attach Neon to this project.
+**Database:** Neon Postgres for inventory + crawler (`DATABASE_URL`). Keep CRM on a separate Neon project. See **NEON.md**.
 
 CRM / leads / documents live in a separate Vercel app. Wire later with:
 
@@ -58,3 +58,7 @@ Default demo PINs: `ADMIN_PIN=palmetto`, `DEALER_PIN=dealer` — change in produ
 
 Partner vehicles are curated in `src/lib/leasing/seed.ts` (active dealerships + listings).  
 No Neon crawler on this marketing deploy.
+
+## Neon inventory
+
+See [NEON.md](./NEON.md) — create a dedicated Neon project, set `DATABASE_URL` on Vercel, run Admin → **Pool inventory now**. Cron every 12h via `/api/cron/crawl`.

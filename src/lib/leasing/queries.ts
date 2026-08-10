@@ -1,5 +1,5 @@
 /**
- * Public marketing API — static catalog + CRM handoff. No database.
+ * Inventory API — Neon when DATABASE_URL set, else PGLite / static catalog fallback.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -12,9 +12,42 @@ import {
 } from "./catalog";
 import { loadQuoteSettings } from "./quote-config";
 import { handoffLeaseToCrm } from "@/lib/crm/handoff";
+import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
+import { getSql, dbSource } from "@/lib/db";
+import type { Vehicle, VehicleCard } from "./types";
+import { parsePhotos, parseSpecs } from "./types";
+
+async function toCard(
+  row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
+): Promise<VehicleCard> {
+  const settings = loadQuoteSettings();
+  const quote = calculateLease(Number(row.price_cents), settings);
+  return {
+    ...row,
+    price_cents: Number(row.price_cents),
+    mileage: Number(row.mileage),
+    year: Number(row.year),
+    is_premium: Boolean(row.is_premium),
+    monthly_payment_cents: quote.monthlyPaymentCents,
+    specs: parseSpecs(row.specs_json),
+    photos: parsePhotos(row.photo_urls).length
+      ? parsePhotos(row.photo_urls)
+      : row.thumbnail_url
+        ? [row.thumbnail_url]
+        : [],
+  };
+}
 
 export const bootstrapInventory = createServerFn({ method: "POST" }).handler(async () => {
-  return { seeded: true as const, mode: "static" as const };
+  try {
+    return { ...(await ensureSeededInventory()), mode: dbSource };
+  } catch (err) {
+    return {
+      seeded: false as const,
+      mode: "static" as const,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 });
 
 export const listVehicles = createServerFn({ method: "GET" })
@@ -35,9 +68,26 @@ export const listVehicles = createServerFn({ method: "GET" })
         .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    const settings = loadQuoteSettings();
-    let list = listCatalogVehicles(settings);
     const filters = data ?? {};
+    let list: VehicleCard[] = [];
+
+    try {
+      await ensureSeededInventory();
+      const sql = await getSql();
+      const rows = await sql<
+        Vehicle & { dealer_name: string; dealer_city: string; dealer_province: string }
+      >`
+        select v.*, d.name as dealer_name, d.city as dealer_city, d.province as dealer_province
+        from vehicles v
+        join dealerships d on d.id = v.dealership_id
+        where v.status = 'active' and d.active = true and v.price_cents >= 15000000
+        order by v.price_cents desc
+      `;
+      list = await Promise.all(rows.map((r) => toCard(r)));
+    } catch (err) {
+      console.warn("[listVehicles] DB unavailable, static catalog:", err);
+      list = listCatalogVehicles(loadQuoteSettings());
+    }
 
     if (filters.q) {
       const q = filters.q.toLowerCase();
@@ -87,24 +137,91 @@ export const listVehicles = createServerFn({ method: "GET" })
 export const getVehicleBySlug = createServerFn({ method: "GET" })
   .validator((input: unknown) => z.object({ slug: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
+    try {
+      await ensureSeededInventory();
+      const sql = await getSql();
+      const rows = await sql<
+        Vehicle & { dealer_name: string; dealer_city: string; dealer_province: string }
+      >`
+        select v.*, d.name as dealer_name, d.city as dealer_city, d.province as dealer_province
+        from vehicles v
+        join dealerships d on d.id = v.dealership_id
+        where v.slug = ${data.slug}
+        limit 1
+      `;
+      if (rows[0]) return toCard(rows[0]);
+    } catch {
+      /* fall through */
+    }
     return getCatalogVehicleBySlug(data.slug, loadQuoteSettings());
   });
 
 export const listDealers = createServerFn({ method: "GET" }).handler(async () => {
-  return listCatalogDealerSummaries();
+  try {
+    await ensureSeededInventory();
+    const sql = await getSql();
+    return sql<{
+      id: string;
+      name: string;
+      city: string;
+      province: string;
+      brands: string;
+      count: number;
+    }>`
+      select d.id, d.name, d.city, d.province, d.brands,
+        (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as count
+      from dealerships d
+      where d.active = true
+      order by d.name
+    `;
+  } catch {
+    return listCatalogDealerSummaries();
+  }
 });
 
 export const getInventoryStats = createServerFn({ method: "GET" }).handler(async () => {
-  const list = listCatalogVehicles(loadQuoteSettings());
-  const prices = list.map((v) => v.price_cents);
-  return {
-    total: list.length,
-    premium: list.filter((v) => v.is_premium).length,
-    dealers: listCatalogDealerSummaries().length,
-    minPrice: prices.length ? Math.min(...prices) : 0,
-    maxPrice: prices.length ? Math.max(...prices) : 0,
-    lastCrawlAt: null as string | null,
-  };
+  try {
+    await ensureSeededInventory();
+    const sql = await getSql();
+    const stats = await sql<{
+      total: number;
+      premium: number;
+      dealers: number;
+      min_price: number;
+      max_price: number;
+    }>`
+      select
+        (select count(*)::int from vehicles v join dealerships d on d.id = v.dealership_id where v.status = 'active' and d.active = true) as total,
+        (select count(*)::int from vehicles v join dealerships d on d.id = v.dealership_id where v.status = 'active' and d.active = true and v.is_premium = true) as premium,
+        (select count(*)::int from dealerships where active = true) as dealers,
+        coalesce((select min(v.price_cents)::bigint from vehicles v join dealerships d on d.id = v.dealership_id where v.status = 'active' and d.active = true), 0) as min_price,
+        coalesce((select max(v.price_cents)::bigint from vehicles v join dealerships d on d.id = v.dealership_id where v.status = 'active' and d.active = true), 0) as max_price
+    `;
+    const last = await sql<{ value: string }>`
+      select value from app_meta where key = 'last_crawl_at' limit 1
+    `;
+    const s = stats[0]!;
+    return {
+      total: Number(s.total),
+      premium: Number(s.premium),
+      dealers: Number(s.dealers),
+      minPrice: Number(s.min_price),
+      maxPrice: Number(s.max_price),
+      lastCrawlAt: last[0]?.value ?? null,
+      backend: dbSource,
+    };
+  } catch {
+    const list = listCatalogVehicles(loadQuoteSettings());
+    return {
+      total: list.length,
+      premium: list.filter((v) => v.is_premium).length,
+      dealers: listCatalogDealerSummaries().length,
+      minPrice: list.length ? Math.min(...list.map((v) => v.price_cents)) : 0,
+      maxPrice: list.length ? Math.max(...list.map((v) => v.price_cents)) : 0,
+      lastCrawlAt: null as string | null,
+      backend: "static" as const,
+    };
+  }
 });
 
 export const submitLeaseQuote = createServerFn({ method: "POST" })
@@ -135,14 +252,42 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const settings = loadQuoteSettings();
-    const v = getCatalogVehicleById(data.vehicleId, settings);
-    if (!v) throw new Error("Vehicle not found");
+    let vehicleLabel = "";
+    let dealerName = "";
+    let priceCents = 0;
 
-    const quote = calculateLease(v.price_cents, settings);
+    try {
+      const sql = await getSql();
+      const rows = await sql<Vehicle & { dealer_name: string }>`
+        select v.*, d.name as dealer_name
+        from vehicles v
+        join dealerships d on d.id = v.dealership_id
+        where v.id = ${data.vehicleId}
+        limit 1
+      `;
+      if (rows[0]) {
+        const v = rows[0];
+        priceCents = Number(v.price_cents);
+        vehicleLabel = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
+        dealerName = v.dealer_name;
+      }
+    } catch {
+      /* static */
+    }
+
+    if (!priceCents) {
+      const v = getCatalogVehicleById(data.vehicleId, settings);
+      if (!v) throw new Error("Vehicle not found");
+      priceCents = v.price_cents;
+      vehicleLabel = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
+      dealerName = v.dealer_name || "";
+    }
+
+    const quote = calculateLease(priceCents, settings);
     const handoff = await handoffLeaseToCrm({
-      vehicleId: v.id,
-      vehicleLabel: [v.year, v.make, v.model, v.trim].filter(Boolean).join(" "),
-      dealerName: v.dealer_name || "",
+      vehicleId: data.vehicleId,
+      vehicleLabel,
+      dealerName,
       quote,
       customerName: data.customerName,
       customerEmail: data.customerEmail,
@@ -155,12 +300,11 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
     return {
       leadId: handoff.referenceId,
       quote,
-      vehicleLabel: [v.year, v.make, v.model, v.trim].filter(Boolean).join(" "),
+      vehicleLabel,
       handoff,
     };
   });
 
-/** CRM leads live in the separate CRM project — not stored here. */
 export const getCrmLeads = createServerFn({ method: "GET" }).handler(async () => {
   return [] as const;
 });
@@ -179,20 +323,28 @@ export const setLeadStatus = createServerFn({ method: "POST" })
   });
 
 export const triggerCrawl = createServerFn({ method: "POST" }).handler(async () => {
-  // No crawler DB on the marketing site — inventory is curated in seed.
-  const list = listCatalogVehicles(loadQuoteSettings());
-  return {
-    runId: 0,
-    status: "completed" as const,
-    dealersScanned: listCatalogDealerSummaries().length,
-    listingsFound: list.length,
-    added: 0,
-    updated: 0,
-    removed: 0,
-    mode: "static" as const,
-  };
+  return runInventoryCrawl({ forceIncludeAll: true });
 });
 
 export const getRecentCrawlRuns = createServerFn({ method: "GET" }).handler(async () => {
-  return [] as const;
+  try {
+    await ensureSeededInventory();
+    const sql = await getSql();
+    return sql<{
+      id: number;
+      started_at: string;
+      finished_at: string | null;
+      status: string;
+      dealers_scanned: number;
+      listings_found: number;
+      added: number;
+      updated: number;
+      removed: number;
+      error_message: string | null;
+    }>`
+      select * from crawl_runs order by id desc limit 10
+    `;
+  } catch {
+    return [] as const;
+  }
 });
