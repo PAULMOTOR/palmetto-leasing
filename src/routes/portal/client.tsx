@@ -13,20 +13,20 @@ export const Route = createFileRoute("/portal/client")({
 });
 
 type AppRow = {
-  id: number;
+  id: number | string;
   vehicleLabel: string;
-  dealerName: string;
-  priceCents: number;
-  monthlyPaymentCents: number;
-  termMonths: number;
-  residualCents: number;
+  dealerName?: string;
+  priceCents?: number;
+  monthlyPaymentCents?: number;
+  termMonths?: number;
+  residualCents?: number;
   status: string;
-  contractStatus: string;
-  missingDocs: string[];
-  buyoutCents: number;
-  monthsElapsed: number;
-  createdAt: string;
-  customerName: string;
+  contractStatus?: string;
+  missingDocs?: string[];
+  buyoutCents?: number | null;
+  monthsElapsed?: number;
+  createdAt?: string;
+  customerName?: string;
 };
 
 function ClientPortalPage() {
@@ -45,7 +45,7 @@ function ClientPortalPage() {
     setEmail(e);
     clientLookup({ data: { email: e } })
       .then((r) => {
-        setApps((r.applications || []) as AppRow[]);
+        setApps((r.applications || []) as unknown as AppRow[]);
         setNote((r as { note?: string }).note || null);
       })
       .finally(() => setLoading(false));
@@ -79,64 +79,76 @@ function ClientPortalPage() {
           <Loader2 className="size-6 animate-spin text-fg-subtle" />
         </div>
       ) : apps.length === 0 ? (
-        <div className="rounded-[var(--radius-xl)] border border-border bg-surface px-6 py-14 text-center">
-          <p className="text-sm text-fg-muted">
-            {note ||
-              "No applications returned from CRM yet. After you apply on a vehicle, status is tracked in the Paul Motor CRM project (connect CRM_STATUS_URL when ready)."}
+        <div className="rounded-[var(--radius-xl)] border border-border bg-surface p-8 text-center shadow-[var(--shadow-card)]">
+          <FileText className="mx-auto size-8 text-fg-subtle" />
+          <p className="mt-3 text-sm text-fg-muted">
+            {note || "No applications found for this email yet. Apply from any vehicle Lease panel."}
           </p>
-          <Button asChild className="mt-4" variant="outline">
+          <Button asChild className="mt-4">
             <Link to="/">Browse inventory</Link>
           </Button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <ul className="space-y-3">
           {apps.map((a) => (
-            <article
-              key={a.id}
+            <li
+              key={String(a.id)}
               className="rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)]"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium text-fg">{a.vehicleLabel}</p>
-                  <p className="mt-0.5 text-xs text-fg-subtle">{a.dealerName}</p>
+                  <h2 className="font-medium text-fg">{a.vehicleLabel}</h2>
+                  {a.dealerName && (
+                    <p className="mt-0.5 text-xs text-fg-muted">{a.dealerName}</p>
+                  )}
                 </div>
-                <span className="rounded-full bg-surface-3 px-2.5 py-0.5 text-[10px] font-medium tracking-wide text-fg-muted uppercase">
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[10px] font-medium tracking-wide uppercase",
+                    a.status === "won"
+                      ? "bg-success/15 text-success"
+                      : "bg-surface-2 text-fg-muted",
+                  )}
+                >
                   {a.status}
                 </span>
               </div>
-              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <div>
-                  <dt className="text-[10px] text-fg-subtle uppercase">Monthly</dt>
-                  <dd className="font-medium tabular-nums text-price">
-                    {formatCadExact(a.monthlyPaymentCents)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[10px] text-fg-subtle uppercase">Term</dt>
-                  <dd className="tabular-nums">{a.termMonths} mo</dd>
-                </div>
-                <div>
-                  <dt className="text-[10px] text-fg-subtle uppercase">Price</dt>
-                  <dd className="tabular-nums">{formatCad(a.priceCents)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[10px] text-fg-subtle uppercase">Buyout</dt>
-                  <dd className="tabular-nums text-price">{formatCad(a.buyoutCents)}</dd>
-                </div>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                {a.monthlyPaymentCents != null && (
+                  <div>
+                    <dt className="text-fg-subtle">Monthly</dt>
+                    <dd className="font-medium tabular-nums">
+                      {formatCadExact(a.monthlyPaymentCents)}
+                    </dd>
+                  </div>
+                )}
+                {a.priceCents != null && (
+                  <div>
+                    <dt className="text-fg-subtle">Price</dt>
+                    <dd className="font-medium tabular-nums">{formatCad(a.priceCents)}</dd>
+                  </div>
+                )}
+                {a.buyoutCents != null && (
+                  <div>
+                    <dt className="text-fg-subtle">Buyout est.</dt>
+                    <dd className="font-medium tabular-nums">{formatCad(a.buyoutCents)}</dd>
+                  </div>
+                )}
+                {a.contractStatus && (
+                  <div>
+                    <dt className="text-fg-subtle">Contract</dt>
+                    <dd className="font-medium capitalize">{a.contractStatus}</dd>
+                  </div>
+                )}
               </dl>
-              {a.missingDocs?.length > 0 && (
-                <ul className="mt-4 space-y-1 border-t border-border pt-3">
-                  {a.missingDocs.map((d) => (
-                    <li key={d} className="flex items-center gap-2 text-sm text-fg-muted">
-                      <FileText className="size-3.5 opacity-60" />
-                      {d}
-                    </li>
-                  ))}
-                </ul>
+              {a.missingDocs && a.missingDocs.length > 0 && (
+                <p className="mt-3 text-xs text-fg-muted">
+                  Missing: {a.missingDocs.join(", ")}
+                </p>
               )}
-            </article>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
