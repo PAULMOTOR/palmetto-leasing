@@ -3,6 +3,7 @@ import {
   BASE_INVENTORY,
   DEALERS,
   PREMIUM_MIN_CENTS,
+  RETIRED_DEALER_IDS,
   dealerListingUrl,
   slugifyVehicle,
   type SeedVehicle,
@@ -12,7 +13,7 @@ import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
 import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "8-autotrader-sigma";
+const POOL_VERSION = "9-retire-original-12";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
 
 let seedChain: Promise<unknown> = Promise.resolve();
@@ -42,6 +43,30 @@ export async function runInventoryCrawl(opts?: { forceIncludeAll?: boolean; gene
   return enqueueSeed(() => runInventoryCrawlInner(opts));
 }
 
+async function purgeRetiredDealers(sql: Awaited<ReturnType<typeof getSql>>, notes: string[]) {
+  for (const id of RETIRED_DEALER_IDS) {
+    const v = await sql<{ c: number }>`
+      select count(*)::int as c from vehicles where dealership_id = ${id}
+    `;
+    const d = await sql<{ c: number }>`
+      select count(*)::int as c from dealerships where id = ${id}
+    `;
+    const vc = Number(v[0]?.c ?? 0);
+    const dc = Number(d[0]?.c ?? 0);
+    if (vc === 0 && dc === 0) continue;
+
+    // Hard delete events first if FK, then vehicles, then dealer
+    try {
+      await sql`delete from crawl_events where dealership_id = ${id}`;
+    } catch {
+      /* table may not have rows / FK */
+    }
+    await sql`delete from vehicles where dealership_id = ${id}`;
+    await sql`delete from dealerships where id = ${id}`;
+    notes.push(`Permanently deleted retired dealer ${id} (${vc} vehicles)`);
+  }
+}
+
 async function runInventoryCrawlInner(opts?: {
   forceIncludeAll?: boolean;
   generateThumbs?: boolean;
@@ -63,6 +88,9 @@ async function runInventoryCrawlInner(opts?: {
   const notes: string[] = [];
 
   try {
+    // Always purge the original 12 built-in dealers
+    await purgeRetiredDealers(sql, notes);
+
     const ver = await sql<{ value: string }>`
       select value from app_meta where key = 'pool_version' limit 1
     `;
@@ -112,10 +140,13 @@ async function runInventoryCrawlInner(opts?: {
     const activeDealers = await sql<{ id: string; inventory_url: string; name: string }>`
       select id, inventory_url, name from dealerships where active = true
     `;
-    const activeIds = new Set(activeDealers.map((d) => d.id));
+    // Never crawl retired IDs even if somehow still present
+    const retired = new Set<string>(RETIRED_DEALER_IDS as unknown as string[]);
+    const crawlDealers = activeDealers.filter((d) => !retired.has(d.id));
+    const activeIds = new Set(crawlDealers.map((d) => d.id));
 
     const liveFeed: SeedVehicle[] = [];
-    for (const d of activeDealers) {
+    for (const d of crawlDealers) {
       const result = await fetchDealerInventory(d.id, d.inventory_url);
       sources[d.id] = result.source;
       notes.push(`${d.name}: ${result.source} · ${result.items.length} · ${result.notes.join("; ")}`);
@@ -125,6 +156,7 @@ async function runInventoryCrawlInner(opts?: {
     const globalSeen = new Set<string>();
     const uniqueFeed: SeedVehicle[] = [];
     for (const item of liveFeed) {
+      if (retired.has(item.dealership_id)) continue;
       const fp = listingFingerprint({
         vin: item.vin,
         stock: item.stock_number,
@@ -149,11 +181,7 @@ async function runInventoryCrawlInner(opts?: {
     }
 
     if (uniqueFeed.length === 0) {
-      const seedAll = BASE_INVENTORY.filter(
-        (v) => activeIds.has(v.dealership_id) && v.price_cents >= PREMIUM_THRESHOLD_CENTS,
-      );
-      uniqueFeed.push(...seedAll);
-      notes.push(`EMERGENCY seed only — no live dealers returned data (${seedAll.length})`);
+      notes.push("No live ≥$150k inventory returned — catalog empty until partners are fixed");
     }
 
     listingsFound = uniqueFeed.length;
@@ -205,39 +233,31 @@ async function runInventoryCrawlInner(opts?: {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
     }
 
+    // Remove any vehicle not in current live feed (including leftovers from retired dealers)
     const active = await sql<{ id: string; dealership_id: string; external_id: string }>`
       select id, dealership_id, external_id from vehicles where status = 'active'
     `;
     for (const row of active) {
-      if (!activeIds.has(row.dealership_id)) {
-        await sql`
-          update vehicles
-          set status = 'removed', removed_at = now(), updated_at = now()
-          where id = ${row.id}
-        `;
+      if (retired.has(row.dealership_id) || !activeIds.has(row.dealership_id)) {
+        await sql`delete from vehicles where id = ${row.id}`;
         removed += 1;
         continue;
       }
       const key = `${row.dealership_id}::${row.external_id}`;
       if (seenExternal.has(key)) continue;
-      await sql`
-        update vehicles
-        set status = 'removed', removed_at = now(), updated_at = now()
-        where id = ${row.id}
-      `;
-      await sql`
-        insert into crawl_events (crawl_run_id, dealership_id, vehicle_id, event_type, detail)
-        values (${runId}, ${row.dealership_id}, ${row.id}, 'removed', 'Listing no longer in crawl feed')
-      `;
+      await sql`delete from vehicles where id = ${row.id}`;
       removed += 1;
     }
+
+    // Second pass purge in case anything remains
+    await purgeRetiredDealers(sql, notes);
 
     const now = new Date();
     await sql`
       update crawl_runs set
         finished_at = now(),
         status = 'completed',
-        dealers_scanned = ${activeDealers.length},
+        dealers_scanned = ${crawlDealers.length},
         listings_found = ${listingsFound},
         added = ${added},
         updated = ${updated},
@@ -254,7 +274,7 @@ async function runInventoryCrawlInner(opts?: {
     return {
       runId,
       status: "completed",
-      dealersScanned: activeDealers.length,
+      dealersScanned: crawlDealers.length,
       listingsFound,
       added,
       updated,
@@ -367,17 +387,16 @@ async function upsertVehicle(
 export async function ensureSeededInventory() {
   return enqueueSeed(async () => {
     const sql = await getSql();
+    // Always run purge path when pool version changes
+    const ver = await sql<{ value: string }>`
+      select value from app_meta where key = 'pool_version' limit 1
+    `;
+    if (ver[0]?.value !== POOL_VERSION) {
+      return runInventoryCrawlInner({ forceIncludeAll: false, generateThumbs: false });
+    }
     const rows = await sql<{ c: number }>`select count(*)::int as c from vehicles where status = 'active'`;
     const count = Number(rows[0]?.c ?? 0);
-    if (count > 0) {
-      const ver = await sql<{ value: string }>`
-        select value from app_meta where key = 'pool_version' limit 1
-      `;
-      if (ver[0]?.value !== POOL_VERSION) {
-        return runInventoryCrawlInner({ forceIncludeAll: false, generateThumbs: false });
-      }
-      return { seeded: false as const, count };
-    }
+    if (count > 0) return { seeded: false as const, count };
     const result = await runInventoryCrawlInner({ forceIncludeAll: false, generateThumbs: true });
     return { seeded: true as const, ...result };
   });
