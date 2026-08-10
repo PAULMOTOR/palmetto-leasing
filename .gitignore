@@ -1,0 +1,12 @@
+node_modules
+dist
+.output
+.vercel
+.tanstack
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+screenshots
+.pglite
