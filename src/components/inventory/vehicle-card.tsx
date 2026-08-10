@@ -66,13 +66,13 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
-          {/* Image fills the media area edge-to-edge; meta lives below */}
+          {/* Full car visible — contain + breathing room so nose/front is never cropped */}
           <div
             className={cn(
               "relative w-full overflow-hidden bg-white",
               expanded
-                ? "aspect-[5/4] md:aspect-auto md:min-h-[280px] md:flex-1"
-                : "aspect-[5/4]",
+                ? "aspect-[4/5] md:aspect-auto md:min-h-[300px] md:flex-1"
+                : "aspect-[4/5] sm:aspect-[3/4]",
             )}
           >
             <img
@@ -80,34 +80,34 @@ export function VehicleCard({
               alt={title}
               loading="lazy"
               decoding="async"
-              className="absolute inset-0 h-full w-full bg-white object-cover object-top transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02]"
+              className="h-full w-full bg-white object-contain object-center p-4 transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02] sm:p-5"
               style={{ backgroundColor: "#FFFFFF" }}
             />
           </div>
 
-          {/* Compact meta strip under thumbnail */}
-          <div className="flex flex-col items-center px-3 pt-1.5 pb-3 text-center sm:px-3.5 sm:pb-3.5">
-            <p className="mb-1 max-w-[94%] text-[8px] font-medium tracking-[0.2em] text-fg-subtle uppercase sm:text-[9px] sm:tracking-[0.24em]">
+          {/* Meta under image — tighter than original, roomier than last pass */}
+          <div className="flex flex-col items-center px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pb-4">
+            <p className="mb-1.5 max-w-[94%] text-[9px] font-medium tracking-[0.22em] text-fg-subtle uppercase sm:text-[10px] sm:tracking-[0.26em]">
               {dealerLabel}
             </p>
 
-            <h3 className="text-[12px] leading-snug font-normal tracking-wide text-fg-muted sm:text-[13px]">
+            <h3 className="text-[13px] leading-snug font-normal tracking-wide text-fg-muted sm:text-sm">
               {shortTitle}
               {vehicle.trim ? ` ${vehicle.trim}` : ""}
             </h3>
 
-            <p className="mt-0.5 text-[12px] font-medium tabular-nums tracking-wide text-price sm:text-[13px]">
+            <p className="mt-1 text-[13px] font-medium tabular-nums tracking-wide text-price sm:text-sm">
               {formatCad(vehicle.price_cents)}
-              <span className="mx-1 text-fg-subtle">-</span>
+              <span className="mx-1.5 text-fg-subtle">-</span>
               <span className="tabular-nums">{formatNumber(vehicle.mileage)} KM</span>
             </p>
 
-            <div className="mt-2.5 flex w-full items-center justify-center gap-3">
+            <div className="mt-3 flex w-full items-center justify-center gap-4">
               <button
                 type="button"
                 onClick={onToggleLease}
                 className={cn(
-                  "inline-flex h-8 min-w-[5rem] items-center justify-center rounded-full border px-4 text-[12px] font-medium transition-[background-color,color,transform,border-color] duration-[var(--motion-quick)] active:scale-[0.96] sm:h-9 sm:text-[13px]",
+                  "inline-flex h-9 min-w-[5.5rem] items-center justify-center rounded-full border px-5 text-[13px] font-medium transition-[background-color,color,transform,border-color] duration-[var(--motion-quick)] active:scale-[0.96]",
                   expanded
                     ? "border-fg bg-fg text-primary-fg"
                     : "border-accent text-accent hover:bg-accent hover:text-accent-fg",
@@ -118,7 +118,7 @@ export function VehicleCard({
               <button
                 type="button"
                 onClick={() => setLearnOpen(true)}
-                className="inline-flex items-center gap-0.5 text-[12px] font-medium text-fg-muted transition-colors duration-[var(--motion-quick)] hover:text-fg sm:text-[13px]"
+                className="inline-flex items-center gap-0.5 text-[13px] font-medium text-fg-muted transition-colors duration-[var(--motion-quick)] hover:text-fg"
               >
                 Learn More
                 <ChevronRight className="size-3.5 opacity-60" aria-hidden />
