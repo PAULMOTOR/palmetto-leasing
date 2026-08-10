@@ -1,7 +1,6 @@
 /**
- * Locked Palmetto studio tile template.
- * Only car identity (year/make/model/color/body) may change.
- * Camera, crop, lighting, pure white bg, orientation = fixed forever.
+ * Locked Palmetto studio tile template — admin-defined product photography contract.
+ * Only car identity (year/make/model/color from references) may change.
  */
 
 export type ThumbSubject = {
@@ -14,49 +13,49 @@ export type ThumbSubject = {
 };
 
 /**
- * Fixed composition contract (matches original Palmetto comp):
- * - Elevated top-down, front of car ALWAYS toward top of frame
- * - Centered, consistent scale, pure #FFFFFF (no grey)
- * - Soft even light, no drop shadow floor
- * - Identity from dealer reference only
+ * Create a clean, high-end product photography thumbnail of the exact car
+ * in the reference images. Style requirements must be followed exactly.
  */
 export function buildThumbEditPrompt(car: ThumbSubject): string {
   const label = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
   const colorBit = car.exteriorColor?.trim()
-    ? `Paint must match the reference exactly (${car.exteriorColor}).`
-    : `Paint, wheels, and body details must match the subject reference photo exactly.`;
+    ? `Match the exact paint color from the references (${car.exteriorColor}).`
+    : `Match the exact paint color, body lines, badges, and wheels from the reference images.`;
 
   return (
-    `LOCKED CATALOG TEMPLATE — identical framing for every vehicle. ` +
-    `Subject: this exact real ${label} only. ${colorBit} ` +
-    `CAMERA (never vary): pure bird's-eye orthographic top-down, camera directly above the roof, ` +
-    `front of the car ALWAYS points straight to the TOP edge of the frame (nose up), never rotated left/right/diagonal/upside-down. ` +
-    `FRAMING (never vary): car perfectly centered; full vehicle visible (hood, roof, rear, mirrors, wheels); ` +
-    `car width fills ~70% of the frame; equal white margin on all sides; square 1:1 crop. ` +
-    `BACKGROUND (critical): seamless solid pure white #FFFFFF only — not light grey, not off-white, not gradient, not studio seamless paper grey. ` +
-    `No floor plane, no drop shadow under the car, no vignette, no reflections, no props, no people, no text, no logos, no watermarks. ` +
-    `LIGHTING (never vary): soft even overhead studio light, minimal soft shading on body only, no hard shadows on the background. ` +
-    `Preserve real silhouette, roof shape, and badges from the subject reference — do not invent a different model. ` +
-    `Ultra-clean luxury e-commerce product tile, photoreal, high detail.`
+    `Create a clean, high-end product photography thumbnail of the exact car shown in the reference images ` +
+    `(this real ${label} only). ${colorBit} ` +
+    `Style requirements (must be followed exactly): ` +
+    `Pure seamless white background (#FFFFFF), no gradients, no floor, no shadows cast on the background. ` +
+    `Soft-box studio lighting only — even, diffused, soft reflections on the paint, no harsh specular highlights or dramatic lighting. ` +
+    `Camera angle: strict overhead top-down view looking straight down at the front half of the car. ` +
+    `Framing: only the front 55-65% of the car is visible (front bumper to roughly the middle of the roof / just past the windshield). Crop out the rear half completely. ` +
+    `Orientation: front of the car pointing toward the top of the frame, perfectly centered horizontally. ` +
+    `The car must sit alone in the frame with generous white space around it. ` +
+    `Photorealistic, ultra-clean dealership inventory style, matching the exact body lines, badges, wheels, and paint color from the references. ` +
+    `No text, no logos, no watermarks, no people, no extra objects, no environment. ` +
+    `Output a single, tightly composed, professional thumbnail-ready image.`
   );
 }
 
-/** Text-only fallback — same locked geometry. */
+/** Text-only fallback — same locked geometry when no reference photo is available. */
 export function buildThumbTextPrompt(car: ThumbSubject): string {
   const label = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
-  const color = car.exteriorColor?.trim() || "accurate factory color";
+  const color = car.exteriorColor?.trim() || "accurate factory color from the model";
   return (
-    `LOCKED CATALOG TEMPLATE. Photoreal ${label} in ${color}, pure bird's-eye top-down, ` +
-    `nose pointing straight to top of frame, car centered filling 70% width, ` +
-    `solid pure white background #FFFFFF only (no grey, no shadow, no floor), ` +
-    `soft even light, square 1:1, no text no logos.`
+    `Create a clean, high-end product photography thumbnail of a ${label} in ${color}. ` +
+    `Pure seamless white background (#FFFFFF), no gradients, no floor, no shadows on the background. ` +
+    `Soft-box studio lighting only — even, diffused. ` +
+    `Strict overhead top-down view of the front half of the car only (front 55-65%, bumper to mid-roof / past windshield); crop out the rear. ` +
+    `Front of the car pointing toward the top of the frame, perfectly centered, generous white space. ` +
+    `Photorealistic dealership inventory style. No text, logos, people, or environment.`
   );
 }
 
-/** Style lock instructions when a composition reference image is also provided. */
+/** When a style-lock reference is also attached. */
 export function buildStyleLockAddendum(): string {
   return (
-    ` If a style/composition reference is provided, match its camera height, nose-up orientation, scale, margins, ` +
-    `pure #FFFFFF background, and lighting exactly — only the car's identity and color come from the subject photo.`
+    ` If a composition/style reference is provided, match its overhead front-half crop, nose-up orientation, ` +
+    `pure #FFFFFF background, soft-box lighting, and white margins exactly — only the car identity and color come from the subject reference photos.`
   );
 }
