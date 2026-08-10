@@ -18,6 +18,7 @@ import type { Vehicle, VehicleCard } from "./types";
 import { parsePhotos, parseSpecs } from "./types";
 import { buildVehicleGalleryPool, selectGalleryPhotos } from "./gallery";
 import { fetchListingGallery } from "./fetch-listing-gallery";
+import { generateMissingImagineThumbs } from "@/lib/imagine/batch-thumbs";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
@@ -212,6 +213,7 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
       maxPrice: Number(s.max_price),
       lastCrawlAt: last[0]?.value ?? null,
       backend: dbSource,
+      hasImagineKey: Boolean(process.env.XAI_API_KEY?.trim()),
     };
   } catch {
     const list = listCatalogVehicles(loadQuoteSettings());
@@ -223,6 +225,7 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
       maxPrice: list.length ? Math.max(...list.map((v) => v.price_cents)) : 0,
       lastCrawlAt: null as string | null,
       backend: "static" as const,
+      hasImagineKey: Boolean(process.env.XAI_API_KEY?.trim()),
     };
   }
 });
@@ -259,7 +262,6 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
       }
     }
 
-    // Prefer live dealer images; blend local if thin; smart space-sample to 12
     const merged = selectGalleryPhotos([...live, ...localPool], {
       limit: 12,
       preferInteriorShare: 0.4,
@@ -380,8 +382,22 @@ export const setLeadStatus = createServerFn({ method: "POST" })
   });
 
 export const triggerCrawl = createServerFn({ method: "POST" }).handler(async () => {
-  return runInventoryCrawl({ forceIncludeAll: true });
+  return runInventoryCrawl({ forceIncludeAll: false, generateThumbs: true });
 });
+
+/** Admin: run Imagine on cars still using raw dealer photos. */
+export const triggerImagineThumbs = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        limit: z.number().int().min(1).max(50).optional(),
+      })
+      .optional()
+      .parse(input ?? {}),
+  )
+  .handler(async ({ data }) => {
+    return generateMissingImagineThumbs({ limit: data?.limit ?? 20 });
+  });
 
 export const getRecentCrawlRuns = createServerFn({ method: "GET" }).handler(async () => {
   try {

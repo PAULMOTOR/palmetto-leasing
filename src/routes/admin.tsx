@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Loader2, Plus, RefreshCw } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -13,7 +13,12 @@ import {
   updateQuoteSettings,
   verifyAdminPin,
 } from "@/lib/leasing/settings";
-import { getRecentCrawlRuns, triggerCrawl } from "@/lib/leasing/queries";
+import {
+  getInventoryStats,
+  getRecentCrawlRuns,
+  triggerCrawl,
+  triggerImagineThumbs,
+} from "@/lib/leasing/queries";
 import type { QuoteSettings } from "@/lib/leasing/calc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +42,9 @@ function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<QuoteSettings | null>(null);
   const [crawling, setCrawling] = useState(false);
+  const [imagining, setImagining] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [hasImagineKey, setHasImagineKey] = useState<boolean | null>(null);
   const [runs, setRuns] = useState<
     {
       id: number;
@@ -58,23 +65,35 @@ function AdminPage() {
   const refresh = useCallback(async (t: string) => {
     setLoading(true);
     try {
-      const [rows, qs, crawlRuns] = await Promise.all([
+      const [rows, qs, crawlRuns, stats] = await Promise.all([
         listAdminDealers({ data: { token: t } }),
         getQuoteSettings(),
         getRecentCrawlRuns().catch(() => []),
+        getInventoryStats().catch(() => null),
       ]);
       setDealers(rows);
       setSettings(qs);
+      if (stats && "hasImagineKey" in stats) {
+        setHasImagineKey(Boolean((stats as { hasImagineKey?: boolean }).hasImagineKey));
+      }
       setRuns(
-        (crawlRuns as { id: number; status: string; listings_found: number; added: number; updated: number; removed: number; started_at: string }[]).map(
-          (r) => ({
-            ...r,
-            listings_found: Number(r.listings_found),
-            added: Number(r.added),
-            updated: Number(r.updated),
-            removed: Number(r.removed),
-          }),
-        ),
+        (
+          crawlRuns as {
+            id: number;
+            status: string;
+            listings_found: number;
+            added: number;
+            updated: number;
+            removed: number;
+            started_at: string;
+          }[]
+        ).map((r) => ({
+          ...r,
+          listings_found: Number(r.listings_found),
+          added: Number(r.added),
+          updated: Number(r.updated),
+          removed: Number(r.removed),
+        })),
       );
     } catch {
       sessionStorage.removeItem(TOKEN_KEY);
@@ -111,13 +130,37 @@ function AdminPage() {
     try {
       const r = await triggerCrawl();
       toast.success("Inventory pool refreshed", {
-        description: `${r.dealersScanned} dealers · ${r.listingsFound} listings · +${r.added} / ~${r.updated} / −${r.removed}`,
+        description: `${r.dealersScanned} dealers · ${r.listingsFound} listings · +${r.added} / ~${r.updated} / −${r.removed}${r.imagined ? ` · ${r.imagined} Imagine` : ""}`,
       });
       if (token) await refresh(token);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Crawl failed");
     } finally {
       setCrawling(false);
+    }
+  }
+
+  async function onImagine() {
+    setImagining(true);
+    try {
+      const r = await triggerImagineThumbs({ data: { limit: 20 } });
+      if (!r.hasApiKey) {
+        toast.error("XAI_API_KEY missing on Vercel", {
+          description: "Add the key from console.x.ai, redeploy, then try again.",
+        });
+        return;
+      }
+      toast.success("Imagine batch done", {
+        description: `${r.succeeded}/${r.attempted} studio tiles · ${r.skipped} skipped`,
+      });
+      if (r.errors?.length) {
+        toast.message("Some failed", { description: r.errors[0] });
+      }
+      if (token) await refresh(token);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Imagine failed");
+    } finally {
+      setImagining(false);
     }
   }
 
@@ -144,7 +187,7 @@ function AdminPage() {
         >
           <img src="/palmetto-logo.png" alt="Palmetto" className="mx-auto h-12 w-auto object-contain" />
           <h1 className="mt-3 text-center text-lg font-medium">Admin</h1>
-          <p className="mt-1 text-center text-xs text-fg-subtle">Inventory · crawl · quote defaults</p>
+          <p className="mt-1 text-center text-xs text-fg-subtle">Inventory · crawl · Imagine</p>
           <div className="mt-6 space-y-2">
             <Label htmlFor="pin">PIN</Label>
             <Input id="pin" type="password" value={pin} onChange={(e) => setPin(e.target.value)} required />
@@ -163,8 +206,20 @@ function AdminPage() {
         <div>
           <h1 className="text-lg font-medium tracking-tight">Admin</h1>
           <p className="mt-1 text-sm text-fg-muted">
-            Neon inventory · 12h crawler · partner pool (≥ $150k CAD)
+            Live inventory · Imagine studio tiles · partner pool
           </p>
+          {hasImagineKey != null && (
+            <p
+              className={cn(
+                "mt-1 text-[11px]",
+                hasImagineKey ? "text-success" : "text-fg-subtle",
+              )}
+            >
+              {hasImagineKey
+                ? "XAI_API_KEY detected — Imagine ready"
+                : "XAI_API_KEY not set — tiles use dealer photos until you add the key + redeploy"}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => token && refresh(token)} disabled={loading}>
@@ -174,6 +229,10 @@ function AdminPage() {
           <Button size="sm" onClick={onCrawl} disabled={crawling}>
             {crawling ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Pool inventory now
+          </Button>
+          <Button size="sm" variant="outline" onClick={onImagine} disabled={imagining}>
+            {imagining ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            Generate Imagine tiles
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
             <Plus />
@@ -187,16 +246,13 @@ function AdminPage() {
 
       {settings && (
         <div className="mb-6 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
-          <h2 className="text-sm font-medium">Quote defaults (Vercel env)</h2>
+          <h2 className="text-sm font-medium">Quote defaults</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-4">
             <Stat label="APR" value={`${(settings.baseInterestRate * 100).toFixed(2)}%`} />
             <Stat label="Term" value={`${settings.termMonths} mo`} />
             <Stat label="Residual" value={`${(settings.residualRate * 100).toFixed(0)}%`} />
             <Stat label="Down" value={`${(settings.downPaymentRate * 100).toFixed(0)}%`} />
           </div>
-          <p className="mt-2 text-[11px] text-fg-subtle">
-            Set QUOTE_* in Vercel env. DATABASE_URL enables Neon crawl storage.
-          </p>
         </div>
       )}
 
@@ -443,5 +499,4 @@ function Field({
   );
 }
 
-// silence unused
 void updateQuoteSettings;
