@@ -16,12 +16,19 @@ import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { getSql, dbSource } from "@/lib/db";
 import type { Vehicle, VehicleCard } from "./types";
 import { parsePhotos, parseSpecs } from "./types";
+import { buildVehicleGalleryPool, selectGalleryPhotos } from "./gallery";
+import { fetchListingGallery } from "./fetch-listing-gallery";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
 ): Promise<VehicleCard> {
   const settings = loadQuoteSettings();
   const quote = calculateLease(Number(row.price_cents), settings);
+  const photos = parsePhotos(row.photo_urls).length
+    ? parsePhotos(row.photo_urls)
+    : row.thumbnail_url
+      ? [row.thumbnail_url]
+      : [];
   return {
     ...row,
     price_cents: Number(row.price_cents),
@@ -30,11 +37,7 @@ async function toCard(
     is_premium: Boolean(row.is_premium),
     monthly_payment_cents: quote.monthlyPaymentCents,
     specs: parseSpecs(row.specs_json),
-    photos: parsePhotos(row.photo_urls).length
-      ? parsePhotos(row.photo_urls)
-      : row.thumbnail_url
-        ? [row.thumbnail_url]
-        : [],
+    photos,
   };
 }
 
@@ -224,6 +227,52 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
   }
 });
 
+/** Smart gallery for lease panel — dealer VDP first, then local pool. */
+export const getVehicleGallery = createServerFn({ method: "GET" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        vehicleId: z.string().min(1),
+        listingUrl: z.string().optional(),
+        make: z.string().optional(),
+        model: z.string().optional(),
+        existingPhotos: z.array(z.string()).optional(),
+        thumbnail: z.string().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const localPool = buildVehicleGalleryPool({
+      thumbnail_url: data.thumbnail,
+      photos: data.existingPhotos,
+      make: data.make || "",
+      model: data.model || "",
+    });
+
+    let live: string[] = [];
+    let source = "local";
+    if (data.listingUrl?.startsWith("http")) {
+      const scraped = await fetchListingGallery(data.listingUrl, { limit: 24 });
+      if (scraped.photos.length) {
+        live = scraped.photos;
+        source = scraped.source;
+      }
+    }
+
+    // Prefer live dealer images; blend local if thin; smart space-sample to 12
+    const merged = selectGalleryPhotos([...live, ...localPool], {
+      limit: 12,
+      preferInteriorShare: 0.4,
+    });
+
+    return {
+      photos: merged,
+      source,
+      count: merged.length,
+      vehicleId: data.vehicleId,
+    };
+  });
+
 export const submitLeaseQuote = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
@@ -234,6 +283,8 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         customerPhone: z.string().max(40).optional(),
         notes: z.string().max(1000).optional(),
         source: z.enum(["lease_quote", "apply_now", "dealer_application"]).optional(),
+        termMonths: z.number().int().min(12).max(72).optional(),
+        downPaymentRate: z.number().min(0).max(0.5).optional(),
         application: z
           .object({
             address: z.string().max(200).optional(),
@@ -251,7 +302,13 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const settings = loadQuoteSettings();
+    const settings = {
+      ...loadQuoteSettings(),
+      ...(data.termMonths ? { termMonths: data.termMonths } : {}),
+      ...(typeof data.downPaymentRate === "number"
+        ? { downPaymentRate: data.downPaymentRate }
+        : {}),
+    };
     let vehicleLabel = "";
     let dealerName = "";
     let priceCents = 0;

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Building2, Shield, User } from "lucide-react";
+import { Building2, Shield, User, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,15 @@ function LoginPage() {
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-12">
-      <div className="rounded-[var(--radius-xl)] border border-border bg-surface px-6 py-8 shadow-[var(--shadow-card)] sm:px-8">
+      <div className="relative rounded-[var(--radius-xl)] border border-border bg-surface px-6 py-8 shadow-[var(--shadow-card)] sm:px-8">
+        <Link
+          to="/"
+          className="absolute top-3 right-3 grid size-9 place-items-center rounded-full text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
+          aria-label="Close"
+        >
+          <X className="size-4" />
+        </Link>
+
         <img
           src="/palmetto-logo.png"
           alt="Palmetto"
@@ -40,24 +48,20 @@ function LoginPage() {
         {!role ? (
           <>
             <h1 className="mt-6 text-center text-lg font-medium tracking-tight">Login</h1>
-            <p className="mt-2 text-center text-sm text-fg-muted">Choose how you access Palmetto</p>
-            <div className="mt-6 space-y-2.5">
+            <div className="mt-6 space-y-2">
               <RoleButton
                 icon={<User className="size-4" />}
                 title="Client"
-                desc="Application status, documents, contract & buyout"
                 onClick={() => setRole("client")}
               />
               <RoleButton
                 icon={<Building2 className="size-4" />}
                 title="Dealer portal"
-                desc="Referral fees & quote payout settings"
                 onClick={() => setRole("dealer")}
               />
               <RoleButton
                 icon={<Shield className="size-4" />}
                 title="Admin"
-                desc="Inventory pool & default quote settings"
                 onClick={() => setRole("admin")}
               />
             </div>
@@ -87,13 +91,6 @@ function LoginPage() {
             }}
           />
         )}
-
-        <Link
-          to="/"
-          className="mt-6 block text-center text-[11px] tracking-wide text-fg-subtle uppercase transition-colors hover:text-fg"
-        >
-          Inventory
-        </Link>
       </div>
     </div>
   );
@@ -102,27 +99,22 @@ function LoginPage() {
 function RoleButton({
   icon,
   title,
-  desc,
   onClick,
 }: {
   icon: React.ReactNode;
   title: string;
-  desc: string;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-start gap-3 rounded-[var(--radius-lg)] border border-border bg-surface-2/50 px-4 py-3.5 text-left transition-[border-color,background-color,transform] duration-[var(--motion-quick)] hover:border-border-strong hover:bg-surface-2 active:scale-[0.99]"
+      className="flex w-full items-center gap-3 rounded-[var(--radius-lg)] border border-border bg-surface-2/50 px-4 py-3.5 text-left transition-[border-color,background-color,transform] duration-[var(--motion-quick)] hover:border-border-strong hover:bg-surface-2 active:scale-[0.99]"
     >
-      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-surface text-fg">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface text-fg">
         {icon}
       </span>
-      <span>
-        <span className="block text-sm font-medium text-fg">{title}</span>
-        <span className="mt-0.5 block text-xs text-fg-muted">{desc}</span>
-      </span>
+      <span className="text-sm font-medium text-fg">{title}</span>
     </button>
   );
 }
@@ -160,8 +152,7 @@ function ClientLogin({
       <button type="button" onClick={onBack} className="text-xs text-fg-muted hover:text-fg">
         ← All options
       </button>
-      <h2 className="text-base font-medium">Client access</h2>
-      <p className="text-xs text-fg-muted">Enter the email used on your lease application.</p>
+      <h2 className="text-base font-medium">Client</h2>
       <div>
         <Label htmlFor="client-email">Email</Label>
         <Input
@@ -175,7 +166,7 @@ function ClientLogin({
         />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Looking up…" : "View my applications"}
+        {loading ? "Looking up…" : "Continue"}
       </Button>
     </form>
   );
@@ -223,7 +214,6 @@ function DealerLogin({
         ← All options
       </button>
       <h2 className="text-base font-medium">Dealer portal</h2>
-      <p className="text-xs text-fg-muted">Default PIN for demo: dealer</p>
       <div>
         <Label htmlFor="dealer">Dealership</Label>
         <select
@@ -241,7 +231,7 @@ function DealerLogin({
         </select>
       </div>
       <div>
-        <Label htmlFor="dealer-pin">Portal PIN</Label>
+        <Label htmlFor="dealer-pin">PIN</Label>
         <Input
           id="dealer-pin"
           type="password"
@@ -289,7 +279,6 @@ function AdminLogin({
         ← All options
       </button>
       <h2 className="text-base font-medium">Admin</h2>
-      <p className="text-xs text-fg-muted">Default PIN: palmetto</p>
       <div>
         <Label htmlFor="admin-pin">PIN</Label>
         <Input
@@ -302,7 +291,7 @@ function AdminLogin({
         />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Unlocking…" : "Unlock admin"}
+        {loading ? "Unlocking…" : "Unlock"}
       </Button>
     </form>
   );
