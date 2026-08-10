@@ -5,10 +5,10 @@ import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
 import { parsePhotos } from "@/lib/leasing/types";
 
-const MAX = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
+const MAX = Number(process.env.IMAGINE_MAX_PER_CRAWL || 12);
 
 function looksLikeImagine(url: string): boolean {
-  return /imagine|x\.ai|fal\.|generated|imgen/i.test(url || "");
+  return /imagine|x\.ai|fal\.|generated|imgen|blob\.core|grok/i.test(url || "");
 }
 
 export async function generateMissingImagineThumbs(opts?: {
@@ -31,7 +31,7 @@ export async function generateMissingImagineThumbs(opts?: {
     };
   }
 
-  const limit = opts?.limit ?? MAX;
+  const limit = Math.min(opts?.limit ?? MAX, 20);
   const sql = await getSql();
   const rows = await sql<{
     id: string;
@@ -51,11 +51,15 @@ export async function generateMissingImagineThumbs(opts?: {
     limit 500
   `;
 
-  const need = rows.filter((r) => {
-    const photos = parsePhotos(r.photo_urls);
-    const hasDealer = photos.some((p) => /^https?:\/\//i.test(p)) || /^https?:\/\//i.test(r.thumbnail_url || "");
-    return hasDealer && !looksLikeImagine(r.thumbnail_url || "");
-  }).slice(0, limit);
+  const need = rows
+    .filter((r) => {
+      const photos = parsePhotos(r.photo_urls);
+      const hasDealer =
+        photos.some((p) => /^https?:\/\//i.test(p)) ||
+        /^https?:\/\//i.test(r.thumbnail_url || "");
+      return hasDealer && !looksLikeImagine(r.thumbnail_url || "");
+    })
+    .slice(0, limit);
 
   let succeeded = 0;
   let skipped = 0;
@@ -73,27 +77,48 @@ export async function generateMissingImagineThumbs(opts?: {
       continue;
     }
 
-    const imag = await generateVehicleThumbnail({
-      car: {
-        year: Number(r.year),
-        make: r.make,
-        model: r.model,
-        trim: r.trim,
-        exteriorColor: r.exterior_color,
-        bodyStyle: r.body_style,
-      },
-      referencePhotoUrls: refs,
-    });
+    try {
+      const imag = await generateVehicleThumbnail({
+        car: {
+          year: Number(r.year),
+          make: r.make,
+          model: r.model,
+          trim: r.trim,
+          exteriorColor: r.exterior_color,
+          bodyStyle: r.body_style,
+        },
+        referencePhotoUrls: refs,
+      });
 
-    if (imag.ok && imag.url) {
-      await sql`
-        update vehicles
-        set thumbnail_url = ${imag.url}, updated_at = now()
-        where id = ${r.id}
-      `;
-      succeeded += 1;
-    } else {
-      errors.push(`${r.make} ${r.model}: ${imag.error || imag.mode}`);
+      if (imag.ok && imag.url) {
+        await sql`
+          update vehicles
+          set thumbnail_url = ${imag.url}, updated_at = now()
+          where id = ${r.id}
+        `;
+        succeeded += 1;
+      } else if (imag.ok && imag.b64) {
+        // Persist as data URL only if small enough for a thumb
+        const dataUrl = imag.b64.startsWith("data:")
+          ? imag.b64
+          : `data:image/jpeg;base64,${imag.b64}`;
+        if (dataUrl.length < 900_000) {
+          await sql`
+            update vehicles
+            set thumbnail_url = ${dataUrl}, updated_at = now()
+            where id = ${r.id}
+          `;
+          succeeded += 1;
+        } else {
+          errors.push(`${r.make} ${r.model}: image too large to store inline`);
+        }
+      } else {
+        errors.push(`${r.make} ${r.model}: ${imag.error || imag.mode}`);
+      }
+    } catch (err) {
+      errors.push(
+        `${r.make} ${r.model}: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200),
+      );
     }
   }
 
