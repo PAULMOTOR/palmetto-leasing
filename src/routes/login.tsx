@@ -28,7 +28,13 @@ function LoginPage() {
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-12">
       <div className="rounded-[var(--radius-xl)] border border-border bg-surface px-6 py-8 shadow-[var(--shadow-card)] sm:px-8">
-        <img src="/palmetto-mark.svg" alt="" className="mx-auto h-9 w-auto" />
+        <img
+          src="/palmetto-logo.png"
+          alt="Palmetto"
+          className="mx-auto h-14 w-auto object-contain"
+          width={56}
+          height={84}
+        />
         <p className="mt-2 text-center text-[10px] tracking-[0.28em] text-fg uppercase">Palmetto</p>
 
         {!role ? (
@@ -57,10 +63,13 @@ function LoginPage() {
             </div>
           </>
         ) : role === "client" ? (
-          <ClientLogin onBack={() => setRole(null)} onOk={(email) => {
-            sessionStorage.setItem("palmetto_client_email", email);
-            void nav({ to: "/portal/client" });
-          }} />
+          <ClientLogin
+            onBack={() => setRole(null)}
+            onOk={(email) => {
+              sessionStorage.setItem("palmetto_client_email", email);
+              void nav({ to: "/portal/client" });
+            }}
+          />
         ) : role === "dealer" ? (
           <DealerLogin
             onBack={() => setRole(null)}
@@ -152,9 +161,7 @@ function ClientLogin({
         ← All options
       </button>
       <h2 className="text-base font-medium">Client access</h2>
-      <p className="text-xs text-fg-muted">
-        Enter the email used on your lease application.
-      </p>
+      <p className="text-xs text-fg-muted">Enter the email used on your lease application.</p>
       <div>
         <Label htmlFor="client-email">Email</Label>
         <Input

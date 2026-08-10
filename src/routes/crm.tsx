@@ -13,7 +13,11 @@ export const Route = createFileRoute("/crm")({
 function CrmRedirectPage() {
   return (
     <div className="mx-auto max-w-md px-4 py-20 text-center">
-      <img src="/palmetto-mark.svg" alt="" className="mx-auto h-9" />
+      <img
+        src="/palmetto-logo.png"
+        alt="Palmetto"
+        className="mx-auto h-12 w-auto object-contain"
+      />
       <h1 className="mt-6 text-lg font-medium">CRM lives elsewhere</h1>
       <p className="mt-2 text-sm leading-relaxed text-fg-muted">
         Lease applications from this marketing site hand off to the Paul Motor CRM project via{" "}

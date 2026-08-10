@@ -109,7 +109,11 @@ function AdminPage() {
           onSubmit={onUnlock}
           className="rounded-[var(--radius-xl)] border border-border bg-surface p-6 shadow-[var(--shadow-card)]"
         >
-          <img src="/palmetto-mark.svg" alt="" className="mx-auto h-8" />
+          <img
+            src="/palmetto-logo.png"
+            alt="Palmetto"
+            className="mx-auto h-12 w-auto object-contain"
+          />
           <h1 className="mt-3 text-center text-lg font-medium">Admin</h1>
           <p className="mt-1 text-center text-xs text-fg-subtle">Marketing site control panel</p>
           <div className="mt-6 space-y-2">
