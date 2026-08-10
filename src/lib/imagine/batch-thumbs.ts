@@ -1,20 +1,24 @@
 /**
- * Generate / force-regenerate Imagine studio tiles with locked composition.
+ * Generate Imagine studio tiles.
+ * Default: only cars still on dealer photos (unrendered).
+ * force: re-render including existing imgen thumbs.
  */
 import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
 import { parsePhotos } from "@/lib/leasing/types";
 
-const MAX = Number(process.env.IMAGINE_MAX_PER_CRAWL || 12);
+function isImagineThumb(url: string): boolean {
+  return /imgen\.x\.ai|xai-tmp-imgen|imagine|xai-imgen/i.test(url || "");
+}
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
-  /** When true, overwrite existing imgen.x.ai thumbs with the new locked template. */
   force?: boolean;
 }): Promise<{
   attempted: number;
   succeeded: number;
   skipped: number;
+  remaining: number;
   errors: string[];
   hasApiKey: boolean;
 }> {
@@ -24,13 +28,16 @@ export async function generateMissingImagineThumbs(opts?: {
       attempted: 0,
       succeeded: 0,
       skipped: 0,
+      remaining: 0,
       errors: ["XAI_API_KEY is not set on this deployment"],
       hasApiKey: false,
     };
   }
 
-  const limit = Math.min(opts?.limit ?? MAX, 20);
   const force = Boolean(opts?.force);
+  // Missing-only can run larger batches; force re-render stays smaller (cost/time)
+  const limit = Math.min(opts?.limit ?? (force ? 12 : 40), force ? 25 : 60);
+
   const sql = await getSql();
   const rows = await sql<{
     id: string;
@@ -42,27 +49,28 @@ export async function generateMissingImagineThumbs(opts?: {
     body_style: string;
     thumbnail_url: string;
     photo_urls: string;
+    price_cents: number;
   }>`
-    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls
+    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents
     from vehicles
     where status = 'active'
     order by price_cents desc
-    limit 500
+    limit 800
   `;
 
-  const need = rows
-    .filter((r) => {
-      const photos = parsePhotos(r.photo_urls);
-      const hasDealer =
-        photos.some((p) => /^https?:\/\//i.test(p)) ||
-        /^https?:\/\//i.test(r.thumbnail_url || "");
-      if (!hasDealer) return false;
-      if (force) return true;
-      // Skip only if already imagine-generated with style-lock era is hard to detect —
-      // regenerate greyscale-looking / non-imgen always
-      return !/imgen\.x\.ai|xai-tmp-imgen/i.test(r.thumbnail_url || "");
-    })
-    .slice(0, limit);
+  const withRefs = rows.filter((r) => {
+    const photos = parsePhotos(r.photo_urls);
+    return (
+      photos.some((p) => /^https?:\/\//i.test(p)) ||
+      /^https?:\/\//i.test(r.thumbnail_url || "")
+    );
+  });
+
+  const unrendered = withRefs.filter((r) => !isImagineThumb(r.thumbnail_url || ""));
+  const need = (force ? withRefs : unrendered).slice(0, limit);
+  const remainingBefore = force
+    ? Math.max(0, withRefs.length - limit)
+    : Math.max(0, unrendered.length - limit);
 
   let succeeded = 0;
   let skipped = 0;
@@ -70,12 +78,17 @@ export async function generateMissingImagineThumbs(opts?: {
 
   for (const r of need) {
     const photos = parsePhotos(r.photo_urls);
+    // Prefer real dealer photos as refs (not previous imgen output)
     const refs = [
-      ...photos.filter((p) => /^https?:\/\//i.test(p)),
-      ...(r.thumbnail_url?.startsWith("http") && !/imgen\.x\.ai/i.test(r.thumbnail_url)
+      ...photos.filter((p) => /^https?:\/\//i.test(p) && !isImagineThumb(p)),
+      ...(r.thumbnail_url?.startsWith("http") && !isImagineThumb(r.thumbnail_url)
         ? [r.thumbnail_url]
         : []),
-    ].slice(0, 2);
+      // fallback: any photo if all we have is imgen (force path)
+      ...photos.filter((p) => /^https?:\/\//i.test(p)),
+    ]
+      .filter((u, i, a) => a.indexOf(u) === i)
+      .slice(0, 4);
 
     if (refs.length === 0) {
       skipped += 1;
@@ -126,10 +139,13 @@ export async function generateMissingImagineThumbs(opts?: {
     }
   }
 
+  const remaining = Math.max(0, remainingBefore - succeeded);
+
   return {
     attempted: need.length,
     succeeded,
     skipped,
+    remaining: force ? remainingBefore : Math.max(0, unrendered.length - succeeded),
     errors: errors.slice(0, 15),
     hasApiKey: true,
   };

@@ -43,7 +43,6 @@ async function toCard(
   };
 }
 
-/** Collapse exact duplicate cards (same dealer + year/make/model + price). */
 function dedupeCards(list: VehicleCard[]): VehicleCard[] {
   const seen = new Set<string>();
   const out: VehicleCard[] = [];
@@ -233,6 +232,11 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
     const last = await sql<{ value: string }>`
       select value from app_meta where key = 'last_crawl_at' limit 1
     `;
+    const thumb = await sql<{ imagined: number; missing: number }>`
+      select
+        (select count(*)::int from vehicles where status = 'active' and thumbnail_url ~* 'imgen\\.x\\.ai|xai-tmp-imgen') as imagined,
+        (select count(*)::int from vehicles where status = 'active' and (thumbnail_url is null or thumbnail_url !~* 'imgen\\.x\\.ai|xai-tmp-imgen')) as missing
+    `;
     const s = stats[0]!;
     return {
       total: Number(s.total),
@@ -243,6 +247,8 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
       lastCrawlAt: last[0]?.value ?? null,
       backend: dbSource,
       hasImagineKey: Boolean(process.env.XAI_API_KEY?.trim()),
+      imaginedThumbs: Number(thumb[0]?.imagined ?? 0),
+      missingThumbs: Number(thumb[0]?.missing ?? 0),
     };
   } catch {
     const list = listCatalogVehicles(await loadQuoteSettingsAsync());
@@ -255,6 +261,8 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
       lastCrawlAt: null as string | null,
       backend: "static" as const,
       hasImagineKey: Boolean(process.env.XAI_API_KEY?.trim()),
+      imaginedThumbs: 0,
+      missingThumbs: list.length,
     };
   }
 });
@@ -417,16 +425,17 @@ export const triggerImagineThumbs = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
       .object({
-        limit: z.number().int().min(1).max(50).optional(),
+        limit: z.number().int().min(1).max(60).optional(),
         force: z.boolean().optional(),
       })
       .optional()
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
+    // Default: only unrendered cars (missing studio tiles), up to 40
     return generateMissingImagineThumbs({
-      limit: data?.limit ?? 12,
-      force: data?.force ?? true, // default force re-render with locked template
+      limit: data?.limit ?? 40,
+      force: data?.force ?? false,
     });
   });
 

@@ -46,6 +46,7 @@ function AdminPage() {
   const [imagining, setImagining] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [hasImagineKey, setHasImagineKey] = useState<boolean | null>(null);
+  const [thumbStats, setThumbStats] = useState<{ imagined: number; missing: number } | null>(null);
   const [runs, setRuns] = useState<
     {
       id: number;
@@ -74,8 +75,12 @@ function AdminPage() {
       ]);
       setDealers(rows);
       setSettings(qs);
-      if (stats && "hasImagineKey" in stats) {
+      if (stats) {
         setHasImagineKey(Boolean((stats as { hasImagineKey?: boolean }).hasImagineKey));
+        setThumbStats({
+          imagined: Number((stats as { imaginedThumbs?: number }).imaginedThumbs ?? 0),
+          missing: Number((stats as { missingThumbs?: number }).missingThumbs ?? 0),
+        });
       }
       setRuns(
         (
@@ -141,16 +146,19 @@ function AdminPage() {
     }
   }
 
-  async function onImagine() {
+  async function onImagine(force: boolean) {
     setImagining(true);
     try {
-      const r = await triggerImagineThumbs({ data: { limit: 12, force: true } });
+      // missing-only by default (up to 40); force re-renders already done tiles
+      const r = await triggerImagineThumbs({
+        data: { limit: force ? 12 : 40, force },
+      });
       if (!r.hasApiKey) {
         toast.error("XAI_API_KEY missing on Vercel");
         return;
       }
-      toast.success("Imagine batch done", {
-        description: `${r.succeeded}/${r.attempted} studio tiles`,
+      toast.success(force ? "Re-render batch done" : "Studio tiles for unrendered cars", {
+        description: `${r.succeeded}/${r.attempted} ok · ${r.remaining ?? 0} still missing · click again if remaining > 0`,
       });
       if (r.errors?.length) toast.message("Some failed", { description: r.errors[0] });
       if (token) await refresh(token);
@@ -223,6 +231,9 @@ function AdminPage() {
           {hasImagineKey != null && (
             <p className={cn("mt-1 text-[11px]", hasImagineKey ? "text-success" : "text-fg-subtle")}>
               {hasImagineKey ? "XAI_API_KEY detected" : "XAI_API_KEY not set"}
+              {thumbStats
+                ? ` · ${thumbStats.imagined} studio tiles · ${thumbStats.missing} still dealer photos`
+                : null}
             </p>
           )}
         </div>
@@ -235,9 +246,12 @@ function AdminPage() {
             {crawling ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Pool inventory now
           </Button>
-          <Button size="sm" variant="outline" onClick={onImagine} disabled={imagining}>
+          <Button size="sm" variant="outline" onClick={() => onImagine(false)} disabled={imagining}>
             {imagining ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            Generate Imagine tiles
+            Render missing tiles
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onImagine(true)} disabled={imagining}>
+            Re-render top 12
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
             <Plus />
