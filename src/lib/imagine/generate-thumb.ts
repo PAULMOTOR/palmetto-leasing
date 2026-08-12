@@ -1,6 +1,7 @@
 /**
  * Generate unique Palmetto studio thumbnails via xAI Grok Imagine API.
  * Always persists output to a durable data URI — imgen.x.ai tmp URLs expire (404).
+ * Style-lock is image[0] (composition master); subject is image[1] (identity only).
  */
 import {
   buildThumbEditPrompt,
@@ -40,7 +41,8 @@ export async function generateVehicleThumbnail(opts: {
     return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
   }
 
-  const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 4);
+  // Prefer 2–3 exterior-looking refs; skip nothing — API needs subject identity
+  const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 3);
   const origin =
     opts.publicOrigin ||
     process.env.PUBLIC_SITE_URL ||
@@ -50,31 +52,32 @@ export async function generateVehicleThumbnail(opts: {
   const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
   try {
+    const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
+
     for (const ref of refs) {
       const subjectUri = await fetchImageAsDataUri(ref);
       if (!subjectUri) continue;
 
-      const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
-
+      // Style lock FIRST = composition master; subject SECOND = identity only
       if (styleUri) {
         const dual = await callXaiJson(EDIT_URL, key, {
           model: MODEL,
           prompt,
           aspect_ratio: "1:1",
-          // Prefer b64 so we never depend on ephemeral CDN
           response_format: "b64_json",
           image: [
-            { url: subjectUri, type: "image_url" },
             { url: styleUri, type: "image_url" },
+            { url: subjectUri, type: "image_url" },
           ],
         });
         const persisted = await finalize(dual);
         if (persisted) return { ok: true, url: persisted, mode: "edit" };
       }
 
+      // Single subject + ultra-strict prompt (no style lock available)
       const single = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
-        prompt,
+        prompt: buildThumbEditPrompt(opts.car),
         aspect_ratio: "1:1",
         response_format: "b64_json",
         image: { url: subjectUri, type: "image_url" },
@@ -82,13 +85,19 @@ export async function generateVehicleThumbnail(opts: {
       const singleP = await finalize(single);
       if (singleP) return { ok: true, url: singleP, mode: "edit" };
 
-      // URL-mode + immediate download as last edit path
       const byUrl = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
-        prompt,
+        prompt: styleUri
+          ? prompt
+          : buildThumbEditPrompt(opts.car),
         aspect_ratio: "1:1",
         response_format: "url",
-        image: { url: ref, type: "image_url" },
+        image: styleUri
+          ? [
+              { url: styleLockUrl, type: "image_url" },
+              { url: ref, type: "image_url" },
+            ]
+          : { url: ref, type: "image_url" },
       });
       const byUrlP = await finalize(byUrl);
       if (byUrlP) return { ok: true, url: byUrlP, mode: "edit" };

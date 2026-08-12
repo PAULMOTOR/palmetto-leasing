@@ -24,30 +24,29 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     : `Match the exact paint color, body lines, badges, and wheels from the reference images.`;
 
   return (
-    `Professional luxury-car inventory thumbnail of the exact vehicle in the reference photos ` +
-    `(this real ${label} only — faithful to its body lines, badges, wheels, and paint). ${colorBit} ` +
-    // —— Camera / perspective (THE key consistency lock) ——
-    `CAMERA (mandatory, identical every time): high bird's-eye product shot from above and slightly in front of the car. ` +
-    `The lens looks almost straight down, but pitched just enough that the hood and roof dominate the frame and the grille is secondary. ` +
-    `Think: photographer on a tall ladder above the front bumper, not eye-level front-on. ` +
-    `Do NOT use a low front 3/4 hero angle. Do NOT use a pure vertical nadir (no flat 2D roof plan). ` +
-    `You must clearly see: top of the hood, top of the fenders, windshield top edge, and the roof/A-pillars — more "top of car" than "front of car". ` +
+    `Professional luxury-car inventory thumbnail of the exact vehicle in the subject reference photos ` +
+    `(this real ${label} only — faithful body lines, badges, wheels, paint). ${colorBit} ` +
+    // —— Hard ban on wrong angles (common failure mode) ——
+    `HARD BAN — never produce any of these: front 3/4 hero shot, side 3/4, low front view, ` +
+    `eye-level driveway photo, rolling shot, showroom floor perspective, diagonal corner view, ` +
+    `or any camera that shows the full side of the car or the wheels as ellipses from the side. ` +
+    `If the subject photo is a 3/4 or side angle, IGNORE that camera completely — rebuild the shot from scratch. ` +
+    // —— Camera / perspective ——
+    `CAMERA (mandatory, identical every time): high bird's-eye product shot from directly above the front of the car. ` +
+    `Lens looks nearly straight down with a tiny pitch so the HOOD and ROOF fill most of the frame; the grille is secondary and small at the bottom of the car mass. ` +
+    `Photographer on a tall ladder over the front bumper. Nose of the car points straight to the TOP of the square frame. ` +
+    `You must clearly see the top of the hood, both front fenders from above, windshield top edge, and roof — like a plan view with slight depth. ` +
     // —— Crop / framing ——
-    `FRAMING (mandatory): front half of the car only — front bumper through roughly mid-roof / just past the base of the windshield. ` +
-    `Crop the rear half completely. Nose points straight toward the TOP of the frame, body axis perfectly vertical, car centered left-right. ` +
-    `SCALE: the car must fill the frame tightly. Target about 75–85% of the image height and 70–80% of the width. ` +
-    `Keep only a thin even white margin around the car (roughly 6–12% on each side). ` +
-    `Do NOT float a small car in a huge empty white field. Do NOT leave large empty white bands above the bumper or beside the mirrors. ` +
+    `FRAMING: front half only — bumper through mid-roof / just past the windshield base. Rear half cropped out. ` +
+    `Body axis perfectly vertical (nose up, tail down off-frame). Perfectly centered left-right. ` +
+    `SCALE: car fills 75–85% of frame height and 70–80% of width. Thin even white margin only (6–12%). No tiny floating car. ` +
     // —— Background / shadow ——
-    `BACKGROUND: pure seamless #FFFFFF studio white — no gradient, no floor line, no props, no environment. ` +
-    `SHADOW: one soft, realistic contact / drop shadow under the car body only — subtle, diffused, light grey, never harsh or long. ` +
-    `The shadow must sit on the white plane so the car feels grounded, not floating and not cut-out. ` +
+    `BACKGROUND: pure seamless #FFFFFF. No gradient, floor line, props, or environment. ` +
+    `SHADOW: one soft realistic contact/drop shadow under the car only — light grey, diffused, short. Car grounded, not floating cut-out. ` +
     // —— Light / realism ——
-    `LIGHTING: soft-box studio lighting, even and diffused, gentle reflections on paint and glass. ` +
-    `No hard specular blowouts, no dramatic cinematic rims, no HDR glow. ` +
-    `RENDER: photorealistic high-end dealership photography — real metal, real glass, real rubber. ` +
-    `Not plastic, not toy-like, not over-smoothed CGI, not illustration. ` +
-    `No text, logos, watermarks, people, or extra objects. Single image, ready for a white inventory tile.`
+    `LIGHTING: soft-box studio, even, gentle paint reflections. No hard specular blowouts, no cinematic HDR. ` +
+    `RENDER: photoreal dealership photography — real metal, glass, rubber. Not plastic, toy, or over-smoothed CGI. ` +
+    `No text, logos, watermarks, people, or extra objects. Single square thumbnail-ready image.`
   );
 }
 
@@ -57,21 +56,24 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
   const color = car.exteriorColor?.trim() || "accurate factory color from the model";
   return (
     `Professional luxury-car inventory thumbnail of a ${label} in ${color}. ` +
-    `High bird's-eye product shot from above and slightly in front: hood and roof dominate, grille is secondary — not a low front hero angle, not a flat 2D plan view. ` +
-    `Front half only (bumper to mid-roof / past windshield base); rear cropped out. Nose points straight UP, body centered. ` +
-    `Car fills 75–85% of frame height with only thin even white margins — no large empty white negative space. ` +
-    `Pure #FFFFFF background. Soft realistic contact/drop shadow under the car. Soft-box lighting. ` +
-    `Photoreal dealership photography (not toy, not CGI plastic). No text, logos, people, or environment.`
+    `HARD BAN: no front 3/4, no side 3/4, no eye-level hero, no diagonal driveway shot. ` +
+    `High bird's-eye from above the front: hood and roof dominate, nose points straight UP, front half only. ` +
+    `Car fills 75–85% of the square with thin white margins. Pure #FFFFFF, soft under-car drop shadow. ` +
+    `Photoreal dealership studio photo. No text or logos.`
   );
 }
 
-/** When a style-lock reference is also attached. */
+/**
+ * Dual-image contract: style-lock is composition master; subject is identity only.
+ * generate-thumb attaches style-lock as image[0], subject as image[1].
+ */
 export function buildStyleLockAddendum(): string {
   return (
-    ` CRITICAL: match the composition style reference EXACTLY for camera height, pitch, crop, scale, and shadow. ` +
-    `Copy its high bird's-eye front-half framing (more hood/roof, less pure front fascia), ` +
-    `its tight fill of the square (large car, thin white margins), its soft under-car drop shadow, ` +
-    `and its pure #FFFFFF background. Only the specific car identity, body shape, and paint color come from the subject reference photos — ` +
-    `never copy the subject photo's camera angle or empty white space.`
+    ` DUAL-IMAGE RULES (mandatory): Image 0 is the COMPOSITION MASTER (style lock). ` +
+    `Image 1 is the CAR IDENTITY ONLY (subject listing photos). ` +
+    `Output MUST match Image 0 for: camera height, pitch, nose-up orientation, front-half crop, scale/fill of the square, soft under-car shadow, and pure white background. ` +
+    `Output MUST match Image 1 for: make/model body shape, paint color, badges, wheels, and unique details. ` +
+    `Completely discard Image 1's camera angle, pose, crop, and empty space — never copy a 3/4 or side shot from Image 1. ` +
+    `Think: put the car from Image 1 into the exact overhead studio template of Image 0.`
   );
 }
