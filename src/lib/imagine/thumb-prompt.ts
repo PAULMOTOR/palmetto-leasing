@@ -1,7 +1,11 @@
 /**
  * Locked Palmetto studio tile template — product photography contract.
  * Only car identity (year/make/model/color from references) may change.
- * Target: high bird's-eye front-half crop, nose UP, balanced margins, soft shadow.
+ *
+ * Orientation (confirmed from approved tiles):
+ *   FRONT of car (bumper / headlights / grille) → BOTTOM of the square
+ *   ROOF / mid-body / rear of the crop → TOP of the square
+ *   Rear wing/spoiler sits near the TOP when visible — never at the bottom.
  */
 
 export type ThumbSubject = {
@@ -26,32 +30,31 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
   return (
     `Professional luxury-car inventory thumbnail of the exact vehicle in the subject reference photos ` +
     `(this real ${label} only — faithful body lines, badges, wheels, paint). ${colorBit} ` +
-    // —— Orientation lock (prevents upside-down / rear-up failures) ——
-    `ORIENTATION (non-negotiable): the FRONT of the car (front bumper, headlights, grille, brand badge) ` +
-    `must point toward the TOP edge of the square frame. The rear of the car points toward the BOTTOM and is mostly cropped out. ` +
-    `NEVER render the car upside down or rear-up. ` +
-    `If the car has a rear wing, spoiler, or engine cover vents at the back (e.g. GT2 RS, GT3, Supra, etc.), ` +
-    `those parts must be at the BOTTOM of the frame or fully cropped off — NEVER at the top. ` +
-    `Headlights and front badge are always in the upper half of the car silhouette. ` +
-    `Double-check before finishing: top of image = front nose; bottom of image = mid-roof / toward rear. ` +
+    // —— Orientation (matches approved Palmetto tiles) ——
+    `ORIENTATION (non-negotiable — match the approved inventory look): ` +
+    `the FRONT of the car points toward the BOTTOM of the square frame. ` +
+    `Front bumper, headlights, grille, and brand badge sit in the LOWER portion of the image. ` +
+    `The roof / cabin / mid-body extend toward the TOP of the frame. ` +
+    `Any rear wing, spoiler, or rear deck that remains in the crop sits near the TOP — never at the bottom. ` +
+    `WRONG (never do this): front bumper at the top, headlights at the top, or rear wing at the bottom. That is upside down. ` +
+    `RIGHT: bottom of image = nose/front; top of image = roof / toward the rear. ` +
     // —— Hard ban on wrong angles ——
-    `HARD BAN — never produce any of these: front 3/4 hero shot, side 3/4, low front view, ` +
-    `eye-level driveway photo, rolling shot, showroom floor perspective, diagonal corner view, ` +
-    `convertible glamour pose, rear-three-quarter, or any camera that shows the full side profile. ` +
-    `If the subject photo is a 3/4, side, low, or rear-biased angle, IGNORE that camera completely — rebuild as overhead nose-UP. ` +
+    `HARD BAN — never produce: front 3/4 hero, side 3/4, low front view, eye-level driveway shot, ` +
+    `rolling shot, diagonal corner view, convertible glamour pose, or full side profile. ` +
+    `If the subject photo is 3/4, side, or low angle, IGNORE that camera — rebuild as overhead with front at BOTTOM. ` +
     // —— Camera ——
-    `CAMERA (mandatory): high bird's-eye product shot from directly above the FRONT of the car. ` +
-    `Lens nearly straight down with a tiny pitch so HOOD and ROOF dominate; grille secondary within the front mass near the TOP of the frame. ` +
-    `Symmetric left-right. Clear view of hood top, both front fenders from above, windshield top edge, and roof. ` +
-    // —— Crop + breathing room ——
-    `FRAMING: front half only — front bumper (near top of frame) through mid-roof / just past the windshield base (toward bottom). Rear half cropped out. ` +
-    `Body axis vertical (nose UP). Perfectly centered. ` +
-    `SCALE / MARGINS: full silhouette fits inside the square with even white breathing room on all four sides. ` +
-    `Car height about 65–75% of the frame. ~10–15% pure white above the front bumper and below the roof cut. ` +
-    `Never clip bumper, mirrors, or roof. Never zoom edge-to-edge. Never leave a tiny floating car. ` +
+    `CAMERA: high bird's-eye product shot looking down at the front half of the car. ` +
+    `Nearly straight down with a tiny pitch so the hood and roof are clearly visible. ` +
+    `Body axis vertical on the square, perfectly centered left-right. ` +
+    // —— Crop ——
+    `FRAMING: front half of the car — from the front bumper (near the BOTTOM of the frame) ` +
+    `through roughly mid-roof / just past the windshield (toward the TOP). Crop the far rear if needed. ` +
+    `For cars with large rear wings (GT2 RS, GT cars): if the wing is in frame, it must be near the TOP, not the bottom. ` +
+    `SCALE / MARGINS: car fills about 65–75% of the square with ~10–15% even white margin on all sides. ` +
+    `Never clip the front bumper, mirrors, or roof. Never edge-to-edge zoom. Never a tiny floating car. ` +
     // —— Background / shadow ——
     `BACKGROUND: pure seamless #FFFFFF. No gradient, floor line, props, or environment. ` +
-    `SHADOW: one soft realistic contact/drop shadow under the car only — light grey, short, diffused. ` +
+    `SHADOW: one soft realistic contact/drop shadow under the car — light grey, short, diffused. ` +
     // —— Light / realism ——
     `LIGHTING: soft-box studio, even, gentle paint reflections. No hard specular blowouts. ` +
     `RENDER: photoreal dealership photography. Not plastic, toy, or CGI. ` +
@@ -65,10 +68,10 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
   const color = car.exteriorColor?.trim() || "accurate factory color from the model";
   return (
     `Professional luxury-car inventory thumbnail of a ${label} in ${color}. ` +
-    `ORIENTATION: front bumper/headlights/grille point to the TOP of the frame; rear wing/spoiler never at the top (crop or place at bottom). ` +
-    `Never upside down. HARD BAN: no front 3/4, no side 3/4, no eye-level hero. ` +
-    `High bird's-eye from above the front: hood and roof dominate, nose straight UP, front half only. ` +
-    `Car fills 65–75% of the square with ~10–15% white margin on all sides — never clip bumper or roof. ` +
+    `ORIENTATION: front bumper/headlights/grille at the BOTTOM of the frame; roof toward the TOP; rear wing near the TOP if visible. ` +
+    `Never put the nose at the top (that is upside down). ` +
+    `HARD BAN: no front 3/4, no side 3/4, no eye-level hero. High bird's-eye front-half crop. ` +
+    `Car fills 65–75% of the square with ~10–15% white margin on all sides. ` +
     `Pure #FFFFFF, soft under-car drop shadow. Photoreal dealership studio photo. No text or logos.`
   );
 }
@@ -81,11 +84,11 @@ export function buildStyleLockAddendum(): string {
   return (
     ` DUAL-IMAGE RULES (mandatory): Image 0 is the COMPOSITION MASTER (style lock). ` +
     `Image 1 is the CAR IDENTITY ONLY (subject listing photos). ` +
-    `Output MUST match Image 0 for: camera height, pitch, NOSE-UP orientation (front at TOP of frame), front-half crop, ` +
-    `balanced scale with white margins on all sides (never edge-cropped), soft under-car shadow, and pure white background. ` +
-    `Output MUST match Image 1 for: make/model body shape, paint color, badges, wheels, and unique details. ` +
-    `Completely discard Image 1's camera angle, pose, crop, rotation, and empty space — never copy a 3/4, side, or upside-down pose from Image 1. ` +
-    `If Image 1 shows a rear wing at the top of its photo, flip the mental model: rear wing goes to the BOTTOM or is cropped; front nose goes to the TOP. ` +
-    `Think: put the car from Image 1 into the exact overhead studio template of Image 0, nose pointing UP, with breathing room so nothing is clipped.`
+    `Output MUST match Image 0 for: camera height, pitch, orientation with FRONT at BOTTOM of frame and roof toward TOP, ` +
+    `front-half crop, balanced margins, soft under-car shadow, pure white background. ` +
+    `Output MUST match Image 1 for: body shape, paint, badges, wheels, unique details. ` +
+    `Discard Image 1's camera angle, rotation, and crop entirely. ` +
+    `If unsure which way is up: headlights and front badge go toward the BOTTOM edge; rear wing/spoiler toward the TOP. ` +
+    `Think: drop the car from Image 1 into Image 0's overhead template — front at bottom, never upside down.`
   );
 }
