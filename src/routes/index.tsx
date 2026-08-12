@@ -22,8 +22,10 @@ export const Route = createFileRoute("/")({
   component: InventoryPage,
 });
 
-/** Hide filters after this much idle; re-show on any vertical scroll. */
+/** Hide filters after this much idle while scrolled down; re-show on scroll. */
 const FILTER_IDLE_MS = 1200;
+/** Stay fully visible while near the top of the page. */
+const TOP_ALWAYS_VISIBLE_PX = 48;
 
 function InventoryPage() {
   const [vehicles, setVehicles] = useState<VehicleCardType[]>([]);
@@ -38,7 +40,7 @@ function InventoryPage() {
   const [monthly, setMonthly] = useState<MonthlyRangeId | "">("");
 
   const [filtersVisible, setFiltersVisible] = useState(true);
-  const [filterPinned, setFilterPinned] = useState(false); // hover / focus keeps open
+  const [filterPinned, setFilterPinned] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastY = useRef(0);
 
@@ -66,7 +68,6 @@ function InventoryPage() {
     };
   }, []);
 
-  // Show on scroll activity; hide after settle (unless pinned by hover/focus)
   useEffect(() => {
     lastY.current = window.scrollY;
 
@@ -75,24 +76,39 @@ function InventoryPage() {
       idleTimer.current = null;
     };
 
+    const atTop = () => window.scrollY <= TOP_ALWAYS_VISIBLE_PX;
+
     const scheduleHide = () => {
       clearIdle();
+      // Never auto-hide at the top of the page
+      if (atTop() || filterPinned) {
+        setFiltersVisible(true);
+        return;
+      }
       idleTimer.current = setTimeout(() => {
-        if (!filterPinned) setFiltersVisible(false);
+        if (!filterPinned && !atTop()) setFiltersVisible(false);
       }, FILTER_IDLE_MS);
     };
 
     const onScroll = () => {
       const y = window.scrollY;
-      if (Math.abs(y - lastY.current) > 2) {
+      if (atTop()) {
+        setFiltersVisible(true);
+        clearIdle();
+      } else if (Math.abs(y - lastY.current) > 2) {
         setFiltersVisible(true);
         scheduleHide();
       }
       lastY.current = y;
     };
 
-    // Initial settle timer after load
-    scheduleHide();
+    // Landing at top → always show
+    if (atTop()) {
+      setFiltersVisible(true);
+    } else {
+      scheduleHide();
+    }
+
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);
@@ -100,13 +116,18 @@ function InventoryPage() {
     };
   }, [filterPinned]);
 
-  // When pinned ends, start idle hide again
   useEffect(() => {
     if (filterPinned) {
       setFiltersVisible(true);
       return;
     }
-    const t = setTimeout(() => setFiltersVisible(false), FILTER_IDLE_MS);
+    if (window.scrollY <= TOP_ALWAYS_VISIBLE_PX) {
+      setFiltersVisible(true);
+      return;
+    }
+    const t = setTimeout(() => {
+      if (window.scrollY > TOP_ALWAYS_VISIBLE_PX) setFiltersVisible(false);
+    }, FILTER_IDLE_MS);
     return () => clearTimeout(t);
   }, [filterPinned]);
 
@@ -142,7 +163,6 @@ function InventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
-      {/* Sticky filter bar — hides when idle, reappears on vertical scroll */}
       <div
         className={cn(
           "sticky top-[4.75rem] z-30 -mx-4 overflow-hidden border-b bg-[var(--color-canvas,#f3f3f3)]/95 backdrop-blur-md transition-[max-height,opacity,padding,border-color] duration-300 ease-out sm:top-[5.25rem] sm:-mx-6",
@@ -246,7 +266,6 @@ function InventoryPage() {
   );
 }
 
-/** Minimal text-style dropdown (Year ▾ Make ▾ …) matching original filter chrome. */
 function FilterSelect({
   label,
   value,
