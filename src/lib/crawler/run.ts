@@ -14,7 +14,7 @@ import { isEphemeralImagineUrl, isStudioThumbUrl } from "@/lib/imagine/persist-i
 import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "10-sigma-inventory-urls";
+const POOL_VERSION = "11-paul-motor-co";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
 
 let seedChain: Promise<unknown> = Promise.resolve();
@@ -101,8 +101,8 @@ async function runInventoryCrawlInner(opts?: {
     `;
     await sql`
       update dealerships
-      set inventory_url = replace(inventory_url, '/autos', '/inventory')
-      where inventory_url like '%sigmaautomotive.ca/autos%'
+      set name = 'Paul Motor Co.'
+      where id = 'paul-motor' and name <> 'Paul Motor Co.'
     `;
 
     const ver = await sql<{ value: string }>`

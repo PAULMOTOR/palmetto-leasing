@@ -54,7 +54,7 @@ export const RETIRED_DEALER_IDS = [
 export const DEALERS: SeedDealer[] = [
   {
     id: "paul-motor",
-    name: "Paul Motor Leasing",
+    name: "Paul Motor Co.",
     city: "Montréal",
     province: "QC",
     brands: "Multi-marque · High performance",
