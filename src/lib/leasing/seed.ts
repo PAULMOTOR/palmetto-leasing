@@ -69,7 +69,7 @@ export const DEALERS: SeedDealer[] = [
     province: "AB",
     brands: "Exotic · Luxury",
     website_url: "https://www.sigmaautomotive.ca",
-    inventory_url: "https://www.sigmaautomotive.ca/autos",
+    inventory_url: "https://www.sigmaautomotive.ca/inventory",
     active: true,
   },
 ];
@@ -82,14 +82,25 @@ export function dealerById(id: string): SeedDealer | undefined {
 }
 
 export function dealerListingUrl(dealershipId: string, listingPath: string): string {
-  if (listingPath.startsWith("http")) return listingPath;
+  if (listingPath.startsWith("http")) return normalizeDealerListingUrl(listingPath);
   const d = dealerById(dealershipId);
   if (!d) return listingPath;
   try {
-    return new URL(listingPath, d.website_url).toString();
+    return normalizeDealerListingUrl(new URL(listingPath, d.website_url).toString());
   } catch {
-    return `${d.website_url.replace(/\/$/, "")}/${listingPath.replace(/^\//, "")}`;
+    return normalizeDealerListingUrl(
+      `${d.website_url.replace(/\/$/, "")}/${listingPath.replace(/^\//, "")}`,
+    );
   }
+}
+
+/** Sigma listing pages live at /inventory/:slug — older crawls stored /autos/:slug (404). */
+export function normalizeDealerListingUrl(url: string): string {
+  if (!url) return url;
+  return url.replace(
+    /^(https?:\/\/(?:www\.)?sigmaautomotive\.ca)\/autos(\/|$)/i,
+    "$1/inventory$2",
+  );
 }
 
 export function slugifyVehicle(v: Pick<SeedVehicle, "year" | "make" | "model" | "trim" | "external_id" | "dealership_id">): string {

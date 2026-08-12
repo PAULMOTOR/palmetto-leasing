@@ -14,7 +14,7 @@ import { isEphemeralImagineUrl } from "@/lib/imagine/persist-image";
 import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "9-retire-original-12";
+const POOL_VERSION = "10-sigma-inventory-urls";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
 
 let seedChain: Promise<unknown> = Promise.resolve();
@@ -91,6 +91,19 @@ async function runInventoryCrawlInner(opts?: {
   try {
     // Always purge the original 12 built-in dealers
     await purgeRetiredDealers(sql, notes);
+
+    // Rewrite stale Sigma /autos/:slug listing URLs (404) → /inventory/:slug
+    await sql`
+      update vehicles
+      set dealer_listing_url = replace(dealer_listing_url, '/autos/', '/inventory/'),
+          updated_at = now()
+      where dealer_listing_url like '%sigmaautomotive.ca/autos/%'
+    `;
+    await sql`
+      update dealerships
+      set inventory_url = replace(inventory_url, '/autos', '/inventory')
+      where inventory_url like '%sigmaautomotive.ca/autos%'
+    `;
 
     const ver = await sql<{ value: string }>`
       select value from app_meta where key = 'pool_version' limit 1

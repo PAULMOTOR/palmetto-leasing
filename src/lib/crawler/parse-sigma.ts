@@ -1,6 +1,7 @@
 /**
  * Sigma Automotive public inventory API.
- * https://www.sigmaautomotive.ca/api/vehicles
+ * Listing pages: https://www.sigmaautomotive.ca/inventory/{slug}
+ * (not /autos/{slug} — that 404s)
  */
 import { PREMIUM_MIN_CENTS, type SeedVehicle } from "@/lib/leasing/seed";
 
@@ -26,12 +27,19 @@ type SigmaVehicle = {
   images?: { url: string; sortOrder?: number; isCover?: boolean }[];
 };
 
+const SIGMA_ORIGIN = "https://www.sigmaautomotive.ca";
+
+export function sigmaListingUrl(slug: string): string {
+  const s = (slug || "").replace(/^\/+/, "");
+  return `${SIGMA_ORIGIN}/inventory/${s}`;
+}
+
 export async function fetchSigmaVehicles(dealerId: string): Promise<{
   items: SeedVehicle[];
   notes: string[];
 }> {
   const notes: string[] = [];
-  const res = await fetch("https://www.sigmaautomotive.ca/api/vehicles", {
+  const res = await fetch(`${SIGMA_ORIGIN}/api/vehicles`, {
     headers: {
       accept: "application/json",
       "user-agent":
@@ -58,6 +66,7 @@ export async function fetchSigmaVehicles(dealerId: string): Promise<{
     if (!Number.isFinite(priceCad) || priceCad < 150_000) continue;
     const priceCents = Math.round(priceCad * 100);
     if (priceCents < PREMIUM_MIN_CENTS) continue;
+    if (!v.slug) continue;
 
     const photos = (v.images || [])
       .slice()
@@ -92,7 +101,7 @@ export async function fetchSigmaVehicles(dealerId: string): Promise<{
       },
       thumbnail: photos[0] || "/vehicles/top-porsche-911.jpg",
       photos,
-      listing_path: `https://www.sigmaautomotive.ca/autos/${v.slug}`,
+      listing_path: sigmaListingUrl(v.slug),
     });
   }
 

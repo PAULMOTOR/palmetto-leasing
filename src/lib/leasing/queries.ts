@@ -23,6 +23,7 @@ import {
   firstDurablePhoto,
   isEphemeralImagineUrl,
 } from "@/lib/imagine/persist-image";
+import { normalizeDealerListingUrl } from "./seed";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
@@ -47,6 +48,7 @@ async function toCard(
     mileage: Number(row.mileage),
     year: Number(row.year),
     is_premium: Boolean(row.is_premium),
+    dealer_listing_url: normalizeDealerListingUrl(row.dealer_listing_url || ""),
     monthly_payment_cents: quote.monthlyPaymentCents,
     specs: parseSpecs(row.specs_json),
     photos,
