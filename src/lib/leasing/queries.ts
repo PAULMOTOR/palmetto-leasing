@@ -19,6 +19,10 @@ import { parsePhotos, parseSpecs } from "./types";
 import { buildVehicleGalleryPool, selectGalleryPhotos } from "./gallery";
 import { fetchListingGallery } from "./fetch-listing-gallery";
 import { generateMissingImagineThumbs } from "@/lib/imagine/batch-thumbs";
+import {
+  firstDurablePhoto,
+  isEphemeralImagineUrl,
+} from "@/lib/imagine/persist-image";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
@@ -31,8 +35,14 @@ async function toCard(
     : row.thumbnail_url
       ? [row.thumbnail_url]
       : [];
+  // imgen.x.ai /xai-tmp-imgen/ URLs expire (404) — never serve them as the tile
+  let thumb = row.thumbnail_url || "";
+  if (!thumb || isEphemeralImagineUrl(thumb)) {
+    thumb = firstDurablePhoto(photos, row.thumbnail_url) || "/vehicles/top-porsche-911.jpg";
+  }
   return {
     ...row,
+    thumbnail_url: thumb,
     price_cents: Number(row.price_cents),
     mileage: Number(row.mileage),
     year: Number(row.year),

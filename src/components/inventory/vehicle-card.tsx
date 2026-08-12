@@ -24,6 +24,51 @@ const DOWN_OPTIONS = [
   { rate: 0.3, label: "30%" },
 ] as const;
 
+const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
+
+function isEphemeral(url: string) {
+  return /imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(url || "");
+}
+
+/** Resolve a working tile image; skip expired Imagine temp URLs. */
+function buildThumbCandidates(vehicle: VehicleCardType): string[] {
+  const raw = [
+    vehicle.thumbnail_url,
+    ...(vehicle.photos || []),
+    PLACEHOLDER,
+  ].filter(Boolean) as string[];
+  const out: string[] = [];
+  for (const u of raw) {
+    if (isEphemeral(u)) continue;
+    if (!out.includes(u)) out.push(u);
+  }
+  if (!out.length) out.push(PLACEHOLDER);
+  return out;
+}
+
+function TileThumb({ vehicle, title }: { vehicle: VehicleCardType; title: string }) {
+  const candidates = useMemo(() => buildThumbCandidates(vehicle), [vehicle]);
+  const [idx, setIdx] = useState(0);
+  const src = candidates[Math.min(idx, candidates.length - 1)] || PLACEHOLDER;
+
+  return (
+    <img
+      key={src}
+      src={src}
+      alt=""
+      role="presentation"
+      loading="lazy"
+      decoding="async"
+      onError={() => {
+        setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
+      }}
+      className="absolute inset-0 h-full w-full origin-top bg-white object-cover object-[center_62%] transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02]"
+      style={{ backgroundColor: "#FFFFFF" }}
+      title={title}
+    />
+  );
+}
+
 export function VehicleCard({
   vehicle,
   index = 0,
@@ -66,10 +111,6 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
-          {/*
-            Flush top + sides. Imagine tiles bake empty white above the car —
-            cover + vertical shift crops that band so the car sits against the tile top.
-          */}
           <div
             className={cn(
               "relative w-full overflow-hidden bg-white",
@@ -78,14 +119,7 @@ export function VehicleCard({
                 : "aspect-[3/4]",
             )}
           >
-            <img
-              src={vehicle.thumbnail_url || vehicle.photos[0] || "/vehicles/top-porsche-911.jpg"}
-              alt={title}
-              loading="lazy"
-              decoding="async"
-              className="absolute inset-0 h-full w-full origin-top bg-white object-cover object-[center_62%] transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02]"
-              style={{ backgroundColor: "#FFFFFF" }}
-            />
+            <TileThumb vehicle={vehicle} title={title} />
           </div>
 
           <div className="flex flex-col items-center bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">
@@ -175,8 +209,8 @@ function InCardQuote({
   const [gallery, setGallery] = useState<string[]>(() =>
     selectGalleryPhotos(
       buildVehicleGalleryPool({
-        thumbnail_url: vehicle.thumbnail_url,
-        photos: vehicle.photos,
+        thumbnail_url: isEphemeral(vehicle.thumbnail_url) ? "" : vehicle.thumbnail_url,
+        photos: (vehicle.photos || []).filter((p) => !isEphemeral(p)),
         make: vehicle.make,
         model: vehicle.model,
       }),
@@ -213,13 +247,15 @@ function InCardQuote({
         listingUrl: vehicle.dealer_listing_url,
         make: vehicle.make,
         model: vehicle.model,
-        existingPhotos: vehicle.photos,
-        thumbnail: vehicle.thumbnail_url,
+        existingPhotos: (vehicle.photos || []).filter((p) => !isEphemeral(p)),
+        thumbnail: isEphemeral(vehicle.thumbnail_url) ? undefined : vehicle.thumbnail_url,
       },
     })
       .then((res) => {
         if (cancelled) return;
-        if (res.photos?.length) setGallery(res.photos);
+        if (res.photos?.length) {
+          setGallery(res.photos.filter((p) => !isEphemeral(p)));
+        }
       })
       .catch(() => {
         /* keep local gallery */

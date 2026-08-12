@@ -1,15 +1,11 @@
 /**
  * Generate Imagine studio tiles.
- * Default: only cars still on dealer photos (unrendered).
- * force: re-render including existing imgen thumbs.
+ * Default: cars with missing OR expired (ephemeral imgen.x.ai) thumbs.
  */
 import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
+import { isEphemeralImagineUrl, isDurableThumbUrl } from "./persist-image";
 import { parsePhotos } from "@/lib/leasing/types";
-
-function isImagineThumb(url: string): boolean {
-  return /imgen\.x\.ai|xai-tmp-imgen|imagine|xai-imgen/i.test(url || "");
-}
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
@@ -35,7 +31,6 @@ export async function generateMissingImagineThumbs(opts?: {
   }
 
   const force = Boolean(opts?.force);
-  // Missing-only can run larger batches; force re-render stays smaller (cost/time)
   const limit = Math.min(opts?.limit ?? (force ? 12 : 40), force ? 25 : 60);
 
   const sql = await getSql();
@@ -61,16 +56,18 @@ export async function generateMissingImagineThumbs(opts?: {
   const withRefs = rows.filter((r) => {
     const photos = parsePhotos(r.photo_urls);
     return (
-      photos.some((p) => /^https?:\/\//i.test(p)) ||
-      /^https?:\/\//i.test(r.thumbnail_url || "")
+      photos.some((p) => /^https?:\/\//i.test(p) && !isEphemeralImagineUrl(p)) ||
+      (/^https?:\/\//i.test(r.thumbnail_url || "") && !isEphemeralImagineUrl(r.thumbnail_url))
     );
   });
 
-  const unrendered = withRefs.filter((r) => !isImagineThumb(r.thumbnail_url || ""));
-  const need = (force ? withRefs : unrendered).slice(0, limit);
-  const remainingBefore = force
-    ? Math.max(0, withRefs.length - limit)
-    : Math.max(0, unrendered.length - limit);
+  // Missing = no durable thumb (null, local placeholder, or expired imgen tmp URL)
+  const needsRender = withRefs.filter((r) => {
+    if (force) return true;
+    return !isDurableThumbUrl(r.thumbnail_url) || isEphemeralImagineUrl(r.thumbnail_url);
+  });
+
+  const need = needsRender.slice(0, limit);
 
   let succeeded = 0;
   let skipped = 0;
@@ -78,14 +75,11 @@ export async function generateMissingImagineThumbs(opts?: {
 
   for (const r of need) {
     const photos = parsePhotos(r.photo_urls);
-    // Prefer real dealer photos as refs (not previous imgen output)
     const refs = [
-      ...photos.filter((p) => /^https?:\/\//i.test(p) && !isImagineThumb(p)),
-      ...(r.thumbnail_url?.startsWith("http") && !isImagineThumb(r.thumbnail_url)
+      ...photos.filter((p) => /^https?:\/\//i.test(p) && !isEphemeralImagineUrl(p)),
+      ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
         ? [r.thumbnail_url]
         : []),
-      // fallback: any photo if all we have is imgen (force path)
-      ...photos.filter((p) => /^https?:\/\//i.test(p)),
     ]
       .filter((u, i, a) => a.indexOf(u) === i)
       .slice(0, 4);
@@ -108,29 +102,15 @@ export async function generateMissingImagineThumbs(opts?: {
         referencePhotoUrls: refs,
       });
 
-      if (imag.ok && imag.url) {
+      if (imag.ok && imag.url && isDurableThumbUrl(imag.url)) {
         await sql`
           update vehicles
           set thumbnail_url = ${imag.url}, updated_at = now()
           where id = ${r.id}
         `;
         succeeded += 1;
-      } else if (imag.ok && imag.b64) {
-        const dataUrl = imag.b64.startsWith("data:")
-          ? imag.b64
-          : `data:image/jpeg;base64,${imag.b64}`;
-        if (dataUrl.length < 900_000) {
-          await sql`
-            update vehicles
-            set thumbnail_url = ${dataUrl}, updated_at = now()
-            where id = ${r.id}
-          `;
-          succeeded += 1;
-        } else {
-          errors.push(`${r.make} ${r.model}: image too large to store inline`);
-        }
       } else {
-        errors.push(`${r.make} ${r.model}: ${imag.error || imag.mode}`);
+        errors.push(`${r.make} ${r.model}: ${imag.error || "no durable image"}`);
       }
     } catch (err) {
       errors.push(
@@ -139,13 +119,13 @@ export async function generateMissingImagineThumbs(opts?: {
     }
   }
 
-  const remaining = Math.max(0, remainingBefore - succeeded);
+  const remaining = Math.max(0, needsRender.length - succeeded);
 
   return {
     attempted: need.length,
     succeeded,
     skipped,
-    remaining: force ? remainingBefore : Math.max(0, unrendered.length - succeeded),
+    remaining,
     errors: errors.slice(0, 15),
     hasApiKey: true,
   };

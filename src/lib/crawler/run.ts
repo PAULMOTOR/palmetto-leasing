@@ -10,6 +10,7 @@ import {
 } from "@/lib/leasing/seed";
 import { fetchDealerInventory } from "./fetch-dealer";
 import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
+import { isEphemeralImagineUrl } from "@/lib/imagine/persist-image";
 import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
@@ -217,7 +218,7 @@ async function runInventoryCrawlInner(opts?: {
           },
           referencePhotoUrls: item.photos.filter((p) => p.startsWith("http")).slice(0, 2),
         });
-        if (imag.ok && imag.url) {
+        if (imag.ok && imag.url && !isEphemeralImagineUrl(imag.url)) {
           await sql`
             update vehicles
             set thumbnail_url = ${imag.url}, updated_at = now()
@@ -226,6 +227,8 @@ async function runInventoryCrawlInner(opts?: {
           imagined += 1;
         } else if (imag.error) {
           notes.push(`Imagine ${item.external_id}: ${imag.error}`);
+        } else if (imag.ok && imag.url) {
+          notes.push(`Imagine ${item.external_id}: refused ephemeral URL`);
         }
       }
       notes.push(`Imagine thumbs generated: ${imagined}/${batch.length}`);
@@ -324,10 +327,13 @@ async function upsertVehicle(
     select id, thumbnail_url from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
+  // Never prefer expired imgen tmp URLs — only keep durable data:/cdn thumbs
   const keepThumb =
     !isNew &&
     existing[0]?.thumbnail_url &&
-    /imgen\.x\.ai|imagine|xai-tmp-imgen/i.test(existing[0].thumbnail_url)
+    !isEphemeralImagineUrl(existing[0].thumbnail_url) &&
+    (existing[0].thumbnail_url.startsWith("data:image/") ||
+      existing[0].thumbnail_url.startsWith("http"))
       ? existing[0].thumbnail_url
       : thumbnail;
 

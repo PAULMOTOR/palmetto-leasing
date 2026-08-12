@@ -1,7 +1,6 @@
 /**
  * Generate unique Palmetto studio thumbnails via xAI Grok Imagine API.
- * Locked composition: pure #FFFFFF, nose-up top-down, consistent scale.
- * Subject photo (dealer) + optional style-lock reference.
+ * Always persists output to a durable data URI — imgen.x.ai tmp URLs expire (404).
  */
 import {
   buildThumbEditPrompt,
@@ -9,9 +8,11 @@ import {
   buildStyleLockAddendum,
   type ThumbSubject,
 } from "./thumb-prompt";
+import { persistImagineResult } from "./persist-image";
 
 export type ImagineThumbResult = {
   ok: boolean;
+  /** Durable URL (data:image/... preferred). Never store raw xai-tmp URLs. */
   url?: string;
   b64?: string;
   mode: "edit" | "generate" | "skipped" | "error";
@@ -27,33 +28,25 @@ type XaiImageResponse = {
 const EDIT_URL = "https://api.x.ai/v1/images/edits";
 const GEN_URL = "https://api.x.ai/v1/images/generations";
 const MODEL = "grok-imagine-image-quality";
-
-/** Public URL path for composition lock (served by this site). */
 const STYLE_LOCK_PATH = "/vehicles/palmetto-style-lock.jpg";
 
 export async function generateVehicleThumbnail(opts: {
   car: ThumbSubject;
   referencePhotoUrls?: string[];
-  /** Absolute site origin for style-lock, e.g. https://www.palmettoleasing.com */
   publicOrigin?: string;
 }): Promise<ImagineThumbResult> {
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) {
-    return {
-      ok: false,
-      mode: "skipped",
-      error: "XAI_API_KEY not set",
-    };
+    return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
   }
 
-  const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 2);
+  const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 4);
   const origin =
     opts.publicOrigin ||
     process.env.PUBLIC_SITE_URL ||
     process.env.VITE_PUBLIC_SITE_URL ||
     "https://www.palmettoleasing.com";
   const styleLockUrl = `${origin.replace(/\/$/, "")}${STYLE_LOCK_PATH}`;
-
   const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
   try {
@@ -63,36 +56,33 @@ export async function generateVehicleThumbnail(opts: {
 
       const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
 
-      // Preferred: subject + style lock (up to 2 images)
       if (styleUri) {
         const dual = await callXaiJson(EDIT_URL, key, {
           model: MODEL,
           prompt,
           aspect_ratio: "1:1",
-          response_format: "url",
+          // Prefer b64 so we never depend on ephemeral CDN
+          response_format: "b64_json",
           image: [
             { url: subjectUri, type: "image_url" },
             { url: styleUri, type: "image_url" },
           ],
         });
-        if (dual.ok && (dual.url || dual.b64)) {
-          return { ok: true, url: dual.url, b64: dual.b64, mode: "edit" };
-        }
+        const persisted = await finalize(dual);
+        if (persisted) return { ok: true, url: persisted, mode: "edit" };
       }
 
-      // Single subject edit with locked prompt
       const single = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
-        response_format: "url",
+        response_format: "b64_json",
         image: { url: subjectUri, type: "image_url" },
       });
-      if (single.ok && (single.url || single.b64)) {
-        return { ok: true, url: single.url, b64: single.b64, mode: "edit" };
-      }
+      const singleP = await finalize(single);
+      if (singleP) return { ok: true, url: singleP, mode: "edit" };
 
-      // Public URL fallback
+      // URL-mode + immediate download as last edit path
       const byUrl = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
@@ -100,9 +90,8 @@ export async function generateVehicleThumbnail(opts: {
         response_format: "url",
         image: { url: ref, type: "image_url" },
       });
-      if (byUrl.ok && (byUrl.url || byUrl.b64)) {
-        return { ok: true, url: byUrl.url, b64: byUrl.b64, mode: "edit" };
-      }
+      const byUrlP = await finalize(byUrl);
+      if (byUrlP) return { ok: true, url: byUrlP, mode: "edit" };
     }
 
     const gen = await callXaiJson(GEN_URL, key, {
@@ -110,13 +99,12 @@ export async function generateVehicleThumbnail(opts: {
       prompt: buildThumbTextPrompt(opts.car),
       aspect_ratio: "1:1",
       n: 1,
-      response_format: "url",
+      response_format: "b64_json",
     });
-    if (gen.ok && (gen.url || gen.b64)) {
-      return { ok: true, url: gen.url, b64: gen.b64, mode: "generate" };
-    }
+    const genP = await finalize(gen);
+    if (genP) return { ok: true, url: genP, mode: "generate" };
 
-    return { ok: false, mode: "error", error: gen.error || "Imagine returned no image" };
+    return { ok: false, mode: "error", error: gen.error || "Imagine returned no durable image" };
   } catch (err) {
     return {
       ok: false,
@@ -124,6 +112,18 @@ export async function generateVehicleThumbnail(opts: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+async function finalize(result: {
+  ok: boolean;
+  url?: string;
+  b64?: string;
+  error?: string;
+}): Promise<string | null> {
+  if (!result.ok) return null;
+  const persisted = await persistImagineResult({ url: result.url, b64: result.b64 });
+  if ("durableUrl" in persisted) return persisted.durableUrl;
+  return null;
 }
 
 async function callXaiJson(
