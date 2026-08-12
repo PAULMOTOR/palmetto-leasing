@@ -684,6 +684,7 @@ function LearnMoreDialog({
 
 const MIN_GALLERY_WIDTH = 300;
 
+/** Small thumbs only until click — large view + arrows live in GalleryLightbox. */
 function ListingGallery({
   photos,
   loading,
@@ -695,157 +696,56 @@ function ListingGallery({
   onOpen: (index: number) => void;
   onPhotosChange: (next: string[]) => void;
 }) {
-  const [stripIndex, setStripIndex] = useState(0);
-
-  useEffect(() => {
-    if (stripIndex >= photos.length) {
-      setStripIndex(Math.max(0, photos.length - 1));
-    }
-  }, [photos.length, stripIndex]);
-
   function rejectPhoto(src: string) {
     onPhotosChange(photos.filter((p) => p !== src));
   }
 
-  const safe = photos;
-  const count = safe.length;
-
-  function step(delta: number) {
-    if (!count) return;
-    setStripIndex((i) => (i + delta + count) % count);
-  }
+  const count = photos.length;
 
   return (
     <div className="mb-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Gallery</p>
-        <div className="flex items-center gap-2">
-          {loading ? (
-            <span className="inline-flex items-center gap-1 text-[10px] text-fg-subtle">
-              <Loader2 className="size-3 animate-spin" /> Loading dealer photos
-            </span>
-          ) : (
-            <span className="text-[10px] text-fg-subtle">{count} photos</span>
-          )}
-          {count > 1 && (
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => step(-1)}
-                className="inline-flex size-7 items-center justify-center rounded-full border border-border bg-surface text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
-                aria-label="Previous photo"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => step(1)}
-                className="inline-flex size-7 items-center justify-center rounded-full border border-border bg-surface text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
-                aria-label="Next photo"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
+        {loading ? (
+          <span className="inline-flex items-center gap-1 text-[10px] text-fg-subtle">
+            <Loader2 className="size-3 animate-spin" /> Loading dealer photos
+          </span>
+        ) : (
+          <span className="text-[10px] text-fg-subtle">
+            {count} photo{count === 1 ? "" : "s"}
+            {count > 0 ? " · tap to enlarge" : ""}
+          </span>
+        )}
+      </div>
+
+      {count === 0 && !loading ? (
+        <p className="text-[12px] text-fg-subtle">No dealer photos available</p>
+      ) : (
+        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+          {photos.slice(0, 12).map((src, i) => (
+            <button
+              key={`${src}-${i}`}
+              type="button"
+              onClick={() => onOpen(i)}
+              className="aspect-square overflow-hidden rounded-[var(--radius-md)] border border-border/60 bg-white transition-[transform,box-shadow,border-color] hover:z-10 hover:scale-[1.03] hover:border-accent/50 hover:shadow-md"
+            >
+              <img
+                src={src}
+                alt=""
+                loading="lazy"
+                className="h-full w-full object-cover object-center"
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  if (img.naturalWidth > 0 && img.naturalWidth < MIN_GALLERY_WIDTH) {
+                    rejectPhoto(src);
+                  }
+                }}
+                onError={() => rejectPhoto(src)}
+              />
+            </button>
+          ))}
         </div>
-      </div>
-
-      {count > 0 && (
-        <button
-          type="button"
-          onClick={() => onOpen(stripIndex)}
-          className="relative mb-2 aspect-[16/10] w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/60 bg-white"
-        >
-          <img
-            src={safe[stripIndex]}
-            alt=""
-            className="h-full w-full object-contain object-center"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              if (img.naturalWidth > 0 && img.naturalWidth < MIN_GALLERY_WIDTH) {
-                rejectPhoto(safe[stripIndex]!);
-              }
-            }}
-            onError={() => rejectPhoto(safe[stripIndex]!)}
-          />
-          {count > 1 && (
-            <>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  step(-1);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    step(-1);
-                  }
-                }}
-                className="absolute top-1/2 left-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/60"
-                aria-label="Previous"
-              >
-                <ChevronLeft className="size-5" />
-              </span>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  step(1);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    step(1);
-                  }
-                }}
-                className="absolute top-1/2 right-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/60"
-                aria-label="Next"
-              >
-                <ChevronRight className="size-5" />
-              </span>
-              <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white tabular-nums">
-                {stripIndex + 1} / {count}
-              </span>
-            </>
-          )}
-        </button>
       )}
-
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-        {safe.slice(0, 12).map((src, i) => (
-          <button
-            key={`${src}-${i}`}
-            type="button"
-            onClick={() => {
-              setStripIndex(i);
-              onOpen(i);
-            }}
-            className={cn(
-              "aspect-square overflow-hidden rounded-[var(--radius-md)] border bg-white transition-[transform,box-shadow,border-color] hover:z-10 hover:scale-[1.03] hover:shadow-md",
-              i === stripIndex ? "border-accent ring-1 ring-accent/30" : "border-border/60",
-            )}
-          >
-            <img
-              src={src}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover object-center"
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                if (img.naturalWidth > 0 && img.naturalWidth < MIN_GALLERY_WIDTH) {
-                  rejectPhoto(src);
-                }
-              }}
-              onError={() => rejectPhoto(src)}
-            />
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
