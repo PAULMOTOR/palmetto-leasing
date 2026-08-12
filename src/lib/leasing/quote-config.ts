@@ -13,6 +13,11 @@ function numEnv(key: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function numOr(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 /** Sync env/code defaults (no DB). */
 export function loadQuoteSettings(): QuoteSettings {
   return {
@@ -24,7 +29,7 @@ export function loadQuoteSettings(): QuoteSettings {
 }
 
 let cache: { at: number; value: QuoteSettings } | null = null;
-const CACHE_MS = 15_000;
+const CACHE_MS = 5_000;
 
 export function invalidateQuoteSettingsCache() {
   cache = null;
@@ -51,16 +56,17 @@ export async function loadQuoteSettingsAsync(): Promise<QuoteSettings> {
     if (rows[0]) {
       const r = rows[0];
       const value: QuoteSettings = {
-        baseInterestRate: Number(r.base_interest_rate) || envDefaults.baseInterestRate,
-        termMonths: Math.round(Number(r.term_months) || envDefaults.termMonths),
-        residualRate: Number(r.residual_rate) || envDefaults.residualRate,
-        downPaymentRate: Number(r.down_payment_rate) || envDefaults.downPaymentRate,
+        // Do NOT use `||` — 0 is valid; empty string → NaN → fallback
+        baseInterestRate: numOr(r.base_interest_rate, envDefaults.baseInterestRate),
+        termMonths: Math.round(numOr(r.term_months, envDefaults.termMonths)),
+        residualRate: numOr(r.residual_rate, envDefaults.residualRate),
+        downPaymentRate: numOr(r.down_payment_rate, envDefaults.downPaymentRate),
       };
       cache = { at: Date.now(), value };
       return value;
     }
-  } catch {
-    /* DB unavailable */
+  } catch (err) {
+    console.warn("[quote-config] load from DB failed, using env/defaults:", err);
   }
   cache = { at: Date.now(), value: envDefaults };
   return envDefaults;

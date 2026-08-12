@@ -14,7 +14,7 @@ import {
   DEFAULT_QUOTE_SETTINGS,
   type QuoteSettings,
 } from "@/lib/leasing/calc";
-import { loadQuoteSettingsAsync } from "@/lib/leasing/quote-config";
+import { getQuoteSettings } from "@/lib/leasing/settings";
 import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,8 @@ function InventoryPage() {
         const [list, st, qs] = await Promise.all([
           listVehicles({ data: { sort: "price_desc" } }),
           getInventoryStats(),
-          loadQuoteSettingsAsync().catch(() => DEFAULT_QUOTE_SETTINGS),
+          // Server fn — reads Neon admin quote_settings (not client-side defaults)
+          getQuoteSettings().catch(() => DEFAULT_QUOTE_SETTINGS),
         ]);
         if (cancelled) return;
         setVehicles(list);
@@ -161,14 +162,9 @@ function InventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
-      {/*
-        Floating overlay layer (not in document flow).
-        Slides over the inventory — never pushes the page up/down.
-      */}
       <div
         className={cn(
           "pointer-events-none fixed inset-x-0 top-[4.75rem] z-30 sm:top-[5.25rem]",
-          // Keep interactive hit-testing only when visible
         )}
         aria-hidden={!filtersVisible}
       >
@@ -249,7 +245,6 @@ function InventoryPage() {
         </div>
       </div>
 
-      {/* Constant top spacing so first row isn't trapped under the overlay at rest */}
       <div className="pt-[5.5rem] sm:pt-24">
         {loading ? (
           <div className="flex min-h-[40vh] items-center justify-center text-fg-muted">
