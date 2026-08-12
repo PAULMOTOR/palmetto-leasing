@@ -1,8 +1,14 @@
 /**
  * Pull image URLs from a dealer VDP / inventory listing page.
- * Used when expanding the in-card lease quote.
+ * Upgrades thumbs to full-res; blocks AutoTrader promo chrome.
  */
-import { isInteriorPhoto, isLikelyJunk, selectGalleryPhotos } from "./gallery";
+import {
+  isInteriorPhoto,
+  isLikelyJunk,
+  selectGalleryPhotos,
+  upgradeImageUrl,
+  normalizeGalleryUrls,
+} from "./gallery";
 
 export async function fetchListingGallery(
   listingUrl: string,
@@ -17,10 +23,11 @@ export async function fetchListingGallery(
     const res = await fetch(listingUrl, {
       headers: {
         "user-agent":
-          "PalmettoLeasingBot/1.0 (+https://palmettoleasing.com; gallery for lease quotes)",
-        accept: "text/html,*/*",
+          "Mozilla/5.0 (compatible; PalmettoLeasingBot/2.1; +https://palmettoleasing.com)",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "en-CA,en;q=0.9",
       },
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(14_000),
       redirect: "follow",
     });
     if (!res.ok) return { photos: [], interiors: 0, source: `http-${res.status}` };
@@ -46,16 +53,32 @@ function extractImageUrls(html: string, baseUrl: string): string[] {
   const urls: string[] = [];
   const push = (raw: string) => {
     try {
-      const abs = new URL(raw.trim().replace(/&/g, "&"), baseUrl).toString();
+      let abs = new URL(raw.trim().replace(/&/g, "&"), baseUrl).toString();
+      abs = upgradeImageUrl(abs);
       if (!/^https?:/i.test(abs)) return;
       if (isLikelyJunk(abs)) return;
-      // skip tiny trackers / icons by extension heuristics
       if (/\.svg(\?|$)/i.test(abs) && !/vehicle|car|photo/i.test(abs)) return;
+      // Skip non-photo extensions
+      if (/\.(gif|ico|css|js)(\?|$)/i.test(abs)) return;
       urls.push(abs);
     } catch {
       /* ignore */
     }
   };
+
+  // Prefer structured gallery JSON first (usually has full-size listing images)
+  for (const m of html.matchAll(
+    /"(?:image|url|src|photo|full|large|hiRes|highRes|original|imageUrl|photoUrl)"\s*:\s*"(https?:[^"]+\.(?:jpe?g|webp|png)[^"]*)"/gi,
+  )) {
+    push(m[1]!);
+  }
+
+  // Explicit listing-images CDN paths (AutoScout / AT)
+  for (const m of html.matchAll(
+    /https?:\/\/[^"'\\\s]+listing-images[^"'\\\s]+\.(?:jpe?g|webp|png)(?:\/\d+x\d+\.(?:jpe?g|webp|png))?/gi,
+  )) {
+    push(m[0]!);
+  }
 
   // og:image
   for (const m of html.matchAll(
@@ -67,21 +90,30 @@ function extractImageUrls(html: string, baseUrl: string): string[] {
     push(m[1]!);
   }
 
-  // img src / data-src / data-lazy
+  // img src / data-src / data-lazy / srcset — take largest srcset candidate only
   for (const m of html.matchAll(
-    /<(?:img|source)[^>]+(?:src|data-src|data-lazy|data-original|data-srcset)=["']([^"']+)["']/gi,
+    /<(?:img|source)[^>]+(?:srcset)=["']([^"']+)["']/gi,
   )) {
-    const val = m[1]!;
-    if (val.includes(",")) {
-      // srcset: take largest candidate
-      const parts = val.split(",").map((p) => p.trim().split(/\s+/)[0]!).filter(Boolean);
-      for (const p of parts) push(p);
-    } else {
-      push(val);
-    }
+    const candidates = m[1]!
+      .split(",")
+      .map((part) => {
+        const bits = part.trim().split(/\s+/);
+        const u = bits[0] || "";
+        const w = Number((bits[1] || "").replace(/w$/i, "")) || 0;
+        return { u, w };
+      })
+      .filter((c) => c.u);
+    candidates.sort((a, b) => b.w - a.w);
+    if (candidates[0]) push(candidates[0].u);
   }
 
-  // JSON-LD images
+  for (const m of html.matchAll(
+    /<(?:img|source)[^>]+(?:src|data-src|data-lazy|data-original)=["']([^"']+)["']/gi,
+  )) {
+    push(m[1]!);
+  }
+
+  // JSON-LD
   for (const m of html.matchAll(
     /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
   )) {
@@ -92,20 +124,15 @@ function extractImageUrls(html: string, baseUrl: string): string[] {
     }
   }
 
-  // Common gallery JSON blobs
-  for (const m of html.matchAll(
-    /"(?:image|url|src|photo|full|large|hiRes)"\s*:\s*"(https?:[^"]+\.(?:jpe?g|webp|png)[^"]*)"/gi,
-  )) {
-    push(m[1]!);
-  }
-
-  return [...new Set(urls)];
+  return normalizeGalleryUrls(urls);
 }
 
 function walkImages(node: unknown, push: (u: string) => void, depth = 0): void {
   if (depth > 10 || node == null) return;
   if (typeof node === "string") {
-    if (/\.(jpe?g|webp|png)/i.test(node) || /image|photo|media/i.test(node)) push(node);
+    if (/\.(jpe?g|webp|png)/i.test(node) || /image|photo|media|listing-images/i.test(node)) {
+      push(node);
+    }
     return;
   }
   if (Array.isArray(node)) {

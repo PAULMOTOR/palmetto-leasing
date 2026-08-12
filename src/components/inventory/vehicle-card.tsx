@@ -16,6 +16,8 @@ import { getVehicleGallery, submitLeaseQuote } from "@/lib/leasing/queries";
 import {
   buildVehicleGalleryPool,
   selectGalleryPhotos,
+  upgradeImageUrl,
+  isLikelyJunk,
 } from "@/lib/leasing/gallery";
 import { formatCad, formatCadExact, formatNumber, cn } from "@/lib/utils";
 
@@ -229,9 +231,15 @@ function InCardQuote({
     selectGalleryPhotos(
       buildVehicleGalleryPool({
         thumbnail_url: "",
-        photos: (vehicle.photos || []).filter(
-          (p) => !isEphemeral(p) && !p.startsWith("data:") && !p.includes("/vehicles/"),
-        ),
+        photos: (vehicle.photos || [])
+          .map((p) => upgradeImageUrl(p))
+          .filter(
+            (p) =>
+              !isEphemeral(p) &&
+              !p.startsWith("data:") &&
+              !p.includes("/vehicles/") &&
+              !isLikelyJunk(p),
+          ),
         make: vehicle.make,
         model: vehicle.model,
       }),
@@ -281,12 +289,15 @@ function InCardQuote({
         if (cancelled) return;
         if (res.photos?.length) {
           setGallery(
-            res.photos.filter(
-              (p) =>
-                !isEphemeral(p) &&
-                !p.startsWith("data:") &&
-                !p.includes("/vehicles/"),
-            ),
+            res.photos
+              .map((p) => upgradeImageUrl(p))
+              .filter(
+                (p) =>
+                  !isEphemeral(p) &&
+                  !p.startsWith("data:") &&
+                  !p.includes("/vehicles/") &&
+                  !isLikelyJunk(p),
+              ),
           );
         }
       })
