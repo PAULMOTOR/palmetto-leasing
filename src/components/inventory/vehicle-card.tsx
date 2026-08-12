@@ -105,7 +105,7 @@ export function VehicleCard({
       className={cn(
         "stagger-item group flex flex-col overflow-hidden rounded-[var(--radius-xl)] border border-border/80 bg-surface shadow-[var(--shadow-card)] transition-[transform,box-shadow,border-color] duration-[var(--motion-fast)] ease-[var(--ease-smooth-out)]",
         expanded
-          ? "z-20 col-span-full border-accent/40 shadow-[var(--shadow-card-hover)]"
+          ? "z-20 col-span-full min-w-0 border-accent/40 shadow-[var(--shadow-card-hover)]"
           : "hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]",
       )}
       style={{ animationDelay: `${delay}ms` }}
@@ -114,7 +114,7 @@ export function VehicleCard({
         className={cn(
           "grid",
           expanded
-            ? "md:grid-cols-[minmax(240px,38%)_1fr] lg:grid-cols-[minmax(280px,34%)_1fr]"
+            ? "min-w-0 md:grid-cols-[minmax(0,36%)_minmax(0,1fr)] lg:grid-cols-[minmax(0,34%)_minmax(0,1fr)]"
             : "grid-cols-1",
         )}
       >
@@ -124,7 +124,7 @@ export function VehicleCard({
             className={cn(
               "relative w-full overflow-hidden bg-white",
               expanded
-                ? "aspect-square md:aspect-auto md:min-h-[320px] md:flex-1"
+                ? "aspect-[5/4] max-h-[42vh] md:aspect-auto md:max-h-none md:min-h-[280px] md:flex-1"
                 : "aspect-square",
             )}
           >
@@ -136,7 +136,7 @@ export function VehicleCard({
               {dealerLabel}
             </p>
 
-            <h3 className="text-[13px] leading-snug font-normal tracking-wide text-fg-muted sm:text-sm">
+            <h3 className="max-w-full px-1 text-[13px] leading-snug font-normal tracking-wide break-words text-fg-muted sm:text-sm">
               {shortTitle}
               {vehicle.trim ? ` ${vehicle.trim}` : ""}
             </h3>
@@ -173,7 +173,7 @@ export function VehicleCard({
         </div>
 
         {expanded && (
-          <div className="border-t border-border bg-surface-2/40 md:border-t-0 md:border-l">
+          <div className="min-w-0 border-t border-border bg-surface-2/40 md:border-t-0 md:border-l">
             <InCardQuote vehicle={vehicle} baseSettings={settings} onClose={onToggleLease} />
           </div>
         )}
@@ -380,7 +380,7 @@ function InCardQuote({
   return (
     <div
       id={`quote-panel-${vehicle.id}`}
-      className="flex h-full max-h-[min(92vh,920px)] flex-col overflow-y-auto p-4 sm:p-5 lg:p-6"
+      className="flex h-full max-h-[min(92vh,920px)] w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto p-3 sm:p-5 lg:p-6"
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
@@ -435,7 +435,7 @@ function InCardQuote({
             step={1}
             value={Math.round(downRate * 100)}
             onChange={(e) => setDownRate(Number(e.target.value) / 100)}
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-[var(--color-fg,#111)] [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fg"
+            className="box-border h-1.5 w-full max-w-full cursor-pointer appearance-none rounded-full bg-border accent-[var(--color-fg,#111)] [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fg"
             aria-label="Down payment percent"
           />
           <div className="mt-1 flex justify-between text-[10px] text-fg-subtle">
@@ -451,7 +451,7 @@ function InCardQuote({
               $300k+ vehicles require at least 20% down
             </p>
           ) : null}
-          <p className="mt-1.5 text-[11px] tabular-nums text-fg-muted">
+          <p className="mt-1.5 text-[11px] leading-relaxed tabular-nums text-fg-muted">
             Down payment{" "}
             <span className="font-medium text-fg">{formatCad(quote.downPaymentCents)}</span>
             <span className="mx-1 text-fg-subtle">·</span>
@@ -463,21 +463,34 @@ function InCardQuote({
               ({(quote.residualRate * 100).toFixed(0)}%)
             </span>
           </p>
+          {quote.residualReducedByDown ? (
+            <p className="mt-1 text-[10px] leading-snug text-fg-subtle">
+              High cash down reduced residual from{" "}
+              {(quote.scheduledResidualRate * 100).toFixed(0)}% so financed amount stays
+              non-negative
+            </p>
+          ) : null}
         </div>
       </div>
 
-      <dl className="mb-4 grid grid-cols-2 gap-x-3 gap-y-1.5 border-b border-border/70 pb-3 text-[12px] sm:grid-cols-3">
-        <div className="col-span-2 flex justify-between gap-2 sm:col-span-1 sm:flex-col sm:justify-start">
-          <dt className="text-fg-muted">Price</dt>
-          <dd className="tabular-nums text-fg">{formatCad(quote.priceCents)}</dd>
+      <dl className="mb-4 grid grid-cols-1 gap-y-2 border-b border-border/70 pb-3 text-[12px] sm:grid-cols-3 sm:gap-x-3 sm:gap-y-1.5">
+        <div className="flex items-baseline justify-between gap-3 sm:flex-col sm:items-stretch sm:justify-start sm:gap-0.5">
+          <dt className="shrink-0 text-fg-muted">Price</dt>
+          <dd className="min-w-0 text-right tabular-nums text-fg sm:text-left">
+            {formatCad(quote.priceCents)}
+          </dd>
         </div>
-        <div className="flex justify-between gap-2 sm:flex-col sm:justify-start">
-          <dt className="text-fg-muted">Financed amount</dt>
-          <dd className="tabular-nums text-fg">{formatCad(quote.capCostCents)}</dd>
+        <div className="flex items-baseline justify-between gap-3 sm:flex-col sm:items-stretch sm:justify-start sm:gap-0.5">
+          <dt className="shrink-0 text-fg-muted">Financed amount</dt>
+          <dd className="min-w-0 text-right tabular-nums text-fg sm:text-left">
+            {formatCad(quote.capCostCents)}
+          </dd>
         </div>
-        <div className="flex justify-between gap-2 sm:flex-col sm:justify-start">
-          <dt className="text-fg-muted">Finance / mo</dt>
-          <dd className="tabular-nums text-fg">{formatCadExact(quote.financeChargeCents)}</dd>
+        <div className="flex items-baseline justify-between gap-3 sm:flex-col sm:items-stretch sm:justify-start sm:gap-0.5">
+          <dt className="shrink-0 text-fg-muted">Finance / mo</dt>
+          <dd className="min-w-0 text-right tabular-nums text-fg sm:text-left">
+            {formatCadExact(quote.financeChargeCents)}
+          </dd>
         </div>
       </dl>
 
@@ -485,11 +498,11 @@ function InCardQuote({
         <>
           <div className="mb-3">
             <p className="mb-2 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Vehicle</p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:grid-cols-3 sm:text-[12px]">
+            <div className="grid grid-cols-1 gap-y-1 text-[11px] xs:grid-cols-2 sm:grid-cols-3 sm:gap-x-3 sm:gap-y-1.5 sm:text-[12px]">
               {specRows.map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-2 border-b border-border/40 py-1">
-                  <span className="text-fg-muted">{k}</span>
-                  <span className="truncate text-right font-medium text-fg">{v}</span>
+                <div key={k} className="flex min-w-0 justify-between gap-2 border-b border-border/40 py-1">
+                  <span className="shrink-0 text-fg-muted">{k}</span>
+                  <span className="min-w-0 truncate text-right font-medium text-fg">{v}</span>
                 </div>
               ))}
               <div className="flex justify-between gap-2 border-b border-border/40 py-1">
@@ -623,7 +636,7 @@ function Chip({
       type="button"
       onClick={onClick}
       className={cn(
-        "h-8 rounded-full border px-3 text-[12px] font-medium tabular-nums transition-[background-color,color,border-color,transform] duration-[var(--motion-quick)] active:scale-[0.96]",
+        "h-8 shrink-0 rounded-full border px-2.5 text-[11px] font-medium tabular-nums transition-[background-color,color,border-color,transform] duration-[var(--motion-quick)] active:scale-[0.96] sm:px-3 sm:text-[12px]",
         active
           ? "border-fg bg-fg text-primary-fg"
           : "border-border bg-surface text-fg-muted hover:border-border-strong hover:text-fg",

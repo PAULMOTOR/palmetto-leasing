@@ -96,7 +96,12 @@ export type LeaseQuote = {
   monthlyPaymentCents: number;
   termMonths: number;
   downRate: number;
+  /** Effective residual rate after any high-down adjustment. */
   residualRate: number;
+  /** Program residual before high-down offset. */
+  scheduledResidualRate: number;
+  /** True when residual was reduced because down > scheduled depreciation. */
+  residualReducedByDown: boolean;
   baseInterestRate: number;
   moneyFactor: number;
   highValueForcedDown: boolean;
@@ -105,7 +110,13 @@ export type LeaseQuote = {
 
 /**
  * monthly = depreciation/term + (cap + residual) * moneyFactor
- * Residual by term; down clamped by price tier (min 20% ≥$300k, min 30% ≥$1M, max 70%).
+ *
+ * Residual starts from term schedule (25→63% …).
+ * If cash down exceeds scheduled depreciation (price − scheduled residual),
+ * residual falls 1:1 with the excess so financed amount never goes below residual
+ * (depreciation floors at $0 — no negative cap-cost math).
+ *
+ * Down floors by price tier; max down 70%.
  */
 export function calculateLease(
   priceCents: number,
@@ -113,15 +124,26 @@ export function calculateLease(
 ): LeaseQuote {
   const base: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
   const termMonths = base.termMonths;
-  const residualRate = residualForTerm(termMonths);
+  const scheduledResidualRate = residualForTerm(termMonths);
   const minDownRate = minDownRateForPrice(priceCents);
   const highValueForcedDown = isHighValueVehicle(priceCents);
   const downPaymentRate = effectiveDownRate(priceCents, base.downPaymentRate);
 
   const price = Math.max(0, Math.round(priceCents));
   const downPaymentCents = Math.round(price * downPaymentRate);
-  const residualCents = Math.round(price * residualRate);
-  const capCostCents = price - downPaymentCents;
+  const capCostCents = Math.max(0, price - downPaymentCents);
+
+  const scheduledResidualCents = Math.round(price * scheduledResidualRate);
+  // Max down that still preserves full scheduled residual = scheduled depreciation
+  // If user puts more down, residual drops dollar-for-dollar with the excess.
+  let residualCents = scheduledResidualCents;
+  let residualReducedByDown = false;
+  if (capCostCents < scheduledResidualCents) {
+    residualCents = capCostCents; // residual = price − down; depreciation → 0
+    residualReducedByDown = true;
+  }
+
+  const residualRate = price > 0 ? residualCents / price : scheduledResidualRate;
   const depreciationCents = Math.max(0, capCostCents - residualCents);
   const moneyFactor = base.baseInterestRate / 2400;
   const financeChargeCents = Math.round((capCostCents + residualCents) * moneyFactor);
@@ -139,6 +161,8 @@ export function calculateLease(
     termMonths,
     downRate: downPaymentRate,
     residualRate,
+    scheduledResidualRate,
+    residualReducedByDown,
     baseInterestRate: base.baseInterestRate,
     moneyFactor,
     highValueForcedDown,
