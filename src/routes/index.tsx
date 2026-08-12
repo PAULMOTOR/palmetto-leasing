@@ -43,6 +43,8 @@ function InventoryPage() {
   const [filterPinned, setFilterPinned] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastY = useRef(0);
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barHeight, setBarHeight] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +70,21 @@ function InventoryPage() {
     };
   }, []);
 
+  // Measure bar for smooth slide (macOS dock–style)
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const measure = () => {
+      // Measure full open height via scrollHeight of inner content
+      const h = el.scrollHeight;
+      if (h > 0) setBarHeight(h);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading, hasFiltersKey(year, make, model, monthly)]);
+
   useEffect(() => {
     lastY.current = window.scrollY;
 
@@ -80,7 +97,6 @@ function InventoryPage() {
 
     const scheduleHide = () => {
       clearIdle();
-      // Never auto-hide at the top of the page
       if (atTop() || filterPinned) {
         setFiltersVisible(true);
         return;
@@ -102,7 +118,6 @@ function InventoryPage() {
       lastY.current = y;
     };
 
-    // Landing at top → always show
     if (atTop()) {
       setFiltersVisible(true);
     } else {
@@ -163,69 +178,86 @@ function InventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
+      {/*
+        Sticky slot keeps layout; inner bar slides like the macOS dock
+        (translateY + soft fade, springy ease).
+      */}
       <div
-        className={cn(
-          "sticky top-[4.75rem] z-30 -mx-4 overflow-hidden border-b bg-[var(--color-canvas,#f3f3f3)]/95 backdrop-blur-md transition-[max-height,opacity,padding,border-color] duration-300 ease-out sm:top-[5.25rem] sm:-mx-6",
-          filtersVisible
-            ? "max-h-40 border-border/70 px-4 py-4 opacity-100 sm:px-6"
-            : "max-h-0 border-transparent px-4 py-0 opacity-0 pointer-events-none sm:px-6",
-        )}
-        onMouseEnter={() => setFilterPinned(true)}
-        onMouseLeave={() => setFilterPinned(false)}
-        onFocusCapture={() => setFilterPinned(true)}
-        onBlurCapture={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-            setFilterPinned(false);
-          }
+        className="sticky top-[4.75rem] z-30 -mx-4 sm:top-[5.25rem] sm:-mx-6"
+        style={{
+          height: filtersVisible ? barHeight || undefined : 0,
+          transition: "height 420ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        <p className="mb-2.5 text-[13px] text-fg-muted">
-          {loading
-            ? "Loading…"
-            : `${filtered.length} Available Vehicle${filtered.length === 1 ? "" : "s"}`}
-          {hasFilters && stats && filtered.length !== stats.total ? (
-            <span className="text-fg-subtle"> · of {stats.total}</span>
-          ) : null}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/50 pb-3">
-          <FilterSelect
-            label="Year"
-            value={year}
-            onChange={setYear}
-            options={years.map((y) => ({ value: String(y), label: String(y) }))}
-          />
-          <FilterSelect
-            label="Make"
-            value={make}
-            onChange={(v) => {
-              setMake(v);
-              setModel("");
-            }}
-            options={makes.map((m) => ({ value: m, label: m }))}
-          />
-          <FilterSelect
-            label="Model"
-            value={model}
-            onChange={setModel}
-            options={models.map((m) => ({ value: m, label: m }))}
-          />
-          <FilterSelect
-            label="Monthly Pmnt"
-            value={monthly}
-            onChange={(v) => setMonthly(v as MonthlyRangeId | "")}
-            options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
-          />
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg"
-            >
-              <X className="size-3.5" />
-              Clear
-            </button>
+        <div
+          ref={barRef}
+          className={cn(
+            "border-b bg-[var(--color-canvas,#f3f3f3)]/95 px-4 py-4 backdrop-blur-md will-change-transform sm:px-6",
+            filtersVisible ? "border-border/70" : "border-transparent pointer-events-none",
           )}
+          style={{
+            transform: filtersVisible ? "translateY(0)" : "translateY(calc(-100% - 8px))",
+            opacity: filtersVisible ? 1 : 0,
+            transition:
+              "transform 480ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms cubic-bezier(0.4, 0, 0.2, 1)",
+          }}
+          onMouseEnter={() => setFilterPinned(true)}
+          onMouseLeave={() => setFilterPinned(false)}
+          onFocusCapture={() => setFilterPinned(true)}
+          onBlurCapture={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setFilterPinned(false);
+            }
+          }}
+        >
+          <p className="mb-2.5 text-[13px] text-fg-muted">
+            {loading
+              ? "Loading…"
+              : `${filtered.length} Available Vehicle${filtered.length === 1 ? "" : "s"}`}
+            {hasFilters && stats && filtered.length !== stats.total ? (
+              <span className="text-fg-subtle"> · of {stats.total}</span>
+            ) : null}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/50 pb-3">
+            <FilterSelect
+              label="Year"
+              value={year}
+              onChange={setYear}
+              options={years.map((y) => ({ value: String(y), label: String(y) }))}
+            />
+            <FilterSelect
+              label="Make"
+              value={make}
+              onChange={(v) => {
+                setMake(v);
+                setModel("");
+              }}
+              options={makes.map((m) => ({ value: m, label: m }))}
+            />
+            <FilterSelect
+              label="Model"
+              value={model}
+              onChange={setModel}
+              options={models.map((m) => ({ value: m, label: m }))}
+            />
+            <FilterSelect
+              label="Monthly Pmnt"
+              value={monthly}
+              onChange={(v) => setMonthly(v as MonthlyRangeId | "")}
+              options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
+            />
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg"
+              >
+                <X className="size-3.5" />
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -264,6 +296,10 @@ function InventoryPage() {
       </div>
     </div>
   );
+}
+
+function hasFiltersKey(year: string, make: string, model: string, monthly: string) {
+  return `${year}|${make}|${model}|${monthly}`;
 }
 
 function FilterSelect({
