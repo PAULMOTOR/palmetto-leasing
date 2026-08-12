@@ -43,8 +43,6 @@ function InventoryPage() {
   const [filterPinned, setFilterPinned] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastY = useRef(0);
-  const barRef = useRef<HTMLDivElement>(null);
-  const [barHeight, setBarHeight] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,21 +67,6 @@ function InventoryPage() {
       cancelled = true;
     };
   }, []);
-
-  // Measure bar for smooth slide (macOS dock–style)
-  useEffect(() => {
-    const el = barRef.current;
-    if (!el) return;
-    const measure = () => {
-      // Measure full open height via scrollHeight of inner content
-      const h = el.scrollHeight;
-      if (h > 0) setBarHeight(h);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [loading, hasFiltersKey(year, make, model, monthly)]);
 
   useEffect(() => {
     lastY.current = window.scrollY;
@@ -179,89 +162,95 @@ function InventoryPage() {
   return (
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
       {/*
-        Sticky slot keeps layout; inner bar slides like the macOS dock
-        (translateY + soft fade, springy ease).
+        Floating overlay layer (not in document flow).
+        Slides over the inventory — never pushes the page up/down.
       */}
       <div
-        className="sticky top-[4.75rem] z-30 -mx-4 sm:top-[5.25rem] sm:-mx-6"
-        style={{
-          height: filtersVisible ? barHeight || undefined : 0,
-          transition: "height 420ms cubic-bezier(0.22, 1, 0.36, 1)",
-        }}
+        className={cn(
+          "pointer-events-none fixed inset-x-0 top-[4.75rem] z-30 sm:top-[5.25rem]",
+          // Keep interactive hit-testing only when visible
+        )}
+        aria-hidden={!filtersVisible}
       >
-        <div
-          ref={barRef}
-          className={cn(
-            "border-b bg-[var(--color-canvas,#f3f3f3)]/95 px-4 py-4 backdrop-blur-md will-change-transform sm:px-6",
-            filtersVisible ? "border-border/70" : "border-transparent pointer-events-none",
-          )}
-          style={{
-            transform: filtersVisible ? "translateY(0)" : "translateY(calc(-100% - 8px))",
-            opacity: filtersVisible ? 1 : 0,
-            transition:
-              "transform 480ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms cubic-bezier(0.4, 0, 0.2, 1)",
-          }}
-          onMouseEnter={() => setFilterPinned(true)}
-          onMouseLeave={() => setFilterPinned(false)}
-          onFocusCapture={() => setFilterPinned(true)}
-          onBlurCapture={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-              setFilterPinned(false);
-            }
-          }}
-        >
-          <p className="mb-2.5 text-[13px] text-fg-muted">
-            {loading
-              ? "Loading…"
-              : `${filtered.length} Available Vehicle${filtered.length === 1 ? "" : "s"}`}
-            {hasFilters && stats && filtered.length !== stats.total ? (
-              <span className="text-fg-subtle"> · of {stats.total}</span>
-            ) : null}
-          </p>
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/50 pb-3">
-            <FilterSelect
-              label="Year"
-              value={year}
-              onChange={setYear}
-              options={years.map((y) => ({ value: String(y), label: String(y) }))}
-            />
-            <FilterSelect
-              label="Make"
-              value={make}
-              onChange={(v) => {
-                setMake(v);
-                setModel("");
-              }}
-              options={makes.map((m) => ({ value: m, label: m }))}
-            />
-            <FilterSelect
-              label="Model"
-              value={model}
-              onChange={setModel}
-              options={models.map((m) => ({ value: m, label: m }))}
-            />
-            <FilterSelect
-              label="Monthly Pmnt"
-              value={monthly}
-              onChange={(v) => setMonthly(v as MonthlyRangeId | "")}
-              options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
-            />
-            {hasFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg"
-              >
-                <X className="size-3.5" />
-                Clear
-              </button>
+        <div className="pointer-events-none mx-auto max-w-[1280px] px-4 sm:px-6">
+          <div
+            className={cn(
+              "pointer-events-auto origin-top border-b bg-[var(--color-canvas,#f3f3f3)]/95 px-4 py-4 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] backdrop-blur-md will-change-transform sm:px-6",
+              filtersVisible
+                ? "border-border/70"
+                : "border-transparent pointer-events-none",
             )}
+            style={{
+              transform: filtersVisible
+                ? "translate3d(0, 0, 0)"
+                : "translate3d(0, calc(-100% - 12px), 0)",
+              opacity: filtersVisible ? 1 : 0,
+              transition:
+                "transform 480ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+            onMouseEnter={() => setFilterPinned(true)}
+            onMouseLeave={() => setFilterPinned(false)}
+            onFocusCapture={() => setFilterPinned(true)}
+            onBlurCapture={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setFilterPinned(false);
+              }
+            }}
+          >
+            <p className="mb-2.5 text-[13px] text-fg-muted">
+              {loading
+                ? "Loading…"
+                : `${filtered.length} Available Vehicle${filtered.length === 1 ? "" : "s"}`}
+              {hasFilters && stats && filtered.length !== stats.total ? (
+                <span className="text-fg-subtle"> · of {stats.total}</span>
+              ) : null}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/50 pb-3">
+              <FilterSelect
+                label="Year"
+                value={year}
+                onChange={setYear}
+                options={years.map((y) => ({ value: String(y), label: String(y) }))}
+              />
+              <FilterSelect
+                label="Make"
+                value={make}
+                onChange={(v) => {
+                  setMake(v);
+                  setModel("");
+                }}
+                options={makes.map((m) => ({ value: m, label: m }))}
+              />
+              <FilterSelect
+                label="Model"
+                value={model}
+                onChange={setModel}
+                options={models.map((m) => ({ value: m, label: m }))}
+              />
+              <FilterSelect
+                label="Monthly Pmnt"
+                value={monthly}
+                onChange={(v) => setMonthly(v as MonthlyRangeId | "")}
+                options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
+              />
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg"
+                >
+                  <X className="size-3.5" />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="pt-5 sm:pt-6">
+      {/* Constant top spacing so first row isn't trapped under the overlay at rest */}
+      <div className="pt-[5.5rem] sm:pt-24">
         {loading ? (
           <div className="flex min-h-[40vh] items-center justify-center text-fg-muted">
             <Loader2 className="size-6 animate-spin" />
@@ -296,10 +285,6 @@ function InventoryPage() {
       </div>
     </div>
   );
-}
-
-function hasFiltersKey(year: string, make: string, model: string, monthly: string) {
-  return `${year}|${make}|${model}|${monthly}`;
 }
 
 function FilterSelect({
