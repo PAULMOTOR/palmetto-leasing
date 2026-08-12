@@ -30,7 +30,6 @@ function isEphemeral(url: string) {
   return /imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(url || "");
 }
 
-/** Resolve a working tile image; skip expired Imagine temp URLs. */
 function buildThumbCandidates(vehicle: VehicleCardType): string[] {
   const raw = [
     vehicle.thumbnail_url,
@@ -46,33 +45,36 @@ function buildThumbCandidates(vehicle: VehicleCardType): string[] {
   return out;
 }
 
+/**
+ * Media is a square stage. Image is locked to geometric center so the car's
+ * longitudinal axis (hood badge) lines up with the page/logo centerline
+ * when the card is the middle column.
+ */
 function TileThumb({ vehicle, title }: { vehicle: VehicleCardType; title: string }) {
   const candidates = useMemo(() => buildThumbCandidates(vehicle), [vehicle]);
   const [idx, setIdx] = useState(0);
   const src = candidates[Math.min(idx, candidates.length - 1)] || PLACEHOLDER;
-  // Studio tiles are 1:1 square data URIs — contain + center shows full car (no crop).
-  // Dealer photos may be landscape; contain keeps them fully visible on white.
-  const isStudio = src.startsWith("data:image/") || src.includes("/vehicles/");
 
   return (
-    <img
-      key={src}
-      src={src}
-      alt=""
-      role="presentation"
-      loading="lazy"
-      decoding="async"
-      onError={() => {
-        setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
-      }}
-      className={cn(
-        "absolute inset-0 h-full w-full bg-white transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]",
-        // Never object-cover studio thumbs — that was truncating roof/bumper
-        isStudio ? "object-contain object-center" : "object-contain object-center",
-      )}
-      style={{ backgroundColor: "#FFFFFF" }}
-      title={title}
-    />
+    <div className="absolute inset-0 flex items-center justify-center bg-white">
+      <img
+        key={src}
+        src={src}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        decoding="async"
+        onError={() => {
+          setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
+        }}
+        className="h-full w-full max-h-full max-w-full bg-white object-contain object-center transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]"
+        style={{
+          backgroundColor: "#FFFFFF",
+          objectPosition: "50% 50%",
+        }}
+        title={title}
+      />
+    </div>
   );
 }
 
@@ -118,7 +120,7 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
-          {/* Square media matches Imagine 1:1 — no CSS crop of roof/bumper */}
+          {/* Square stage — car always geometrically centered in the tile */}
           <div
             className={cn(
               "relative w-full overflow-hidden bg-white",
@@ -467,7 +469,7 @@ function InCardQuote({
                     src={src}
                     alt=""
                     loading="lazy"
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover object-center"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.visibility = "hidden";
                     }}
