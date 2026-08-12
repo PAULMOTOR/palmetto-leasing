@@ -1,6 +1,7 @@
 /**
- * Locked Palmetto studio tile template — admin-defined product photography contract.
+ * Locked Palmetto studio tile template — product photography contract.
  * Only car identity (year/make/model/color from references) may change.
+ * Target: high bird's-eye front-half crop, large fill, soft shadow, photoreal.
  */
 
 export type ThumbSubject = {
@@ -14,7 +15,7 @@ export type ThumbSubject = {
 
 /**
  * Create a clean, high-end product photography thumbnail of the exact car
- * in the reference images. Style requirements must be followed exactly.
+ * in the reference images. Composition is locked for inventory-grid consistency.
  */
 export function buildThumbEditPrompt(car: ThumbSubject): string {
   const label = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
@@ -23,18 +24,30 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     : `Match the exact paint color, body lines, badges, and wheels from the reference images.`;
 
   return (
-    `Create a clean, high-end product photography thumbnail of the exact car shown in the reference images ` +
-    `(this real ${label} only). ${colorBit} ` +
-    `Style requirements (must be followed exactly): ` +
-    `Pure seamless white background (#FFFFFF), no gradients, no floor, no shadows cast on the background. ` +
-    `Soft-box studio lighting only — even, diffused, soft reflections on the paint, no harsh specular highlights or dramatic lighting. ` +
-    `Camera angle: strict overhead top-down view looking straight down at the front half of the car. ` +
-    `Framing: only the front 55-65% of the car is visible (front bumper to roughly the middle of the roof / just past the windshield). Crop out the rear half completely. ` +
-    `Orientation: front of the car pointing toward the top of the frame, perfectly centered horizontally. ` +
-    `The car must sit alone in the frame with generous white space around it. ` +
-    `Photorealistic, ultra-clean dealership inventory style, matching the exact body lines, badges, wheels, and paint color from the references. ` +
-    `No text, no logos, no watermarks, no people, no extra objects, no environment. ` +
-    `Output a single, tightly composed, professional thumbnail-ready image.`
+    `Professional luxury-car inventory thumbnail of the exact vehicle in the reference photos ` +
+    `(this real ${label} only — faithful to its body lines, badges, wheels, and paint). ${colorBit} ` +
+    // —— Camera / perspective (THE key consistency lock) ——
+    `CAMERA (mandatory, identical every time): high bird's-eye product shot from above and slightly in front of the car. ` +
+    `The lens looks almost straight down, but pitched just enough that the hood and roof dominate the frame and the grille is secondary. ` +
+    `Think: photographer on a tall ladder above the front bumper, not eye-level front-on. ` +
+    `Do NOT use a low front 3/4 hero angle. Do NOT use a pure vertical nadir (no flat 2D roof plan). ` +
+    `You must clearly see: top of the hood, top of the fenders, windshield top edge, and the roof/A-pillars — more "top of car" than "front of car". ` +
+    // —— Crop / framing ——
+    `FRAMING (mandatory): front half of the car only — front bumper through roughly mid-roof / just past the base of the windshield. ` +
+    `Crop the rear half completely. Nose points straight toward the TOP of the frame, body axis perfectly vertical, car centered left-right. ` +
+    `SCALE: the car must fill the frame tightly. Target about 75–85% of the image height and 70–80% of the width. ` +
+    `Keep only a thin even white margin around the car (roughly 6–12% on each side). ` +
+    `Do NOT float a small car in a huge empty white field. Do NOT leave large empty white bands above the bumper or beside the mirrors. ` +
+    // —— Background / shadow ——
+    `BACKGROUND: pure seamless #FFFFFF studio white — no gradient, no floor line, no props, no environment. ` +
+    `SHADOW: one soft, realistic contact / drop shadow under the car body only — subtle, diffused, light grey, never harsh or long. ` +
+    `The shadow must sit on the white plane so the car feels grounded, not floating and not cut-out. ` +
+    // —— Light / realism ——
+    `LIGHTING: soft-box studio lighting, even and diffused, gentle reflections on paint and glass. ` +
+    `No hard specular blowouts, no dramatic cinematic rims, no HDR glow. ` +
+    `RENDER: photorealistic high-end dealership photography — real metal, real glass, real rubber. ` +
+    `Not plastic, not toy-like, not over-smoothed CGI, not illustration. ` +
+    `No text, logos, watermarks, people, or extra objects. Single image, ready for a white inventory tile.`
   );
 }
 
@@ -43,19 +56,22 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
   const label = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
   const color = car.exteriorColor?.trim() || "accurate factory color from the model";
   return (
-    `Create a clean, high-end product photography thumbnail of a ${label} in ${color}. ` +
-    `Pure seamless white background (#FFFFFF), no gradients, no floor, no shadows on the background. ` +
-    `Soft-box studio lighting only — even, diffused. ` +
-    `Strict overhead top-down view of the front half of the car only (front 55-65%, bumper to mid-roof / past windshield); crop out the rear. ` +
-    `Front of the car pointing toward the top of the frame, perfectly centered, generous white space. ` +
-    `Photorealistic dealership inventory style. No text, logos, people, or environment.`
+    `Professional luxury-car inventory thumbnail of a ${label} in ${color}. ` +
+    `High bird's-eye product shot from above and slightly in front: hood and roof dominate, grille is secondary — not a low front hero angle, not a flat 2D plan view. ` +
+    `Front half only (bumper to mid-roof / past windshield base); rear cropped out. Nose points straight UP, body centered. ` +
+    `Car fills 75–85% of frame height with only thin even white margins — no large empty white negative space. ` +
+    `Pure #FFFFFF background. Soft realistic contact/drop shadow under the car. Soft-box lighting. ` +
+    `Photoreal dealership photography (not toy, not CGI plastic). No text, logos, people, or environment.`
   );
 }
 
 /** When a style-lock reference is also attached. */
 export function buildStyleLockAddendum(): string {
   return (
-    ` If a composition/style reference is provided, match its overhead front-half crop, nose-up orientation, ` +
-    `pure #FFFFFF background, soft-box lighting, and white margins exactly — only the car identity and color come from the subject reference photos.`
+    ` CRITICAL: match the composition style reference EXACTLY for camera height, pitch, crop, scale, and shadow. ` +
+    `Copy its high bird's-eye front-half framing (more hood/roof, less pure front fascia), ` +
+    `its tight fill of the square (large car, thin white margins), its soft under-car drop shadow, ` +
+    `and its pure #FFFFFF background. Only the specific car identity, body shape, and paint color come from the subject reference photos — ` +
+    `never copy the subject photo's camera angle or empty white space.`
   );
 }
