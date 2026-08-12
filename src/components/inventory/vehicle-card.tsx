@@ -50,6 +50,9 @@ function TileThumb({ vehicle, title }: { vehicle: VehicleCardType; title: string
   const candidates = useMemo(() => buildThumbCandidates(vehicle), [vehicle]);
   const [idx, setIdx] = useState(0);
   const src = candidates[Math.min(idx, candidates.length - 1)] || PLACEHOLDER;
+  // Studio tiles are 1:1 square data URIs — contain + center shows full car (no crop).
+  // Dealer photos may be landscape; contain keeps them fully visible on white.
+  const isStudio = src.startsWith("data:image/") || src.includes("/vehicles/");
 
   return (
     <img
@@ -62,7 +65,11 @@ function TileThumb({ vehicle, title }: { vehicle: VehicleCardType; title: string
       onError={() => {
         setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
       }}
-      className="absolute inset-0 h-full w-full origin-top bg-white object-cover object-[center_62%] transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.02]"
+      className={cn(
+        "absolute inset-0 h-full w-full bg-white transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]",
+        // Never object-cover studio thumbs — that was truncating roof/bumper
+        isStudio ? "object-contain object-center" : "object-contain object-center",
+      )}
       style={{ backgroundColor: "#FFFFFF" }}
       title={title}
     />
@@ -111,12 +118,13 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
+          {/* Square media matches Imagine 1:1 — no CSS crop of roof/bumper */}
           <div
             className={cn(
               "relative w-full overflow-hidden bg-white",
               expanded
-                ? "aspect-[3/4] md:aspect-auto md:min-h-[340px] md:flex-1"
-                : "aspect-[3/4]",
+                ? "aspect-square md:aspect-auto md:min-h-[320px] md:flex-1"
+                : "aspect-square",
             )}
           >
             <TileThumb vehicle={vehicle} title={title} />
