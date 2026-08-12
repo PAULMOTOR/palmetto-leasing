@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronRight, Loader2, X } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
 import {
@@ -219,8 +219,10 @@ function InCardQuote({
   const [gallery, setGallery] = useState<string[]>(() =>
     selectGalleryPhotos(
       buildVehicleGalleryPool({
-        thumbnail_url: isEphemeral(vehicle.thumbnail_url) ? "" : vehicle.thumbnail_url,
-        photos: (vehicle.photos || []).filter((p) => !isEphemeral(p)),
+        thumbnail_url: "",
+        photos: (vehicle.photos || []).filter(
+          (p) => !isEphemeral(p) && !p.startsWith("data:") && !p.includes("/vehicles/"),
+        ),
         make: vehicle.make,
         model: vehicle.model,
       }),
@@ -228,7 +230,7 @@ function InCardQuote({
     ),
   );
   const [galleryLoading, setGalleryLoading] = useState(true);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const quote = useMemo(
     () =>
@@ -257,14 +259,26 @@ function InCardQuote({
         listingUrl: vehicle.dealer_listing_url,
         make: vehicle.make,
         model: vehicle.model,
-        existingPhotos: (vehicle.photos || []).filter((p) => !isEphemeral(p)),
-        thumbnail: isEphemeral(vehicle.thumbnail_url) ? undefined : vehicle.thumbnail_url,
+        existingPhotos: (vehicle.photos || []).filter(
+          (p) =>
+            !isEphemeral(p) &&
+            !p.startsWith("data:") &&
+            !p.includes("/vehicles/"),
+        ),
+        thumbnail: undefined,
       },
     })
       .then((res) => {
         if (cancelled) return;
         if (res.photos?.length) {
-          setGallery(res.photos.filter((p) => !isEphemeral(p)));
+          setGallery(
+            res.photos.filter(
+              (p) =>
+                !isEphemeral(p) &&
+                !p.startsWith("data:") &&
+                !p.includes("/vehicles/"),
+            ),
+          );
         }
       })
       .catch(() => {
@@ -446,38 +460,12 @@ function InCardQuote({
             </div>
           </div>
 
-          <div className="mb-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Gallery</p>
-              {galleryLoading ? (
-                <span className="inline-flex items-center gap-1 text-[10px] text-fg-subtle">
-                  <Loader2 className="size-3 animate-spin" /> Loading dealer photos
-                </span>
-              ) : (
-                <span className="text-[10px] text-fg-subtle">{gallery.length} photos</span>
-              )}
-            </div>
-            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-              {gallery.slice(0, 12).map((src, i) => (
-                <button
-                  key={`${src}-${i}`}
-                  type="button"
-                  onClick={() => setLightbox(src)}
-                  className="aspect-square overflow-hidden rounded-[var(--radius-md)] border border-border/60 bg-white transition-[transform,box-shadow] hover:z-10 hover:scale-[1.03] hover:shadow-md"
-                >
-                  <img
-                    src={src}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover object-center"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.visibility = "hidden";
-                    }}
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
+          <ListingGallery
+            photos={gallery}
+            loading={galleryLoading}
+            onOpen={(i) => setLightboxIndex(i)}
+            onPhotosChange={setGallery}
+          />
         </>
       )}
 
@@ -564,27 +552,13 @@ function InCardQuote({
         </form>
       )}
 
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setLightbox(null)}
-          role="dialog"
-        >
-          <button
-            type="button"
-            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white"
-            onClick={() => setLightbox(null)}
-            aria-label="Close"
-          >
-            <X className="size-5" />
-          </button>
-          <img
-            src={lightbox}
-            alt=""
-            className="max-h-[85vh] max-w-full rounded-lg object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
+      {lightboxIndex != null && gallery[lightboxIndex] && (
+        <GalleryLightbox
+          photos={gallery}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onIndex={setLightboxIndex}
+        />
       )}
     </div>
   );
@@ -706,5 +680,257 @@ function LearnMoreDialog({
     </div>
   );
 }
+
+
+const MIN_GALLERY_WIDTH = 300;
+
+function ListingGallery({
+  photos,
+  loading,
+  onOpen,
+  onPhotosChange,
+}: {
+  photos: string[];
+  loading: boolean;
+  onOpen: (index: number) => void;
+  onPhotosChange: (next: string[]) => void;
+}) {
+  const [stripIndex, setStripIndex] = useState(0);
+
+  useEffect(() => {
+    if (stripIndex >= photos.length) {
+      setStripIndex(Math.max(0, photos.length - 1));
+    }
+  }, [photos.length, stripIndex]);
+
+  function rejectPhoto(src: string) {
+    onPhotosChange(photos.filter((p) => p !== src));
+  }
+
+  const safe = photos;
+  const count = safe.length;
+
+  function step(delta: number) {
+    if (!count) return;
+    setStripIndex((i) => (i + delta + count) % count);
+  }
+
+  return (
+    <div className="mb-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Gallery</p>
+        <div className="flex items-center gap-2">
+          {loading ? (
+            <span className="inline-flex items-center gap-1 text-[10px] text-fg-subtle">
+              <Loader2 className="size-3 animate-spin" /> Loading dealer photos
+            </span>
+          ) : (
+            <span className="text-[10px] text-fg-subtle">{count} photos</span>
+          )}
+          {count > 1 && (
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => step(-1)}
+                className="inline-flex size-7 items-center justify-center rounded-full border border-border bg-surface text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                aria-label="Previous photo"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => step(1)}
+                className="inline-flex size-7 items-center justify-center rounded-full border border-border bg-surface text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                aria-label="Next photo"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {count > 0 && (
+        <button
+          type="button"
+          onClick={() => onOpen(stripIndex)}
+          className="relative mb-2 aspect-[16/10] w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/60 bg-white"
+        >
+          <img
+            src={safe[stripIndex]}
+            alt=""
+            className="h-full w-full object-contain object-center"
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              if (img.naturalWidth > 0 && img.naturalWidth < MIN_GALLERY_WIDTH) {
+                rejectPhoto(safe[stripIndex]!);
+              }
+            }}
+            onError={() => rejectPhoto(safe[stripIndex]!)}
+          />
+          {count > 1 && (
+            <>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  step(-1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    step(-1);
+                  }
+                }}
+                className="absolute top-1/2 left-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/60"
+                aria-label="Previous"
+              >
+                <ChevronLeft className="size-5" />
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  step(1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    step(1);
+                  }
+                }}
+                className="absolute top-1/2 right-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors hover:bg-black/60"
+                aria-label="Next"
+              >
+                <ChevronRight className="size-5" />
+              </span>
+              <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white tabular-nums">
+                {stripIndex + 1} / {count}
+              </span>
+            </>
+          )}
+        </button>
+      )}
+
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+        {safe.slice(0, 12).map((src, i) => (
+          <button
+            key={`${src}-${i}`}
+            type="button"
+            onClick={() => {
+              setStripIndex(i);
+              onOpen(i);
+            }}
+            className={cn(
+              "aspect-square overflow-hidden rounded-[var(--radius-md)] border bg-white transition-[transform,box-shadow,border-color] hover:z-10 hover:scale-[1.03] hover:shadow-md",
+              i === stripIndex ? "border-accent ring-1 ring-accent/30" : "border-border/60",
+            )}
+          >
+            <img
+              src={src}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover object-center"
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth > 0 && img.naturalWidth < MIN_GALLERY_WIDTH) {
+                  rejectPhoto(src);
+                }
+              }}
+              onError={() => rejectPhoto(src)}
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GalleryLightbox({
+  photos,
+  index,
+  onClose,
+  onIndex,
+}: {
+  photos: string[];
+  index: number;
+  onClose: () => void;
+  onIndex: (i: number) => void;
+}) {
+  const count = photos.length;
+  const src = photos[index] || "";
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") onIndex((index - 1 + count) % count);
+      if (e.key === "ArrowRight") onIndex((index + 1) % count);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, count, onClose, onIndex]);
+
+  if (!src) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        type="button"
+        className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+        onClick={onClose}
+        aria-label="Close"
+      >
+        <X className="size-5" />
+      </button>
+
+      {count > 1 && (
+        <>
+          <button
+            type="button"
+            className="absolute top-1/2 left-3 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors hover:bg-white/25 sm:left-6"
+            onClick={(e) => {
+              e.stopPropagation();
+              onIndex((index - 1 + count) % count);
+            }}
+            aria-label="Previous image"
+          >
+            <ChevronLeft className="size-6" />
+          </button>
+          <button
+            type="button"
+            className="absolute top-1/2 right-3 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors hover:bg-white/25 sm:right-6"
+            onClick={(e) => {
+              e.stopPropagation();
+              onIndex((index + 1) % count);
+            }}
+            aria-label="Next image"
+          >
+            <ChevronRight className="size-6" />
+          </button>
+        </>
+      )}
+
+      <img
+        src={src}
+        alt=""
+        className="max-h-[85vh] max-w-full rounded-lg object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <span className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs text-white tabular-nums">
+        {index + 1} / {count}
+      </span>
+    </div>
+  );
+}
+
 
 void (0 as unknown as LeaseQuote);

@@ -242,7 +242,6 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
     const last = await sql<{ value: string }>`
       select value from app_meta where key = 'last_crawl_at' limit 1
     `;
-    // Durable studio tiles = data:image (persisted). Ephemeral imgen tmp counts as missing.
     const thumb = await sql<{ imagined: number; missing: number }>`
       select
         (select count(*)::int from vehicles where status = 'active'
@@ -297,31 +296,34 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
       .parse(input),
   )
   .handler(async ({ data }) => {
+    // Listing-only pool (no brand packs / Imagine data URIs / local seed art)
     const localPool = buildVehicleGalleryPool({
       thumbnail_url: data.thumbnail,
       photos: data.existingPhotos,
       make: data.make || "",
       model: data.model || "",
-    }).filter((u) => !isEphemeralImagineUrl(u));
+    });
 
     let live: string[] = [];
     let source = "local";
     if (data.listingUrl?.startsWith("http")) {
-      const scraped = await fetchListingGallery(data.listingUrl, { limit: 24 });
+      const scraped = await fetchListingGallery(data.listingUrl, { limit: 36 });
       if (scraped.photos.length) {
-        live = scraped.photos.filter((u) => !isEphemeralImagineUrl(u));
+        live = scraped.photos;
         source = scraped.source;
       }
     }
 
-    const merged = selectGalleryPhotos([...live, ...localPool], {
+    // Prefer live dealer photos; fall back to stored listing photos only
+    const pool = live.length > 0 ? live : localPool;
+    const merged = selectGalleryPhotos(pool, {
       limit: 12,
       preferInteriorShare: 0.4,
     });
 
     return {
       photos: merged,
-      source,
+      source: live.length > 0 ? source : localPool.length ? "listing-photos" : "empty",
       count: merged.length,
       vehicleId: data.vehicleId,
     };
