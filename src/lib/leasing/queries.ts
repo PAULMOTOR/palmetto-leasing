@@ -242,10 +242,16 @@ export const getInventoryStats = createServerFn({ method: "GET" }).handler(async
     const last = await sql<{ value: string }>`
       select value from app_meta where key = 'last_crawl_at' limit 1
     `;
+    // Durable studio tiles = data:image (persisted). Ephemeral imgen tmp counts as missing.
     const thumb = await sql<{ imagined: number; missing: number }>`
       select
-        (select count(*)::int from vehicles where status = 'active' and thumbnail_url ~* 'imgen\\.x\\.ai|xai-tmp-imgen') as imagined,
-        (select count(*)::int from vehicles where status = 'active' and (thumbnail_url is null or thumbnail_url !~* 'imgen\\.x\\.ai|xai-tmp-imgen')) as missing
+        (select count(*)::int from vehicles where status = 'active'
+          and thumbnail_url like 'data:image/%') as imagined,
+        (select count(*)::int from vehicles where status = 'active'
+          and (thumbnail_url is null
+            or thumbnail_url = ''
+            or thumbnail_url ~* 'imgen\\.x\\.ai|xai-tmp-imgen'
+            or thumbnail_url not like 'data:image/%')) as missing
     `;
     const s = stats[0]!;
     return {
@@ -296,14 +302,14 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
       photos: data.existingPhotos,
       make: data.make || "",
       model: data.model || "",
-    });
+    }).filter((u) => !isEphemeralImagineUrl(u));
 
     let live: string[] = [];
     let source = "local";
     if (data.listingUrl?.startsWith("http")) {
       const scraped = await fetchListingGallery(data.listingUrl, { limit: 24 });
       if (scraped.photos.length) {
-        live = scraped.photos;
+        live = scraped.photos.filter((u) => !isEphemeralImagineUrl(u));
         source = scraped.source;
       }
     }
@@ -442,7 +448,6 @@ export const triggerImagineThumbs = createServerFn({ method: "POST" })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    // Default: only unrendered cars (missing studio tiles), up to 40
     return generateMissingImagineThumbs({
       limit: data?.limit ?? 40,
       force: data?.force ?? false,
