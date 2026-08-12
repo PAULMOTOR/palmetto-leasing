@@ -22,6 +22,7 @@ import {
 import { formatCad, formatCadExact, formatNumber, cn } from "@/lib/utils";
 
 const TERM_OPTIONS = LEASE_TERM_OPTIONS;
+
 const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
 
 function isEphemeral(url: string) {
@@ -418,9 +419,6 @@ function InCardQuote({
                 label={`${t} mo`}
               />
             ))}
-            <p className="mt-1.5 w-full text-[10px] text-fg-subtle">
-              Residual auto: 25→63% · 37→52% · 49→41% · 61→32%
-            </p>
           </div>
         </div>
         <div>
@@ -474,7 +472,7 @@ function InCardQuote({
           <dd className="tabular-nums text-fg">{formatCad(quote.priceCents)}</dd>
         </div>
         <div className="flex justify-between gap-2 sm:flex-col sm:justify-start">
-          <dt className="text-fg-muted">Cap cost</dt>
+          <dt className="text-fg-muted">Financed amount</dt>
           <dd className="tabular-nums text-fg">{formatCad(quote.capCostCents)}</dd>
         </div>
         <div className="flex justify-between gap-2 sm:flex-col sm:justify-start">
@@ -485,7 +483,7 @@ function InCardQuote({
 
       {step === "quote" && (
         <>
-          <div className="mb-4">
+          <div className="mb-3">
             <p className="mb-2 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Vehicle</p>
             <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:grid-cols-3 sm:text-[12px]">
               {specRows.map(([k, v]) => (
@@ -728,10 +726,9 @@ function LearnMoreDialog({
   );
 }
 
-
 const MIN_GALLERY_WIDTH = 300;
 
-/** Small thumbs only until click — large view + arrows live in GalleryLightbox. */
+/** Compact single-row horizontal scroller — saves vertical space for the quote. */
 function ListingGallery({
   photos,
   loading,
@@ -750,17 +747,17 @@ function ListingGallery({
   const count = photos.length;
 
   return (
-    <div className="mb-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <div className="mb-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Gallery</p>
         {loading ? (
           <span className="inline-flex items-center gap-1 text-[10px] text-fg-subtle">
-            <Loader2 className="size-3 animate-spin" /> Loading dealer photos
+            <Loader2 className="size-3 animate-spin" /> Loading
           </span>
         ) : (
           <span className="text-[10px] text-fg-subtle">
             {count} photo{count === 1 ? "" : "s"}
-            {count > 0 ? " · tap to enlarge" : ""}
+            {count > 0 ? " · scroll · tap to enlarge" : ""}
           </span>
         )}
       </div>
@@ -768,13 +765,16 @@ function ListingGallery({
       {count === 0 && !loading ? (
         <p className="text-[12px] text-fg-subtle">No dealer photos available</p>
       ) : (
-        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+        <div
+          className="-mx-0.5 flex gap-1.5 overflow-x-auto px-0.5 pb-1 [scrollbar-width:thin]"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {photos.slice(0, 12).map((src, i) => (
             <button
               key={`${src}-${i}`}
               type="button"
               onClick={() => onOpen(i)}
-              className="aspect-square overflow-hidden rounded-[var(--radius-md)] border border-border/60 bg-white transition-[transform,box-shadow,border-color] hover:z-10 hover:scale-[1.03] hover:border-accent/50 hover:shadow-md"
+              className="h-14 w-14 shrink-0 overflow-hidden rounded-[var(--radius-md)] border border-border/60 bg-white transition-[transform,box-shadow,border-color] hover:z-10 hover:scale-[1.04] hover:border-accent/50 hover:shadow-md sm:h-16 sm:w-16"
             >
               <img
                 src={src}
@@ -814,8 +814,8 @@ function GalleryLightbox({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft") onIndex((index - 1 + count) % count);
-      if (e.key === "ArrowRight") onIndex((index + 1) % count);
+      if (e.key === "ArrowLeft" && count > 1) onIndex((index - 1 + count) % count);
+      if (e.key === "ArrowRight" && count > 1) onIndex((index + 1) % count);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -832,7 +832,7 @@ function GalleryLightbox({
     >
       <button
         type="button"
-        className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+        className="absolute top-4 right-4 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
         onClick={onClose}
         aria-label="Close"
       >
@@ -878,6 +878,5 @@ function GalleryLightbox({
     </div>
   );
 }
-
 
 void (0 as unknown as LeaseQuote);
