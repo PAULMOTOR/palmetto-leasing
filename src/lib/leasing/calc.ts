@@ -19,7 +19,6 @@ export function residualForTerm(termMonths: number): number {
   if ((LEASE_TERM_OPTIONS as readonly number[]).includes(termMonths)) {
     return RESIDUAL_BY_TERM[termMonths as LeaseTermMonths];
   }
-  // Nearest known term for odd admin values
   let best: LeaseTermMonths = 37;
   let bestDist = Math.abs(termMonths - best);
   for (const t of LEASE_TERM_OPTIONS) {
@@ -30,6 +29,20 @@ export function residualForTerm(termMonths: number): number {
     }
   }
   return RESIDUAL_BY_TERM[best];
+}
+
+/** Vehicles at or above $1,000,000 CAD require 30% cash down (no other options). */
+export const HIGH_VALUE_PRICE_CENTS = 100_000_000;
+export const HIGH_VALUE_DOWN_RATE = 0.3;
+
+export function isHighValueVehicle(priceCents: number): boolean {
+  return priceCents >= HIGH_VALUE_PRICE_CENTS;
+}
+
+/** Effective down rate: forced 30% when price ≥ $1M. */
+export function effectiveDownRate(priceCents: number, requestedRate: number): number {
+  if (isHighValueVehicle(priceCents)) return HIGH_VALUE_DOWN_RATE;
+  return requestedRate;
 }
 
 export const DEFAULT_TERM_MONTHS = 37;
@@ -66,14 +79,16 @@ export type LeaseQuote = {
   residualRate: number;
   baseInterestRate: number;
   moneyFactor: number;
+  /** True when 30% down was forced (price ≥ $1M). */
+  highValueForcedDown: boolean;
 };
 
 /**
  * monthly = depreciation/term + (cap + residual) * moneyFactor
  * moneyFactor ≈ APR / 2400
  *
- * Residual always follows the program schedule for the chosen term
- * (25→63%, 37→52%, 49→41%, 61→32%).
+ * Residual follows term schedule (25→63%, 37→52%, 49→41%, 61→32%).
+ * Down payment forced to 30% when price ≥ $1,000,000.
  */
 export function calculateLease(
   priceCents: number,
@@ -82,9 +97,13 @@ export function calculateLease(
   const base: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
   const termMonths = base.termMonths;
   const residualRate = residualForTerm(termMonths);
+  const highValueForcedDown = isHighValueVehicle(priceCents);
+  const downPaymentRate = highValueForcedDown
+    ? HIGH_VALUE_DOWN_RATE
+    : base.downPaymentRate;
 
   const price = Math.max(0, Math.round(priceCents));
-  const downPaymentCents = Math.round(price * base.downPaymentRate);
+  const downPaymentCents = Math.round(price * downPaymentRate);
   const residualCents = Math.round(price * residualRate);
   const capCostCents = price - downPaymentCents;
   const depreciationCents = Math.max(0, capCostCents - residualCents);
@@ -102,10 +121,11 @@ export function calculateLease(
     financeChargeCents,
     monthlyPaymentCents,
     termMonths,
-    downRate: base.downPaymentRate,
+    downRate: downPaymentRate,
     residualRate,
     baseInterestRate: base.baseInterestRate,
     moneyFactor,
+    highValueForcedDown,
   };
 }
 

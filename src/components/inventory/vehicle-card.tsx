@@ -5,6 +5,8 @@ import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
 import {
   calculateLease,
   LEASE_TERM_OPTIONS,
+  isHighValueVehicle,
+  HIGH_VALUE_DOWN_RATE,
   type LeaseQuote,
   type QuoteSettings,
   DEFAULT_QUOTE_SETTINGS,
@@ -201,12 +203,22 @@ function InCardQuote({
   baseSettings: QuoteSettings;
   onClose: () => void;
 }) {
+  const highValue = isHighValueVehicle(vehicle.price_cents);
   const [termMonths, setTermMonths] = useState(
     LEASE_TERM_OPTIONS.includes(baseSettings.termMonths as (typeof LEASE_TERM_OPTIONS)[number])
       ? baseSettings.termMonths
       : 37,
   );
-  const [downRate, setDownRate] = useState(baseSettings.downPaymentRate || 0.2);
+  const [downRate, setDownRate] = useState(
+    highValue ? HIGH_VALUE_DOWN_RATE : baseSettings.downPaymentRate || 0.2,
+  );
+
+  // Lock 30% down on $1M+ cars (and if vehicle identity changes)
+  useEffect(() => {
+    if (isHighValueVehicle(vehicle.price_cents)) {
+      setDownRate(HIGH_VALUE_DOWN_RATE);
+    }
+  }, [vehicle.price_cents, vehicle.id]);
   const [step, setStep] = useState<"quote" | "apply" | "done">("quote");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -410,16 +422,27 @@ function InCardQuote({
         </div>
         <div>
           <p className="mb-1.5 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Cash down</p>
-          <div className="flex flex-wrap gap-1.5">
-            {DOWN_OPTIONS.map((d) => (
-              <Chip
-                key={d.rate}
-                active={Math.abs(downRate - d.rate) < 0.001}
-                onClick={() => setDownRate(d.rate)}
-                label={d.label}
-              />
-            ))}
-          </div>
+          {highValue ? (
+            <div className="space-y-1.5">
+              <div className="inline-flex h-8 items-center rounded-full border border-fg bg-fg px-3 text-[12px] font-medium text-primary-fg">
+                30% required
+              </div>
+              <p className="text-[10px] text-fg-subtle">
+                Vehicles over $1,000,000 require a 30% down payment
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {DOWN_OPTIONS.map((d) => (
+                <Chip
+                  key={d.rate}
+                  active={Math.abs(downRate - d.rate) < 0.001}
+                  onClick={() => setDownRate(d.rate)}
+                  label={d.label}
+                />
+              ))}
+            </div>
+          )}
           <p className="mt-1.5 text-[11px] tabular-nums text-fg-muted">
             Down payment{" "}
             <span className="font-medium text-fg">{formatCad(quote.downPaymentCents)}</span>
