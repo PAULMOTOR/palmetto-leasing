@@ -10,7 +10,7 @@ import {
 } from "@/lib/leasing/seed";
 import { fetchDealerInventory } from "./fetch-dealer";
 import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
-import { isEphemeralImagineUrl } from "@/lib/imagine/persist-image";
+import { isEphemeralImagineUrl, isStudioThumbUrl } from "@/lib/imagine/persist-image";
 import { listingFingerprint } from "./parse-vehicles";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
@@ -209,12 +209,28 @@ async function runInventoryCrawlInner(opts?: {
       if (result === "added") {
         added += 1;
         newForImagine.push(item);
-      } else if (result === "updated") updated += 1;
+      } else if (result === "updated") {
+        updated += 1;
+        newForImagine.push(item);
+      }
     }
 
     if (wantThumbs && process.env.XAI_API_KEY?.trim()) {
+      const missingStudio = await sql<{ id: string }>`
+        select id from vehicles
+        where status = 'active'
+          and (thumbnail_url is null
+            or thumbnail_url = ''
+            or thumbnail_url not like 'data:image/%')
+      `;
+      const missingIds = new Set(missingStudio.map((r) => r.id));
       const batch = newForImagine
-        .filter((v) => v.photos.some((p) => p.startsWith("http")))
+        .filter((v) => {
+          const id = `${v.dealership_id}_${v.external_id}`
+            .toLowerCase()
+            .replace(/[^a-z0-9_]+/g, "_");
+          return missingIds.has(id) && v.photos.some((p) => p.startsWith("http"));
+        })
         .slice(0, MAX_IMAGINE_PER_CRAWL);
       for (const item of batch) {
         const id = `${item.dealership_id}_${item.external_id}`
@@ -231,7 +247,7 @@ async function runInventoryCrawlInner(opts?: {
           },
           referencePhotoUrls: item.photos.filter((p) => p.startsWith("http")).slice(0, 2),
         });
-        if (imag.ok && imag.url && !isEphemeralImagineUrl(imag.url)) {
+        if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
           await sql`
             update vehicles
             set thumbnail_url = ${imag.url}, updated_at = now()

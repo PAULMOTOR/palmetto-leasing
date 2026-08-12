@@ -8,11 +8,17 @@ export function isEphemeralImagineUrl(url: string | null | undefined): boolean {
   return /imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(url);
 }
 
+/** True only for a finished Palmetto studio tile (persisted Imagine data URI). */
+export function isStudioThumbUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith("data:image/");
+}
+
 export function isDurableThumbUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (url.startsWith("data:image/")) return true;
   if (url.startsWith("/")) return true;
-  // Dealer / CDN photos are durable enough for display
+  // Dealer / CDN photos are durable enough for *display* fallback
   if (/^https?:\/\//i.test(url) && !isEphemeralImagineUrl(url)) return true;
   return false;
 }
@@ -78,17 +84,15 @@ export async function persistImagineResult(opts: {
     };
   }
 
-  return { error: "No image url or b64 to persist" };
+  return { error: "Imagine returned no image" };
 }
 
-/** First non-ephemeral http photo from a list. */
-export function firstDurablePhoto(photos: string[], thumbnail?: string): string | null {
-  const pool = [...(thumbnail ? [thumbnail] : []), ...photos];
-  for (const p of pool) {
-    if (isDurableThumbUrl(p) && !isEphemeralImagineUrl(p)) return p;
+export function firstDurablePhoto(photos: string[], fallback?: string | null): string {
+  for (const p of photos) {
+    if (p && isDurableThumbUrl(p) && !isEphemeralImagineUrl(p)) return p;
   }
-  for (const p of pool) {
-    if (p?.startsWith("/")) return p;
+  if (fallback && isDurableThumbUrl(fallback) && !isEphemeralImagineUrl(fallback)) {
+    return fallback;
   }
-  return null;
+  return "";
 }

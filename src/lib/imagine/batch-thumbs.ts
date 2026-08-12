@@ -1,10 +1,10 @@
 /**
  * Generate Imagine studio tiles.
- * Default: cars with missing OR expired (ephemeral imgen.x.ai) thumbs.
+ * Default: any live car that still shows a dealer photo (not a data:image studio tile).
  */
 import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
-import { isEphemeralImagineUrl, isDurableThumbUrl } from "./persist-image";
+import { isEphemeralImagineUrl, isStudioThumbUrl } from "./persist-image";
 import { parsePhotos } from "@/lib/leasing/types";
 
 export async function generateMissingImagineThumbs(opts?: {
@@ -61,10 +61,10 @@ export async function generateMissingImagineThumbs(opts?: {
     );
   });
 
-  // Missing = no durable thumb (null, local placeholder, or expired imgen tmp URL)
+  // Studio tile = persisted data URI. Dealer HTTP photos are fallbacks, not finished tiles.
   const needsRender = withRefs.filter((r) => {
     if (force) return true;
-    return !isDurableThumbUrl(r.thumbnail_url) || isEphemeralImagineUrl(r.thumbnail_url);
+    return !isStudioThumbUrl(r.thumbnail_url);
   });
 
   const need = needsRender.slice(0, limit);
@@ -102,7 +102,7 @@ export async function generateMissingImagineThumbs(opts?: {
         referencePhotoUrls: refs,
       });
 
-      if (imag.ok && imag.url && isDurableThumbUrl(imag.url)) {
+      if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
         await sql`
           update vehicles
           set thumbnail_url = ${imag.url}, updated_at = now()
@@ -110,7 +110,7 @@ export async function generateMissingImagineThumbs(opts?: {
         `;
         succeeded += 1;
       } else {
-        errors.push(`${r.make} ${r.model}: ${imag.error || "no durable image"}`);
+        errors.push(`${r.make} ${r.model}: ${imag.error || "no studio image"}`);
       }
     } catch (err) {
       errors.push(
@@ -126,7 +126,7 @@ export async function generateMissingImagineThumbs(opts?: {
     succeeded,
     skipped,
     remaining,
-    errors: errors.slice(0, 15),
+    errors: errors.slice(0, 12),
     hasApiKey: true,
   };
 }
