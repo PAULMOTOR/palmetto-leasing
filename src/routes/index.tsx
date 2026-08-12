@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronDown, Loader2, X } from "lucide-react";
 import { VehicleCard } from "@/components/inventory/vehicle-card";
@@ -22,6 +22,9 @@ export const Route = createFileRoute("/")({
   component: InventoryPage,
 });
 
+/** Hide filters after this much idle; re-show on any vertical scroll. */
+const FILTER_IDLE_MS = 1200;
+
 function InventoryPage() {
   const [vehicles, setVehicles] = useState<VehicleCardType[]>([]);
   const [stats, setStats] = useState<{ total: number } | null>(null);
@@ -33,6 +36,11 @@ function InventoryPage() {
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [monthly, setMonthly] = useState<MonthlyRangeId | "">("");
+
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [filterPinned, setFilterPinned] = useState(false); // hover / focus keeps open
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastY = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +65,50 @@ function InventoryPage() {
       cancelled = true;
     };
   }, []);
+
+  // Show on scroll activity; hide after settle (unless pinned by hover/focus)
+  useEffect(() => {
+    lastY.current = window.scrollY;
+
+    const clearIdle = () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = null;
+    };
+
+    const scheduleHide = () => {
+      clearIdle();
+      idleTimer.current = setTimeout(() => {
+        if (!filterPinned) setFiltersVisible(false);
+      }, FILTER_IDLE_MS);
+    };
+
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - lastY.current) > 2) {
+        setFiltersVisible(true);
+        scheduleHide();
+      }
+      lastY.current = y;
+    };
+
+    // Initial settle timer after load
+    scheduleHide();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      clearIdle();
+    };
+  }, [filterPinned]);
+
+  // When pinned ends, start idle hide again
+  useEffect(() => {
+    if (filterPinned) {
+      setFiltersVisible(true);
+      return;
+    }
+    const t = setTimeout(() => setFiltersVisible(false), FILTER_IDLE_MS);
+    return () => clearTimeout(t);
+  }, [filterPinned]);
 
   const years = useMemo(
     () => [...new Set(vehicles.map((v) => v.year))].sort((a, b) => b - a),
@@ -90,8 +142,23 @@ function InventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
-      {/* Sticky filter bar — matches original minimal look */}
-      <div className="sticky top-[4.75rem] z-30 -mx-4 border-b border-border/70 bg-[var(--color-canvas,#f3f3f3)]/95 px-4 py-4 backdrop-blur-md sm:top-[5.25rem] sm:-mx-6 sm:px-6">
+      {/* Sticky filter bar — hides when idle, reappears on vertical scroll */}
+      <div
+        className={cn(
+          "sticky top-[4.75rem] z-30 -mx-4 overflow-hidden border-b bg-[var(--color-canvas,#f3f3f3)]/95 backdrop-blur-md transition-[max-height,opacity,padding,border-color] duration-300 ease-out sm:top-[5.25rem] sm:-mx-6",
+          filtersVisible
+            ? "max-h-40 border-border/70 px-4 py-4 opacity-100 sm:px-6"
+            : "max-h-0 border-transparent px-4 py-0 opacity-0 pointer-events-none sm:px-6",
+        )}
+        onMouseEnter={() => setFilterPinned(true)}
+        onMouseLeave={() => setFilterPinned(false)}
+        onFocusCapture={() => setFilterPinned(true)}
+        onBlurCapture={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setFilterPinned(false);
+          }
+        }}
+      >
         <p className="mb-2.5 text-[13px] text-fg-muted">
           {loading
             ? "Loading…"
