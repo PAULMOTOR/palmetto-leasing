@@ -31,18 +31,39 @@ export function residualForTerm(termMonths: number): number {
   return RESIDUAL_BY_TERM[best];
 }
 
-/** Vehicles at or above $1,000,000 CAD require 30% cash down (no other options). */
-export const HIGH_VALUE_PRICE_CENTS = 100_000_000;
-export const HIGH_VALUE_DOWN_RATE = 0.3;
+/** Price tiers for minimum cash down. */
+export const PRICE_1M_CENTS = 100_000_000; // $1,000,000
+export const PRICE_300K_CENTS = 30_000_000; // $300,000
+export const MAX_DOWN_RATE = 0.7;
+export const HIGH_VALUE_DOWN_RATE = 0.3; // floor for ≥ $1M
+export const MID_VALUE_DOWN_RATE = 0.2; // floor for ≥ $300k
+export const DEFAULT_MIN_DOWN_RATE = 0.1; // floor under $300k
+
+/** @deprecated use PRICE_1M_CENTS */
+export const HIGH_VALUE_PRICE_CENTS = PRICE_1M_CENTS;
 
 export function isHighValueVehicle(priceCents: number): boolean {
-  return priceCents >= HIGH_VALUE_PRICE_CENTS;
+  return priceCents >= PRICE_1M_CENTS;
 }
 
-/** Effective down rate: forced 30% when price ≥ $1M. */
+/** Minimum allowed down rate for a given price. */
+export function minDownRateForPrice(priceCents: number): number {
+  if (priceCents >= PRICE_1M_CENTS) return HIGH_VALUE_DOWN_RATE;
+  if (priceCents >= PRICE_300K_CENTS) return MID_VALUE_DOWN_RATE;
+  return DEFAULT_MIN_DOWN_RATE;
+}
+
+/** Default starting down rate for a given price. */
+export function defaultDownRateForPrice(priceCents: number): number {
+  if (priceCents >= PRICE_1M_CENTS) return HIGH_VALUE_DOWN_RATE;
+  if (priceCents >= PRICE_300K_CENTS) return MID_VALUE_DOWN_RATE;
+  return DEFAULT_DOWN_PAYMENT_RATE;
+}
+
+/** Clamp requested down into [min, MAX_DOWN_RATE] for this price. */
 export function effectiveDownRate(priceCents: number, requestedRate: number): number {
-  if (isHighValueVehicle(priceCents)) return HIGH_VALUE_DOWN_RATE;
-  return requestedRate;
+  const min = minDownRateForPrice(priceCents);
+  return Math.min(MAX_DOWN_RATE, Math.max(min, requestedRate));
 }
 
 export const DEFAULT_TERM_MONTHS = 37;
@@ -71,7 +92,6 @@ export type LeaseQuote = {
   residualCents: number;
   capCostCents: number;
   depreciationCents: number;
-  /** Monthly finance charge from money factor. */
   financeChargeCents: number;
   monthlyPaymentCents: number;
   termMonths: number;
@@ -79,16 +99,13 @@ export type LeaseQuote = {
   residualRate: number;
   baseInterestRate: number;
   moneyFactor: number;
-  /** True when 30% down was forced (price ≥ $1M). */
   highValueForcedDown: boolean;
+  minDownRate: number;
 };
 
 /**
  * monthly = depreciation/term + (cap + residual) * moneyFactor
- * moneyFactor ≈ APR / 2400
- *
- * Residual follows term schedule (25→63%, 37→52%, 49→41%, 61→32%).
- * Down payment forced to 30% when price ≥ $1,000,000.
+ * Residual by term; down clamped by price tier (min 20% ≥$300k, min 30% ≥$1M, max 70%).
  */
 export function calculateLease(
   priceCents: number,
@@ -97,10 +114,9 @@ export function calculateLease(
   const base: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
   const termMonths = base.termMonths;
   const residualRate = residualForTerm(termMonths);
+  const minDownRate = minDownRateForPrice(priceCents);
   const highValueForcedDown = isHighValueVehicle(priceCents);
-  const downPaymentRate = highValueForcedDown
-    ? HIGH_VALUE_DOWN_RATE
-    : base.downPaymentRate;
+  const downPaymentRate = effectiveDownRate(priceCents, base.downPaymentRate);
 
   const price = Math.max(0, Math.round(priceCents));
   const downPaymentCents = Math.round(price * downPaymentRate);
@@ -126,10 +142,10 @@ export function calculateLease(
     baseInterestRate: base.baseInterestRate,
     moneyFactor,
     highValueForcedDown,
+    minDownRate,
   };
 }
 
-/** Approximate remaining buyout after `monthsElapsed` payments. */
 export function estimateBuyout(
   priceCents: number,
   monthsElapsed: number,
@@ -144,7 +160,6 @@ export function estimateBuyout(
   return Math.round(q.residualCents + remainingDep * (remaining / q.termMonths));
 }
 
-/** Monthly payment filter buckets (cents). */
 export type MonthlyRangeId =
   | "1000-1999"
   | "2000-2999"
@@ -175,7 +190,6 @@ export function inMonthlyRange(monthlyPaymentCents: number, id: MonthlyRangeId):
   return monthlyPaymentCents <= r.maxCents;
 }
 
-/** @deprecated use DEFAULT_TERM_MONTHS */
 export const LEASE_TERM_MONTHS = DEFAULT_TERM_MONTHS;
 export const DOWN_PAYMENT_RATE = DEFAULT_DOWN_PAYMENT_RATE;
 export const RESIDUAL_RATE = DEFAULT_RESIDUAL_RATE;

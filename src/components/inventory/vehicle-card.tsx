@@ -5,8 +5,9 @@ import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
 import {
   calculateLease,
   LEASE_TERM_OPTIONS,
-  isHighValueVehicle,
-  HIGH_VALUE_DOWN_RATE,
+  minDownRateForPrice,
+  defaultDownRateForPrice,
+  MAX_DOWN_RATE,
   type LeaseQuote,
   type QuoteSettings,
   DEFAULT_QUOTE_SETTINGS,
@@ -19,14 +20,6 @@ import {
 import { formatCad, formatCadExact, formatNumber, cn } from "@/lib/utils";
 
 const TERM_OPTIONS = LEASE_TERM_OPTIONS;
-const DOWN_OPTIONS = [
-  { rate: 0.1, label: "10%" },
-  { rate: 0.15, label: "15%" },
-  { rate: 0.2, label: "20%" },
-  { rate: 0.25, label: "25%" },
-  { rate: 0.3, label: "30%" },
-] as const;
-
 const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
 
 function isEphemeral(url: string) {
@@ -203,21 +196,20 @@ function InCardQuote({
   baseSettings: QuoteSettings;
   onClose: () => void;
 }) {
-  const highValue = isHighValueVehicle(vehicle.price_cents);
+  const minDown = minDownRateForPrice(vehicle.price_cents);
   const [termMonths, setTermMonths] = useState(
     LEASE_TERM_OPTIONS.includes(baseSettings.termMonths as (typeof LEASE_TERM_OPTIONS)[number])
       ? baseSettings.termMonths
       : 37,
   );
-  const [downRate, setDownRate] = useState(
-    highValue ? HIGH_VALUE_DOWN_RATE : baseSettings.downPaymentRate || 0.2,
+  const [downRate, setDownRate] = useState(() =>
+    Math.max(minDownRateForPrice(vehicle.price_cents), defaultDownRateForPrice(vehicle.price_cents)),
   );
 
-  // Lock 30% down on $1M+ cars (and if vehicle identity changes)
+  // Re-clamp when vehicle / price tier changes
   useEffect(() => {
-    if (isHighValueVehicle(vehicle.price_cents)) {
-      setDownRate(HIGH_VALUE_DOWN_RATE);
-    }
+    const floor = minDownRateForPrice(vehicle.price_cents);
+    setDownRate((r) => Math.min(MAX_DOWN_RATE, Math.max(floor, r)));
   }, [vehicle.price_cents, vehicle.id]);
   const [step, setStep] = useState<"quote" | "apply" | "done">("quote");
   const [name, setName] = useState("");
@@ -421,28 +413,35 @@ function InCardQuote({
           </div>
         </div>
         <div>
-          <p className="mb-1.5 text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Cash down</p>
-          {highValue ? (
-            <div className="space-y-1.5">
-              <div className="inline-flex h-8 items-center rounded-full border border-fg bg-fg px-3 text-[12px] font-medium text-primary-fg">
-                30% required
-              </div>
-              <p className="text-[10px] text-fg-subtle">
-                Vehicles over $1,000,000 require a 30% down payment
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {DOWN_OPTIONS.map((d) => (
-                <Chip
-                  key={d.rate}
-                  active={Math.abs(downRate - d.rate) < 0.001}
-                  onClick={() => setDownRate(d.rate)}
-                  label={d.label}
-                />
-              ))}
-            </div>
-          )}
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Cash down</p>
+            <p className="text-[13px] font-medium tabular-nums text-fg">
+              {(downRate * 100).toFixed(0)}%
+            </p>
+          </div>
+          <input
+            type="range"
+            min={Math.round(minDown * 100)}
+            max={Math.round(MAX_DOWN_RATE * 100)}
+            step={1}
+            value={Math.round(downRate * 100)}
+            onChange={(e) => setDownRate(Number(e.target.value) / 100)}
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-[var(--color-fg,#111)] [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fg"
+            aria-label="Down payment percent"
+          />
+          <div className="mt-1 flex justify-between text-[10px] text-fg-subtle">
+            <span>Min {(minDown * 100).toFixed(0)}%</span>
+            <span>Max {(MAX_DOWN_RATE * 100).toFixed(0)}%</span>
+          </div>
+          {minDown >= 0.3 ? (
+            <p className="mt-1 text-[10px] text-fg-subtle">
+              $1M+ vehicles require at least 30% down
+            </p>
+          ) : minDown >= 0.2 ? (
+            <p className="mt-1 text-[10px] text-fg-subtle">
+              $300k+ vehicles require at least 20% down
+            </p>
+          ) : null}
           <p className="mt-1.5 text-[11px] tabular-nums text-fg-muted">
             Down payment{" "}
             <span className="font-medium text-fg">{formatCad(quote.downPaymentCents)}</span>
