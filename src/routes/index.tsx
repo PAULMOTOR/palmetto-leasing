@@ -1,154 +1,193 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { Loader2, X } from "lucide-react";
 import { VehicleCard } from "@/components/inventory/vehicle-card";
+import {
+  bootstrapInventory,
+  getInventoryStats,
+  listDealers,
+  listVehicles,
+} from "@/lib/leasing/queries";
 import {
   MONTHLY_RANGES,
   type MonthlyRangeId,
-  type QuoteSettings,
   inMonthlyRange,
+  DEFAULT_QUOTE_SETTINGS,
+  type QuoteSettings,
 } from "@/lib/leasing/calc";
-import { listVehicles } from "@/lib/leasing/queries";
-import { getQuoteSettings } from "@/lib/leasing/settings";
+import { loadQuoteSettingsAsync } from "@/lib/leasing/quote-config";
 import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
-import { formatNumber, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
-  component: InventoryFunnel,
-  head: () => ({
-    meta: [{ title: "Palmetto | Paul Motor Leasing" }],
-  }),
+  component: InventoryPage,
 });
 
-function InventoryFunnel() {
+function InventoryPage() {
   const [vehicles, setVehicles] = useState<VehicleCardType[]>([]);
-  const [quoteSettings, setQuoteSettings] = useState<QuoteSettings | undefined>();
+  const [dealers, setDealers] = useState<
+    { id: string; name: string; city: string; province: string; count: number }[]
+  >([]);
+  const [stats, setStats] = useState<{
+    total: number;
+    premium: number;
+    dealers: number;
+  } | null>(null);
+  const [quoteSettings, setQuoteSettings] = useState<QuoteSettings>(DEFAULT_QUOTE_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const [year, setYear] = useState("");
-  const [make, setMake] = useState("");
-  const [model, setModel] = useState("");
-  const [monthlyRange, setMonthlyRange] = useState<MonthlyRangeId | "">("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const [q, setQ] = useState("");
+  const [make, setMake] = useState("");
+  const [dealerId, setDealerId] = useState("");
+  const [monthly, setMonthly] = useState<MonthlyRangeId | "">("");
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    Promise.all([listVehicles({ data: { sort: "price_desc" } }), getQuoteSettings()])
-      .then(([rows, qs]) => {
+    (async () => {
+      setLoading(true);
+      try {
+        await bootstrapInventory();
+        const [list, dlist, st, qs] = await Promise.all([
+          listVehicles({ data: { sort: "price_desc" } }),
+          listDealers(),
+          getInventoryStats(),
+          loadQuoteSettingsAsync().catch(() => DEFAULT_QUOTE_SETTINGS),
+        ]);
         if (cancelled) return;
-        setVehicles(rows);
+        setVehicles(list);
+        setDealers(
+          dlist.map((d) => ({
+            id: d.id,
+            name: d.name,
+            city: d.city,
+            province: d.province,
+            count: Number((d as { count?: number }).count ?? 0),
+          })),
+        );
+        setStats({ total: st.total, premium: st.premium, dealers: st.dealers });
         setQuoteSettings(qs);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const years = useMemo(
-    () => Array.from(new Set(vehicles.map((v) => String(v.year)))).sort().reverse(),
-    [vehicles],
-  );
-  const makes = useMemo(
-    () => Array.from(new Set(vehicles.map((v) => v.make))).sort(),
-    [vehicles],
-  );
-  const models = useMemo(() => {
-    const pool = make ? vehicles.filter((v) => v.make === make) : vehicles;
-    return Array.from(new Set(pool.map((v) => v.model))).sort();
-  }, [vehicles, make]);
-
-  const filtersActive = Boolean(year || make || model || monthlyRange);
-
-  function clearFilters() {
-    setYear("");
-    setMake("");
-    setModel("");
-    setMonthlyRange("");
-  }
+  const makes = useMemo(() => {
+    return [...new Set(vehicles.map((v) => v.make))].sort();
+  }, [vehicles]);
 
   const filtered = useMemo(() => {
-    let list = [...vehicles];
-    if (year) list = list.filter((v) => String(v.year) === year);
+    let list = vehicles;
+    if (q.trim()) {
+      const needle = q.trim().toLowerCase();
+      list = list.filter((v) =>
+        `${v.year} ${v.make} ${v.model} ${v.trim} ${v.exterior_color} ${v.dealer_name}`
+          .toLowerCase()
+          .includes(needle),
+      );
+    }
     if (make) list = list.filter((v) => v.make === make);
-    if (model) list = list.filter((v) => v.model === model);
-    if (monthlyRange) {
-      list = list.filter((v) => inMonthlyRange(v.monthly_payment_cents, monthlyRange));
+    if (dealerId) list = list.filter((v) => v.dealership_id === dealerId);
+    if (monthly) {
+      list = list.filter((v) => inMonthlyRange(v.monthly_payment_cents, monthly));
     }
     return list;
-  }, [vehicles, year, make, model, monthlyRange]);
+  }, [vehicles, q, make, dealerId, monthly]);
 
-  const downNote = quoteSettings
-    ? `All ranges assume ${(quoteSettings.downPaymentRate * 100).toFixed(0)}% downpayment · ${(quoteSettings.residualRate * 100).toFixed(0)}% residual · ${quoteSettings.termMonths} months`
-    : "All ranges assume 20% downpayment · 50% residual · 36 months";
+  const hasFilters = Boolean(q || make || dealerId || monthly);
+  const clearFilters = () => {
+    setQ("");
+    setMake("");
+    setDealerId("");
+    setMonthly("");
+  };
+
+  const rangeHint =
+    "All ranges assume 20% down · residual by term (25→63% · 37→52% · 49→41% · 61→32%)";
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8">
-      <p className="mb-3 text-sm text-fg-muted">
-        {loading ? "…" : `${formatNumber(filtered.length)} Available Vehicles`}
-      </p>
-
-      <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/70 pb-3 sm:gap-x-8">
-        <FilterSelect
-          label="Year"
-          value={year}
-          onChange={setYear}
-          options={years.map((y) => ({ value: y, label: y }))}
-        />
-        <FilterSelect
-          label="Make"
-          value={make}
-          onChange={(v) => {
-            setMake(v);
-            setModel("");
-          }}
-          options={makes.map((m) => ({ value: m, label: m }))}
-        />
-        <FilterSelect
-          label="Model"
-          value={model}
-          onChange={setModel}
-          options={models.map((m) => ({ value: m, label: m }))}
-        />
-        <FilterSelect
-          label="Monthly Pmnt"
-          value={monthlyRange}
-          onChange={(v) => setMonthlyRange(v as MonthlyRangeId | "")}
-          options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
-          active={Boolean(monthlyRange)}
-        />
-        {filtersActive && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
+      <div className="mb-5 flex flex-col gap-3 sm:mb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search"
+            className="h-10 min-w-[10rem] flex-1 rounded-full border border-border bg-surface px-4 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 sm:max-w-xs"
+          />
+          <select
+            value={make}
+            onChange={(e) => setMake(e.target.value)}
+            className="h-10 rounded-full border border-border bg-surface px-3 text-sm text-fg outline-none"
           >
-            <X className="size-3.5" aria-hidden />
-            Clear
-          </button>
-        )}
-      </div>
-      <p className="mb-6 text-[11px] text-fg-subtle">{downNote}</p>
-
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="aspect-[3/4] animate-pulse rounded-[var(--radius-xl)] bg-surface"
-            />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-[var(--radius-xl)] bg-surface px-6 py-20 text-center">
-          <p className="text-sm text-fg-muted">No vehicles match.</p>
-          {filtersActive && (
+            <option value="">All makes</option>
+            {makes.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <select
+            value={dealerId}
+            onChange={(e) => setDealerId(e.target.value)}
+            className="h-10 max-w-[12rem] rounded-full border border-border bg-surface px-3 text-sm text-fg outline-none"
+          >
+            <option value="">All dealers</option>
+            {dealers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={monthly}
+            onChange={(e) => setMonthly(e.target.value as MonthlyRangeId | "")}
+            className="h-10 rounded-full border border-border bg-surface px-3 text-sm text-fg outline-none"
+          >
+            <option value="">Monthly pmnt</option>
+            {MONTHLY_RANGES.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+          {hasFilters && (
             <button
               type="button"
               onClick={clearFilters}
-              className="mt-3 text-sm font-medium text-accent hover:underline"
+              className="inline-flex h-10 items-center gap-1 rounded-full border border-border px-3 text-sm text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+            >
+              <X className="size-3.5" />
+              Clear
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-fg-subtle">{rangeHint}</p>
+        {stats && (
+          <p className="text-[11px] text-fg-subtle">
+            {stats.total} cars · {stats.dealers} dealers
+            {filtered.length !== vehicles.length ? ` · showing ${filtered.length}` : ""}
+          </p>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-[40vh] items-center justify-center text-fg-muted">
+          <Loader2 className="size-6 animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-[var(--radius-xl)] border border-border bg-surface px-6 py-16 text-center">
+          <p className="text-sm text-fg-muted">No vehicles match these filters.</p>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 text-sm font-medium text-accent hover:underline"
             >
               Clear filters
             </button>
@@ -162,9 +201,7 @@ function InventoryFunnel() {
               vehicle={v}
               index={i}
               expanded={expandedId === v.id}
-              onToggleLease={() =>
-                setExpandedId((cur) => (cur === v.id ? null : v.id))
-              }
+              onToggleLease={() => setExpandedId((id) => (id === v.id ? null : v.id))}
               quoteSettings={quoteSettings}
             />
           ))}
@@ -174,37 +211,4 @@ function InventoryFunnel() {
   );
 }
 
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-  active,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  active?: boolean;
-}) {
-  const isActive = active ?? Boolean(value);
-  return (
-    <label className="relative inline-flex items-center gap-1 text-sm text-fg-muted">
-      <span className={cn(isActive && "text-fg")}>{label}</span>
-      <ChevronDown className="size-3.5 opacity-50" aria-hidden />
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
-        aria-label={label}
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
+void cn;

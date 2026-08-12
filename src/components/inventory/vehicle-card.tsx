@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
 import {
   calculateLease,
+  LEASE_TERM_OPTIONS,
   type LeaseQuote,
   type QuoteSettings,
   DEFAULT_QUOTE_SETTINGS,
@@ -15,7 +16,7 @@ import {
 } from "@/lib/leasing/gallery";
 import { formatCad, formatCadExact, formatNumber, cn } from "@/lib/utils";
 
-const TERM_OPTIONS = [24, 36, 48, 60] as const;
+const TERM_OPTIONS = LEASE_TERM_OPTIONS;
 const DOWN_OPTIONS = [
   { rate: 0.1, label: "10%" },
   { rate: 0.15, label: "15%" },
@@ -200,7 +201,11 @@ function InCardQuote({
   baseSettings: QuoteSettings;
   onClose: () => void;
 }) {
-  const [termMonths, setTermMonths] = useState(baseSettings.termMonths || 36);
+  const [termMonths, setTermMonths] = useState(
+    LEASE_TERM_OPTIONS.includes(baseSettings.termMonths as (typeof LEASE_TERM_OPTIONS)[number])
+      ? baseSettings.termMonths
+      : 37,
+  );
   const [downRate, setDownRate] = useState(baseSettings.downPaymentRate || 0.2);
   const [step, setStep] = useState<"quote" | "apply" | "done">("quote");
   const [name, setName] = useState("");
@@ -398,6 +403,9 @@ function InCardQuote({
                 label={`${t} mo`}
               />
             ))}
+            <p className="mt-1.5 w-full text-[10px] text-fg-subtle">
+              Residual auto: 25→63% · 37→52% · 49→41% · 61→32%
+            </p>
           </div>
         </div>
         <div>
@@ -416,7 +424,13 @@ function InCardQuote({
             Down payment{" "}
             <span className="font-medium text-fg">{formatCad(quote.downPaymentCents)}</span>
             <span className="mx-1 text-fg-subtle">·</span>
-            Residual <span className="font-medium text-fg">{formatCad(quote.residualCents)}</span>
+            Residual{" "}
+            <span className="font-medium text-fg">
+              {formatCad(quote.residualCents)}
+            </span>{" "}
+            <span className="text-fg-subtle">
+              ({(quote.residualRate * 100).toFixed(0)}%)
+            </span>
           </p>
         </div>
       </div>

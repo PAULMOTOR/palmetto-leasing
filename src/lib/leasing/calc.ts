@@ -1,8 +1,40 @@
-/** Live lease quote — defaults overridable from admin quote_settings. */
+/** Live lease quote — term-linked residual schedule + admin APR/down defaults. */
 
-export const DEFAULT_TERM_MONTHS = 36;
+/** Standard Palmetto term chips (months). */
+export const LEASE_TERM_OPTIONS = [25, 37, 49, 61] as const;
+export type LeaseTermMonths = (typeof LEASE_TERM_OPTIONS)[number];
+
+/**
+ * Residual % of MSRP/price by term (program schedule).
+ * 25 → 63% · 37 → 52% · 49 → 41% · 61 → 32%
+ */
+export const RESIDUAL_BY_TERM: Record<LeaseTermMonths, number> = {
+  25: 0.63,
+  37: 0.52,
+  49: 0.41,
+  61: 0.32,
+};
+
+export function residualForTerm(termMonths: number): number {
+  if ((LEASE_TERM_OPTIONS as readonly number[]).includes(termMonths)) {
+    return RESIDUAL_BY_TERM[termMonths as LeaseTermMonths];
+  }
+  // Nearest known term for odd admin values
+  let best: LeaseTermMonths = 37;
+  let bestDist = Math.abs(termMonths - best);
+  for (const t of LEASE_TERM_OPTIONS) {
+    const d = Math.abs(termMonths - t);
+    if (d < bestDist) {
+      best = t;
+      bestDist = d;
+    }
+  }
+  return RESIDUAL_BY_TERM[best];
+}
+
+export const DEFAULT_TERM_MONTHS = 37;
 export const DEFAULT_DOWN_PAYMENT_RATE = 0.2;
-export const DEFAULT_RESIDUAL_RATE = 0.5;
+export const DEFAULT_RESIDUAL_RATE = RESIDUAL_BY_TERM[37];
 /** Annual APR used for money-factor interest portion of payment. */
 export const DEFAULT_BASE_INTEREST_RATE = 0.059;
 
@@ -39,20 +71,26 @@ export type LeaseQuote = {
 /**
  * monthly = depreciation/term + (cap + residual) * moneyFactor
  * moneyFactor ≈ APR / 2400
+ *
+ * Residual always follows the program schedule for the chosen term
+ * (25→63%, 37→52%, 49→41%, 61→32%).
  */
 export function calculateLease(
   priceCents: number,
   settings: Partial<QuoteSettings> = {},
 ): LeaseQuote {
-  const s: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
+  const base: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
+  const termMonths = base.termMonths;
+  const residualRate = residualForTerm(termMonths);
+
   const price = Math.max(0, Math.round(priceCents));
-  const downPaymentCents = Math.round(price * s.downPaymentRate);
-  const residualCents = Math.round(price * s.residualRate);
+  const downPaymentCents = Math.round(price * base.downPaymentRate);
+  const residualCents = Math.round(price * residualRate);
   const capCostCents = price - downPaymentCents;
   const depreciationCents = Math.max(0, capCostCents - residualCents);
-  const moneyFactor = s.baseInterestRate / 2400;
+  const moneyFactor = base.baseInterestRate / 2400;
   const financeChargeCents = Math.round((capCostCents + residualCents) * moneyFactor);
-  const baseMonthly = Math.round(depreciationCents / s.termMonths);
+  const baseMonthly = Math.round(depreciationCents / Math.max(1, termMonths));
   const monthlyPaymentCents = baseMonthly + financeChargeCents;
 
   return {
@@ -63,10 +101,10 @@ export function calculateLease(
     depreciationCents,
     financeChargeCents,
     monthlyPaymentCents,
-    termMonths: s.termMonths,
-    downRate: s.downPaymentRate,
-    residualRate: s.residualRate,
-    baseInterestRate: s.baseInterestRate,
+    termMonths,
+    downRate: base.downPaymentRate,
+    residualRate,
+    baseInterestRate: base.baseInterestRate,
     moneyFactor,
   };
 }
@@ -79,7 +117,6 @@ export function estimateBuyout(
 ): number {
   const q = calculateLease(priceCents, settings);
   const remaining = Math.max(0, q.termMonths - Math.max(0, monthsElapsed));
-  // Straight-line residual approach + remaining depreciation
   const paidDep = Math.round(
     (q.depreciationCents * Math.min(monthsElapsed, q.termMonths)) / q.termMonths,
   );

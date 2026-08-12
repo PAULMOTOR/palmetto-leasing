@@ -10,7 +10,7 @@ export const Route = createFileRoute("/how-it-works")({
 
 const STEPS = [
   { n: "01", title: "Inventory", body: "Partner dealers sync stock into Palmetto." },
-  { n: "02", title: "Lease", body: "36 months · 20% down · 50% residual — live math." },
+  { n: "02", title: "Lease", body: "25–61 months · 20% down · residual by term — live math." },
   { n: "03", title: "CRM", body: "Every quote and dealer application lands as a lead." },
 ];
 
