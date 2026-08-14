@@ -10,6 +10,7 @@ import {
 import { parseVehiclesFromHtml, rawToSeedVehicles } from "./parse-vehicles";
 import { isAutoTraderUrl, parseAutoTraderHtml } from "./parse-autotrader";
 import { fetchSigmaVehicles } from "./parse-sigma";
+import { fetchLeaseSniperVehicles, isLeaseSniperUrl } from "./parse-leasesniper";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -33,6 +34,25 @@ export async function fetchDealerInventory(
 
   let live: SeedVehicle[] = [];
   let httpStatus: number | undefined;
+
+  // Lease Sniper WordPress inventory (no JSON-LD Vehicle nodes)
+  if (isLeaseSniperUrl(inventoryUrl) || /lease[-_]?sniper/i.test(dealerId)) {
+    try {
+      const ls = await fetchLeaseSniperVehicles(dealerId);
+      live = ls.items;
+      notes.push(...ls.notes);
+      if (live.length >= 1) {
+        return {
+          dealerId,
+          source: "live",
+          items: live,
+          notes: [...notes, `LIVE Lease Sniper (${live.length} ≥ $150k)`],
+        };
+      }
+    } catch (err) {
+      notes.push(`Lease Sniper: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Sigma custom API (SPA — no JSON-LD)
   if (/sigmaautomotive\.ca/i.test(inventoryUrl) || dealerId.includes("sigma")) {

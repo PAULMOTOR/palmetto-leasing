@@ -5,7 +5,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { DEALERS } from "@/lib/leasing/seed";
-import { ensureSeededInventory } from "@/lib/crawler/run";
+import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 
 export type AdminDealer = {
@@ -107,6 +107,16 @@ export const updateDealer = createServerFn({ method: "POST" })
         active = coalesce(${data.active ?? null}, active)
       where id = ${data.id}
     `;
+    if (data.inventory_url || data.active === true) {
+      try {
+        await runInventoryCrawl({
+          dealerIds: [data.id],
+          generateThumbs: false,
+        });
+      } catch {
+        /* listing will pick up on next full crawl */
+      }
+    }
     return { ok: true as const };
   });
 
@@ -161,11 +171,12 @@ export const addDealer = createServerFn({ method: "POST" })
       .replace(/^-|-$/g, "")
       .slice(0, 48);
     const sql = await getSql();
+    const inventoryUrl = normalizeInventoryUrl(data.inventory_url);
     await sql`
       insert into dealerships (id, name, city, province, brands, website_url, inventory_url, active)
       values (
         ${id}, ${data.name}, ${data.city}, ${data.province}, ${data.brands},
-        ${data.website_url}, ${data.inventory_url}, ${data.active}
+        ${data.website_url}, ${inventoryUrl}, ${data.active}
       )
       on conflict (id) do update set
         name = excluded.name,
@@ -176,5 +187,29 @@ export const addDealer = createServerFn({ method: "POST" })
         inventory_url = excluded.inventory_url,
         active = excluded.active
     `;
-    return { ok: true as const, id };
+    let crawled = 0;
+    try {
+      const result = await runInventoryCrawl({
+        dealerIds: [id],
+        generateThumbs: false,
+      });
+      crawled = result.listingsFound;
+    } catch {
+      /* admin can click Pool inventory */
+    }
+    return { ok: true as const, id, crawled };
   });
+
+function normalizeInventoryUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (/leasesniper\.ca$/i.test(u.hostname.replace(/^www\./, ""))) {
+      if (!/leaselisting|our-inventory/i.test(u.pathname)) {
+        return "https://leasesniper.ca/our-inventory/";
+      }
+    }
+  } catch {
+    /* keep as-is */
+  }
+  return url;
+}

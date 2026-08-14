@@ -40,7 +40,11 @@ export type CrawlResult = {
   notes?: string[];
 };
 
-export async function runInventoryCrawl(opts?: { forceIncludeAll?: boolean; generateThumbs?: boolean }) {
+export async function runInventoryCrawl(opts?: {
+  forceIncludeAll?: boolean;
+  generateThumbs?: boolean;
+  dealerIds?: string[];
+}) {
   return enqueueSeed(() => runInventoryCrawlInner(opts));
 }
 
@@ -71,6 +75,7 @@ async function purgeRetiredDealers(sql: Awaited<ReturnType<typeof getSql>>, note
 async function runInventoryCrawlInner(opts?: {
   forceIncludeAll?: boolean;
   generateThumbs?: boolean;
+  dealerIds?: string[];
 }): Promise<CrawlResult> {
   const sql = await getSql();
   const wantThumbs = opts?.generateThumbs !== false;
@@ -156,8 +161,16 @@ async function runInventoryCrawlInner(opts?: {
     `;
     // Never crawl retired IDs even if somehow still present
     const retired = new Set<string>(RETIRED_DEALER_IDS as unknown as string[]);
-    const crawlDealers = activeDealers.filter((d) => !retired.has(d.id));
-    const activeIds = new Set(crawlDealers.map((d) => d.id));
+    const only = (opts?.dealerIds || []).filter(Boolean);
+    const crawlDealers = activeDealers.filter((d) => {
+      if (retired.has(d.id)) return false;
+      if (only.length) return only.includes(d.id);
+      return true;
+    });
+    const partial = only.length > 0;
+    const activeIds = new Set(
+      (partial ? activeDealers : crawlDealers).filter((d) => !retired.has(d.id)).map((d) => d.id),
+    );
 
     const liveFeed: SeedVehicle[] = [];
     for (const d of crawlDealers) {
@@ -265,7 +278,7 @@ async function runInventoryCrawlInner(opts?: {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
     }
 
-    // Remove any vehicle not in current live feed (including leftovers from retired dealers)
+    // Remove stale vehicles. Partial crawls only touch the requested dealer(s).
     const active = await sql<{ id: string; dealership_id: string; external_id: string }>`
       select id, dealership_id, external_id from vehicles where status = 'active'
     `;
@@ -275,6 +288,7 @@ async function runInventoryCrawlInner(opts?: {
         removed += 1;
         continue;
       }
+      if (partial && !only.includes(row.dealership_id)) continue;
       const key = `${row.dealership_id}::${row.external_id}`;
       if (seenExternal.has(key)) continue;
       await sql`delete from vehicles where id = ${row.id}`;
