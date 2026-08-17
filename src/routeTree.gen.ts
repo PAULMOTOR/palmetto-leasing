@@ -20,6 +20,7 @@ import { Route as PortalClientRouteImport } from './routes/portal/client'
 import { Route as PortalDealerRouteImport } from './routes/portal/dealer'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronCrawlRouteImport } from './routes/api/cron/crawl'
+import { Route as ApiThumbIdRouteImport } from './routes/api/thumb.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -76,6 +77,11 @@ const ApiCronCrawlRoute = ApiCronCrawlRouteImport.update({
   path: '/api/cron/crawl',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiThumbIdRoute = ApiThumbIdRouteImport.update({
+  id: '/api/thumb/$id',
+  path: '/api/thumb/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/portal/dealer': typeof PortalDealerRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
+  '/api/thumb/$id': typeof ApiThumbIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/portal/dealer': typeof PortalDealerRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
+  '/api/thumb/$id': typeof ApiThumbIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/portal/dealer': typeof PortalDealerRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
+  '/api/thumb/$id': typeof ApiThumbIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/portal/dealer'
     | '/api/auth/$'
     | '/api/cron/crawl'
+    | '/api/thumb/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/portal/dealer'
     | '/api/auth/$'
     | '/api/cron/crawl'
+    | '/api/thumb/$id'
   id:
     | '__root__'
     | '/'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/portal/dealer'
     | '/api/auth/$'
     | '/api/cron/crawl'
+    | '/api/thumb/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -171,6 +183,7 @@ export interface RootRouteChildren {
   PortalDealerRoute: typeof PortalDealerRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronCrawlRoute: typeof ApiCronCrawlRoute
+  ApiThumbIdRoute: typeof ApiThumbIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronCrawlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/thumb/$id': {
+      id: '/api/thumb/$id'
+      path: '/api/thumb/$id'
+      fullPath: '/api/thumb/$id'
+      preLoaderRoute: typeof ApiThumbIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -267,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   PortalDealerRoute: PortalDealerRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronCrawlRoute: ApiCronCrawlRoute,
+  ApiThumbIdRoute: ApiThumbIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

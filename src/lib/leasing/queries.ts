@@ -24,6 +24,7 @@ import {
   isEphemeralImagineUrl,
 } from "@/lib/imagine/persist-image";
 import { normalizeDealerListingUrl } from "./seed";
+import { publicTileUrl, slimPhotoUrls } from "./thumb-url";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
@@ -41,9 +42,10 @@ async function toCard(
   if (!thumb || isEphemeralImagineUrl(thumb)) {
     thumb = firstDurablePhoto(photos, row.thumbnail_url) || "/vehicles/top-porsche-911.jpg";
   }
+  const httpPhotos = slimPhotoUrls(photos);
   return {
     ...row,
-    thumbnail_url: thumb,
+    thumbnail_url: publicTileUrl(row.id, thumb),
     price_cents: Number(row.price_cents),
     mileage: Number(row.mileage),
     year: Number(row.year),
@@ -51,7 +53,8 @@ async function toCard(
     dealer_listing_url: normalizeDealerListingUrl(row.dealer_listing_url || ""),
     monthly_payment_cents: quote.monthlyPaymentCents,
     specs: parseSpecs(row.specs_json),
-    photos,
+    photos: httpPhotos,
+    photo_urls: JSON.stringify(httpPhotos),
   };
 }
 

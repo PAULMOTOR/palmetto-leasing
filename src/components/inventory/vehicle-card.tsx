@@ -49,7 +49,15 @@ function buildThumbCandidates(vehicle: VehicleCardType): string[] {
  * longitudinal axis (hood badge) lines up with the page/logo centerline
  * when the card is the middle column.
  */
-function TileThumb({ vehicle, title }: { vehicle: VehicleCardType; title: string }) {
+function TileThumb({
+  vehicle,
+  title,
+  priority = false,
+}: {
+  vehicle: VehicleCardType;
+  title: string;
+  priority?: boolean;
+}) {
   const candidates = useMemo(() => buildThumbCandidates(vehicle), [vehicle]);
   const [idx, setIdx] = useState(0);
   const src = candidates[Math.min(idx, candidates.length - 1)] || PLACEHOLDER;
@@ -61,7 +69,11 @@ function TileThumb({ vehicle, title }: { vehicle: VehicleCardType; title: string
         src={src}
         alt=""
         role="presentation"
-        loading="lazy"
+        width={800}
+        height={800}
+        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "low"}
         decoding="async"
         onError={() => {
           setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
@@ -94,7 +106,7 @@ export function VehicleCard({
     .filter(Boolean)
     .join(" ");
   const shortTitle = [vehicle.year, vehicle.make, vehicle.model].join(" ");
-  const delay = Math.min(index, 12) * 35;
+  const delay = index < 3 ? 0 : Math.min(index, 12) * 35;
   const settings = quoteSettings ?? DEFAULT_QUOTE_SETTINGS;
 
   const [learnOpen, setLearnOpen] = useState(false);
@@ -128,7 +140,7 @@ export function VehicleCard({
                 : "aspect-square",
             )}
           >
-            <TileThumb vehicle={vehicle} title={title} />
+            <TileThumb vehicle={vehicle} title={title} priority={index < 3} />
           </div>
 
           <div className="flex flex-col items-center bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">

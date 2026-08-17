@@ -49,17 +49,16 @@ function InventoryPage() {
     (async () => {
       setLoading(true);
       try {
-        await bootstrapInventory();
         const [list, st, qs] = await Promise.all([
           listVehicles({ data: { sort: "price_desc" } }),
           getInventoryStats(),
-          // Server fn — reads Neon admin quote_settings (not client-side defaults)
           getQuoteSettings().catch(() => DEFAULT_QUOTE_SETTINGS),
         ]);
         if (cancelled) return;
         setVehicles(list);
         setStats({ total: st.total });
         setQuoteSettings(qs);
+        void bootstrapInventory();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -153,6 +152,10 @@ function InventoryPage() {
   }, [vehicles, year, make, model, monthly]);
 
   const hasFilters = Boolean(year || make || model || monthly);
+  const heroThumbs = useMemo(
+    () => filtered.slice(0, 3).map((v) => v.thumbnail_url).filter(Boolean),
+    [filtered],
+  );
   const clearFilters = () => {
     setYear("");
     setMake("");
@@ -162,6 +165,7 @@ function InventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
+      <HeroImagePreloads urls={heroThumbs} />
       <div
         className={cn(
           "pointer-events-none fixed inset-x-0 top-[4.75rem] z-30 sm:top-[5.25rem]",
@@ -280,6 +284,28 @@ function InventoryPage() {
       </div>
     </div>
   );
+}
+
+function HeroImagePreloads({ urls }: { urls: string[] }) {
+  useEffect(() => {
+    const links: HTMLLinkElement[] = [];
+    urls.slice(0, 3).forEach((href, i) => {
+      if (!href || href.startsWith("data:")) return;
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "image";
+      link.href = href;
+      link.setAttribute("fetchpriority", "high");
+      if (i === 1) link.media = "(min-width: 640px)";
+      if (i === 2) link.media = "(min-width: 1024px)";
+      document.head.appendChild(link);
+      links.push(link);
+    });
+    return () => {
+      for (const link of links) link.remove();
+    };
+  }, [urls.join("\n")]);
+  return null;
 }
 
 function FilterSelect({
