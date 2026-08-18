@@ -373,6 +373,12 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
     let vehicleLabel = "";
     let dealerName = "";
     let priceCents = 0;
+    let year = "";
+    let make = "";
+    let model = "";
+    let trim = "";
+    let vin = "";
+    let stock = "";
 
     try {
       const sql = await getSql();
@@ -388,6 +394,12 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         priceCents = Number(v.price_cents);
         vehicleLabel = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
         dealerName = v.dealer_name;
+        year = String(v.year || "");
+        make = v.make || "";
+        model = v.model || "";
+        trim = v.trim || "";
+        vin = v.vin || "";
+        stock = v.stock_number || "";
       }
     } catch {
       /* static */
@@ -399,6 +411,12 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       priceCents = v.price_cents;
       vehicleLabel = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
       dealerName = v.dealer_name || "";
+      year = String(v.year || "");
+      make = v.make || "";
+      model = v.model || "";
+      trim = v.trim || "";
+      vin = v.vin || "";
+      stock = v.stock_number || "";
     }
 
     const quote = calculateLease(priceCents, settings);
@@ -413,6 +431,12 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       notes: data.notes,
       source: data.source || "apply_now",
       application: data.application,
+      year,
+      make,
+      model,
+      trim,
+      vin,
+      stock,
     });
 
     return {
