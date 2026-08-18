@@ -1,66 +1,48 @@
 /**
- * Server-side handoff to the separate CRM Vercel project.
- * Never embeds CRM database credentials here.
- *
- * The CRM parser (moss-drift-able-monarch) reads name/email/phone/vehicle
- * and dollar amounts — not Palmetto's customerName / *Cents fields.
- * We send both shapes so either side can stay compatible.
+ * Server-side handoff to the CRM Vercel project.
+ * POST body is the quote the customer just saw — dollars and % — not cents.
+ * Palmetto never opens the CRM database.
  */
 import type { LeaseQuote } from "@/lib/leasing/calc";
 
+/** Canonical Apply payload (what CRM_HANDOFF_URL receives). */
 export type HandoffPayload = {
-  type: "lease_application" | "lease_quote";
   referenceId: string;
-  vehicleId: string;
-  vehicleLabel: string;
-  dealerName: string;
-  priceCents: number;
-  downPaymentCents: number;
-  residualCents: number;
-  termMonths: number;
-  monthlyPaymentCents: number;
-  baseInterestRate: number;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  notes: string;
-  application?: Record<string, unknown>;
-  source: string;
-  site: string;
-  createdAt: string;
-  // CRM-native aliases (what parsePalmettoPayload actually reads)
   name: string;
-  firstName: string;
-  lastName: string;
   email: string;
   phone: string;
-  address: string;
-  city: string;
-  province: string;
-  postal: string;
-  postalCode: string;
-  employer: string;
-  occupation: string;
-  job: string;
-  income: string;
-  creditConsent: boolean;
-  vehicle: string;
-  year: string;
-  make: string;
-  model: string;
-  trim: string;
-  vin: string;
-  stock: string;
+  car: {
+    year: number | null;
+    make: string;
+    model: string;
+    vin: string;
+    trim?: string;
+    stock?: string;
+  };
+  dealer: { name: string };
   price: number;
   down: number;
   residual: number;
   term: number;
   monthly: number;
   rate: number;
-  customer: Record<string, unknown>;
-  quote: Record<string, unknown>;
-  car: Record<string, unknown>;
-  dealer: Record<string, unknown>;
+  creditConsent: boolean;
+  // extras the CRM already stores (address / job / notes)
+  firstName?: string;
+  lastName?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  postal?: string;
+  employer?: string;
+  occupation?: string;
+  income?: string;
+  vehicle?: string;
+  notes?: string;
+  source?: string;
+  site?: string;
+  createdAt?: string;
+  application?: Record<string, unknown>;
 };
 
 export type HandoffResult = {
@@ -71,20 +53,33 @@ export type HandoffResult = {
   crmLeadId?: string;
 };
 
-function centsToDollars(cents: number): number {
+/** Whole dollars — same as the price / down / residual on the quote card. */
+function dollarsSeen(cents: number): number {
+  if (!Number.isFinite(cents)) return 0;
+  return Math.round(cents / 100);
+}
+
+/** Two-decimal dollars — same as the monthly the customer sees. */
+function monthlySeen(cents: number): number {
   if (!Number.isFinite(cents)) return 0;
   return Math.round(cents) / 100;
 }
 
-/** CRM notes render `Rate ${n}%` — send 7.99, not 0.0799. */
-function ratePercent(rate: number): number {
+/** APR as 7.49 — same % shown on the quote, not 0.0749. */
+function rateSeen(rate: number): number {
   if (!Number.isFinite(rate)) return 0;
-  return rate > 0 && rate < 1 ? Math.round(rate * 10_000) / 100 : rate;
+  const pct = rate > 0 && rate < 1 ? rate * 100 : rate;
+  return Math.round(pct * 100) / 100;
 }
 
 function field(v: unknown): string {
   if (v == null) return "";
   return String(v).trim();
+}
+
+function yearSeen(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[^\d]/g, ""));
+  return Number.isFinite(n) && n >= 1980 && n <= 2100 ? Math.round(n) : null;
 }
 
 export async function handoffLeaseToCrm(input: {
@@ -114,99 +109,46 @@ export async function handoffLeaseToCrm(input: {
   const app = input.application ?? {};
   const name = input.customerName.trim();
   const nameParts = name.split(/\s+/).filter(Boolean);
-  const firstName = nameParts[0] || "";
-  const lastName = nameParts.slice(1).join(" ");
   const email = input.customerEmail.trim().toLowerCase();
   const phone = field(input.customerPhone);
-  const address = field(app.address);
-  const city = field(app.city);
-  const province = field(app.province);
-  const postal = field(app.postalCode);
-  const employer = field(app.employer);
-  const occupation = field(app.occupation);
-  const income = field(app.annualIncome);
   const creditConsent = app.consentCredit === true || app.creditConsent === true;
-  const year = field(input.year);
-  const make = field(input.make);
-  const model = field(input.model);
-  const trim = field(input.trim);
-  const vin = field(input.vin).toUpperCase();
-  const stock = field(input.stock);
-  const price = centsToDollars(input.quote.priceCents);
-  const down = centsToDollars(input.quote.downPaymentCents);
-  const residual = centsToDollars(input.quote.residualCents);
-  const monthly = centsToDollars(input.quote.monthlyPaymentCents);
-  const term = input.quote.termMonths;
-  const rate = ratePercent(input.quote.baseInterestRate);
-  const vehicle = input.vehicleLabel;
 
   const payload: HandoffPayload = {
-    type: "lease_application",
     referenceId,
-    vehicleId: input.vehicleId,
-    vehicleLabel: vehicle,
-    dealerName: input.dealerName,
-    priceCents: input.quote.priceCents,
-    downPaymentCents: input.quote.downPaymentCents,
-    residualCents: input.quote.residualCents,
-    termMonths: term,
-    monthlyPaymentCents: input.quote.monthlyPaymentCents,
-    baseInterestRate: input.quote.baseInterestRate,
-    customerName: name,
-    customerEmail: email,
-    customerPhone: phone,
-    notes: input.notes || "",
-    application: input.application,
-    source: input.source || "palmettoleasing.com",
-    site,
-    createdAt: new Date().toISOString(),
     name,
-    firstName,
-    lastName,
     email,
     phone,
-    address,
-    city,
-    province,
-    postal,
-    postalCode: postal,
-    employer,
-    occupation,
-    job: [occupation, employer].filter(Boolean).join(" · "),
-    income,
-    creditConsent,
-    vehicle,
-    year,
-    make,
-    model,
-    trim,
-    vin,
-    stock,
-    price,
-    down,
-    residual,
-    term,
-    monthly,
-    rate,
-    customer: {
-      name,
-      firstName,
-      lastName,
-      email,
-      phone,
-      address,
-      city,
-      province,
-      postal,
-      postalCode: postal,
-      employer,
-      occupation,
-      income,
-      creditConsent,
+    car: {
+      year: yearSeen(input.year),
+      make: field(input.make),
+      model: field(input.model),
+      vin: field(input.vin).toUpperCase(),
+      trim: field(input.trim) || undefined,
+      stock: field(input.stock) || undefined,
     },
-    quote: { price, down, residual, term, monthly, rate, termMonths: term },
-    car: { year, make, model, trim, vin, stock, label: vehicle, name: vehicle },
     dealer: { name: input.dealerName },
+    price: dollarsSeen(input.quote.priceCents),
+    down: dollarsSeen(input.quote.downPaymentCents),
+    residual: dollarsSeen(input.quote.residualCents),
+    term: input.quote.termMonths,
+    monthly: monthlySeen(input.quote.monthlyPaymentCents),
+    rate: rateSeen(input.quote.baseInterestRate),
+    creditConsent,
+    firstName: nameParts[0] || "",
+    lastName: nameParts.slice(1).join(" "),
+    address: field(app.address),
+    city: field(app.city),
+    province: field(app.province),
+    postal: field(app.postalCode),
+    employer: field(app.employer),
+    occupation: field(app.occupation),
+    income: field(app.annualIncome),
+    vehicle: input.vehicleLabel,
+    notes: input.notes || "",
+    source: input.source || "apply_now",
+    site,
+    createdAt: new Date().toISOString(),
+    application: input.application,
   };
 
   const url = process.env.CRM_HANDOFF_URL?.trim();
@@ -248,7 +190,7 @@ export async function handoffLeaseToCrm(input: {
     }
     let crmLeadId: string | undefined;
     try {
-      const body = JSON.parse(text) as { id?: string; ok?: boolean };
+      const body = JSON.parse(text) as { id?: string };
       if (body.id) crmLeadId = body.id;
     } catch {
       /* ignore */
