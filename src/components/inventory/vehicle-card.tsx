@@ -549,13 +549,22 @@ function InCardQuote({
         </div>
       ) : step === "quote" ? (
         <div className="mt-auto space-y-2 pt-1">
-          <button
-            type="button"
-            onClick={() => setStep("apply")}
-            className="inline-flex h-11 w-full items-center justify-center rounded-full bg-fg text-sm font-medium text-primary-fg transition-[transform,opacity] duration-[var(--motion-quick)] hover:opacity-90 active:scale-[0.98]"
-          >
-            Apply now
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full border border-border px-5 text-sm font-medium text-fg-muted transition-[background-color,color,transform] duration-[var(--motion-quick)] hover:bg-surface hover:text-fg active:scale-[0.98]"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep("apply")}
+              className="inline-flex h-11 min-w-0 flex-1 items-center justify-center rounded-full bg-fg text-sm font-medium text-primary-fg transition-[transform,opacity] duration-[var(--motion-quick)] hover:opacity-90 active:scale-[0.98]"
+            >
+              Apply now
+            </button>
+          </div>
           <p className="text-center text-[10px] text-fg-subtle">
             Built-in lease application · feeds CRM
           </p>

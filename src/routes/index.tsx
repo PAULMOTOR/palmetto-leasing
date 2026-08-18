@@ -38,6 +38,7 @@ function InventoryPage() {
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [monthly, setMonthly] = useState<MonthlyRangeId | "">("");
+  const [dealer, setDealer] = useState("");
 
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [filterPinned, setFilterPinned] = useState(false);
@@ -129,34 +130,51 @@ function InventoryPage() {
     return () => clearTimeout(t);
   }, [filterPinned]);
 
+  const dealers = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of vehicles) {
+      if (!v.dealership_id || map.has(v.dealership_id)) continue;
+      map.set(v.dealership_id, v.dealer_name || v.dealership_id);
+    }
+    return [...map.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }, [vehicles]);
+
+  const dealerPool = useMemo(() => {
+    if (!dealer) return vehicles;
+    return vehicles.filter((v) => v.dealership_id === dealer);
+  }, [vehicles, dealer]);
+
   const years = useMemo(
-    () => [...new Set(vehicles.map((v) => v.year))].sort((a, b) => b - a),
-    [vehicles],
+    () => [...new Set(dealerPool.map((v) => v.year))].sort((a, b) => b - a),
+    [dealerPool],
   );
   const makes = useMemo(
-    () => [...new Set(vehicles.map((v) => v.make))].sort(),
-    [vehicles],
+    () => [...new Set(dealerPool.map((v) => v.make))].sort(),
+    [dealerPool],
   );
   const models = useMemo(() => {
-    const pool = make ? vehicles.filter((v) => v.make === make) : vehicles;
+    const pool = make ? dealerPool.filter((v) => v.make === make) : dealerPool;
     return [...new Set(pool.map((v) => v.model))].sort();
-  }, [vehicles, make]);
+  }, [dealerPool, make]);
 
   const filtered = useMemo(() => {
-    let list = vehicles;
+    let list = dealerPool;
     if (year) list = list.filter((v) => String(v.year) === year);
     if (make) list = list.filter((v) => v.make === make);
     if (model) list = list.filter((v) => v.model === model);
     if (monthly) list = list.filter((v) => inMonthlyRange(v.monthly_payment_cents, monthly));
     return list;
-  }, [vehicles, year, make, model, monthly]);
+  }, [dealerPool, year, make, model, monthly]);
 
-  const hasFilters = Boolean(year || make || model || monthly);
+  const hasFilters = Boolean(dealer || year || make || model || monthly);
   const heroThumbs = useMemo(
     () => filtered.slice(0, 3).map((v) => v.thumbnail_url).filter(Boolean),
     [filtered],
   );
   const clearFilters = () => {
+    setDealer("");
     setYear("");
     setMake("");
     setModel("");
@@ -207,6 +225,17 @@ function InventoryPage() {
             </p>
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/50 pb-3">
+              <FilterSelect
+                label="Dealer"
+                value={dealer}
+                onChange={(v) => {
+                  setDealer(v);
+                  setYear("");
+                  setMake("");
+                  setModel("");
+                }}
+                options={dealers}
+              />
               <FilterSelect
                 label="Year"
                 value={year}
