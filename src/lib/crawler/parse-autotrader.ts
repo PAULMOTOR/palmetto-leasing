@@ -1,8 +1,14 @@
 /**
  * Parse AutoTrader.ca dealer pages via embedded __NEXT_DATA__ listings.
  * Used when a partner's own site is Cloudflare-blocked (e.g. Paul Motor).
+ * Dealer pages are 20 listings each — follow ?page=2..numberOfPages.
  */
 import { PREMIUM_MIN_CENTS, type SeedVehicle } from "@/lib/leasing/seed";
+
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+const MAX_AT_PAGES = 8;
 
 type AtListing = {
   id?: string;
@@ -29,6 +35,35 @@ export function isAutoTraderUrl(url: string): boolean {
     return /autotrader\.ca$/i.test(u.hostname.replace(/^www\./, ""));
   } catch {
     return /autotrader\.ca/i.test(url);
+  }
+}
+
+export function autotraderPageUrl(dealerUrl: string, page: number): string {
+  try {
+    const u = new URL(dealerUrl);
+    if (page <= 1) u.searchParams.delete("page");
+    else u.searchParams.set("page", String(page));
+    return u.toString();
+  } catch {
+    return dealerUrl;
+  }
+}
+
+export function parseAutoTraderMeta(html: string): { numberOfPages: number; numberOfResults: number } {
+  const nd = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!nd?.[1]) return { numberOfPages: 1, numberOfResults: 0 };
+  try {
+    const json = JSON.parse(nd[1]) as {
+      props?: { pageProps?: { numberOfPages?: number; numberOfResults?: number } };
+    };
+    const pages = Number(json.props?.pageProps?.numberOfPages || 1);
+    const results = Number(json.props?.pageProps?.numberOfResults || 0);
+    return {
+      numberOfPages: Number.isFinite(pages) && pages > 0 ? pages : 1,
+      numberOfResults: Number.isFinite(results) ? results : 0,
+    };
+  } catch {
+    return { numberOfPages: 1, numberOfResults: 0 };
   }
 }
 
@@ -91,7 +126,7 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
       stock_number: external_id,
       description:
         (typeof l.description === "string" ? l.description.slice(0, 800) : "") ||
-        `${year} ${make} ${model} ${trim} · Paul Motor via AutoTrader · CAD`.trim(),
+        `${year} ${make} ${model} ${trim} · via AutoTrader · CAD`.trim(),
       specs: {
         engine: "—",
         transmission: v.transmission || "—",
@@ -108,13 +143,82 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
     });
   }
 
-  // Deduplicate by external_id
   const seen = new Set<string>();
   return out.filter((v) => {
     if (seen.has(v.external_id)) return false;
     seen.add(v.external_id);
     return true;
   });
+}
+
+export async function fetchAutoTraderPaginated(
+  dealerUrl: string,
+  dealerId: string,
+  opts?: { maxPages?: number },
+): Promise<{ items: SeedVehicle[]; notes: string[]; pages: number; results: number }> {
+  const notes: string[] = [];
+  const maxPages = opts?.maxPages ?? MAX_AT_PAGES;
+  const firstUrl = autotraderPageUrl(dealerUrl, 1);
+  const items: SeedVehicle[] = [];
+  const seen = new Set<string>();
+
+  const first = await fetchAtPage(firstUrl);
+  if (!first.ok) {
+    notes.push(`AutoTrader HTTP ${first.status} ${firstUrl}`);
+    return { items, notes, pages: 0, results: 0 };
+  }
+  const meta = parseAutoTraderMeta(first.html);
+  const totalPages = Math.min(Math.max(1, meta.numberOfPages), maxPages);
+  const page1 = parseAutoTraderHtml(first.html, firstUrl, dealerId);
+  for (const v of page1) {
+    if (seen.has(v.external_id)) continue;
+    seen.add(v.external_id);
+    items.push(v);
+  }
+  notes.push(`AutoTrader p1: ${page1.length} ≥$150k (${meta.numberOfResults} listed, ${meta.numberOfPages} pages)`);
+
+  for (let page = 2; page <= totalPages; page++) {
+    const url = autotraderPageUrl(dealerUrl, page);
+    try {
+      const res = await fetchAtPage(url);
+      if (!res.ok) {
+        notes.push(`AutoTrader p${page} HTTP ${res.status}`);
+        break;
+      }
+      const batch = parseAutoTraderHtml(res.html, url, dealerId);
+      let added = 0;
+      for (const v of batch) {
+        if (seen.has(v.external_id)) continue;
+        seen.add(v.external_id);
+        items.push(v);
+        added += 1;
+      }
+      notes.push(`AutoTrader p${page}: ${batch.length} ≥$150k`);
+      if (batch.length === 0 && added === 0 && page > 2) {
+        /* keep scanning — premium cars often sit on later pages */
+      }
+    } catch (err) {
+      notes.push(`AutoTrader p${page}: ${err instanceof Error ? err.message : String(err)}`);
+      break;
+    }
+  }
+
+  notes.push(`AutoTrader ≥$150k live: ${items.length}`);
+  return { items, notes, pages: totalPages, results: meta.numberOfResults };
+}
+
+async function fetchAtPage(url: string): Promise<{ ok: boolean; status: number; html: string }> {
+  const res = await fetch(url, {
+    headers: {
+      "user-agent": UA,
+      accept: "text/html,application/xhtml+xml",
+      "accept-language": "en-CA,en;q=0.9",
+    },
+    signal: AbortSignal.timeout(30_000),
+    redirect: "follow",
+  });
+  const html = await res.text();
+  return { ok: res.ok, status: res.status, html };
 }
 
 function guessBody(model: string, trim: string): string {

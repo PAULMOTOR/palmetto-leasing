@@ -156,8 +156,13 @@ async function runInventoryCrawlInner(opts?: {
       `;
     }
 
-    const activeDealers = await sql<{ id: string; inventory_url: string; name: string }>`
-      select id, inventory_url, name from dealerships where active = true
+    const activeDealers = await sql<{
+      id: string;
+      inventory_url: string;
+      name: string;
+      website_url: string;
+    }>`
+      select id, inventory_url, name, website_url from dealerships where active = true
     `;
     // Never crawl retired IDs even if somehow still present
     const retired = new Set<string>(RETIRED_DEALER_IDS as unknown as string[]);
@@ -174,7 +179,10 @@ async function runInventoryCrawlInner(opts?: {
 
     const liveFeed: SeedVehicle[] = [];
     for (const d of crawlDealers) {
-      const result = await fetchDealerInventory(d.id, d.inventory_url);
+      const result = await fetchDealerInventory(d.id, d.inventory_url, {
+        name: d.name,
+        websiteUrl: d.website_url,
+      });
       sources[d.id] = result.source;
       notes.push(`${d.name}: ${result.source} · ${result.items.length} · ${result.notes.join("; ")}`);
       liveFeed.push(...result.items.filter((v) => v.price_cents >= PREMIUM_THRESHOLD_CENTS));

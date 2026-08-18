@@ -208,6 +208,14 @@ function normalizeInventoryUrl(url: string): string {
         return "https://leasesniper.ca/our-inventory/";
       }
     }
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    const path = u.pathname.replace(/\/+$/, "") || "/";
+    if (host === "gclcars.ca" && path === "/") return "https://gclcars.ca/inventory";
+    if (host === "ydautosales.com" && path === "/") return "https://ydautosales.com/cars";
+    if (host === "revmotors.ca" && path === "/") return "https://www.revmotors.ca/used-inventory/";
+    if (host === "gtamotorcars.com" && path === "/") return "https://www.gtamotorcars.com/inventory/";
+    if (host === "farazautosalesltd.ca" && path === "/") return "https://www.farazautosalesltd.ca/vehicles/used/";
+    if (host === "vfcautogroup.ca" && path === "/") return "https://www.vfcautogroup.ca/used-cars";
   } catch {
     /* keep as-is */
   }

@@ -4,7 +4,9 @@ import { runInventoryCrawl } from "@/lib/crawler/run";
 /**
  * Vercel Cron: every 12 hours.
  * Secure with CRON_SECRET (Authorization: Bearer …) when set.
+ * Paginated AutoTrader crawls need a longer serverless window.
  */
+export const maxDuration = 60;
 async function handle(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
   if (secret) {
