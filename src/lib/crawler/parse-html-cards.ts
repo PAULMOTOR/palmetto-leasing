@@ -101,7 +101,9 @@ export function parseHtmlInventoryCards(html: string, pageUrl: string): RawListi
     const parsed = parseTitle(title);
     const kmM = chunk.match(/([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{3,6})(?:&nbsp;|\s)+(?:km|kms|kilometers)/i);
     const stockM = chunk.match(/stock\s*#?\s*:?\s*([A-Za-z0-9-]+)/i);
-    const imgM = chunk.match(/<(?:img[^>]+src|div[^>]+background-image:\s*url\()['"]?(https?:\/\/[^'")\s]+)/i);
+    const imgM = chunk.match(
+      /<(?:img[^>]+src|div[^>]+background-image:\s*url\()['"]?(https?:\/\/[^'")\s]+\/products\/[^'")\s]+)/i,
+    );
 
     out.push({
       year: parsed.year,
@@ -169,5 +171,53 @@ export async function fetchGclInventory(dealerId: string): Promise<{ items: Seed
   }
 
   notes.push(`GCL ≥$150k live: ${items.length}`);
+
+  for (const item of items) {
+    if (!/gclcars\.ca\/product-details/i.test(item.listing_path)) continue;
+    try {
+      const photos = await fetchGclProductPhotos(item.listing_path);
+      if (photos.length) {
+        item.photos = photos;
+        item.thumbnail = photos[0]!;
+      }
+    } catch (err) {
+      notes.push(
+        `GCL VDP ${item.listing_path.split("/").pop()}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   return { items, notes };
+}
+
+const GCL_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+/** Only real listing shots — skip flag / body-style chrome that leads the HTML. */
+export function extractGclProductPhotos(html: string): string[] {
+  const found: { url: string; ts: number }[] = [];
+  const seen = new Set<string>();
+  for (const m of html.matchAll(
+    /https:\/\/dp-prod\.s3[^"'\\\s]+\/img\/tmp\/products\/\d+\/38\$(\d+)[^"'\\\s]*\.(?:jpe?g|webp|png)/gi,
+  )) {
+    const ts = Number(m[1]);
+    let url = m[0]!.replace(/-medium(\.\w+)$/i, "-large$1");
+    if (seen.has(url)) continue;
+    seen.add(url);
+    found.push({ url, ts: Number.isFinite(ts) ? ts : 0 });
+  }
+  if (!found.length) return [];
+  const t0 = found[0]!.ts;
+  // Same-car gallery timestamps sit minutes apart; related-car thumbs are hours/days later
+  return found.filter((p) => Math.abs(p.ts - t0) < 3_600_000 * 2).map((p) => p.url);
+}
+
+async function fetchGclProductPhotos(listingUrl: string): Promise<string[]> {
+  const res = await fetch(listingUrl, {
+    headers: { "user-agent": GCL_UA, accept: "text/html" },
+    signal: AbortSignal.timeout(18_000),
+    redirect: "follow",
+  });
+  if (!res.ok) return [];
+  return extractGclProductPhotos(await res.text());
 }

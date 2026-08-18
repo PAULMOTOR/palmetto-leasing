@@ -7,7 +7,7 @@ const INTERIOR_RE =
   /interior|cabin|seat|cockpit|dash|dashboard|console|leather|steering|wheel.?int|upholst|rear.?seat|front.?seat|door.?panel|headliner|suede|alcantara/i;
 
 const SKIP_RE =
-  /logo|icon|sprite|pixel|1x1|favicon|badge\.svg|placeholder|data:image\/svg|spacer|blank|loading|avatar|profile|banner.?ad|feedback-dan|\/feedback\/|as24-home|\/assets\/as24|promo|advert|testimonial|reviewer|host-with|microphone|podcast/i;
+  /logo|icon|sprite|pixel|1x1|favicon|badge\.svg|placeholder|data:image\/svg|spacer|blank|loading|avatar|profile|banner.?ad|feedback-dan|\/feedback\/|as24-home|\/assets\/as24|promo|advert|testimonial|reviewer|host-with|microphone|podcast|carfax|wechat|favicon/i;
 
 /** Studio / seed / brand-pack assets that are NOT the listing car. */
 function isNonListingAsset(url: string): boolean {
@@ -43,7 +43,27 @@ function isPromoOrChrome(url: string): boolean {
   if (/autotrader\.ca/i.test(u) && /\.png(\?|$)/i.test(u) && !/listing-images/i.test(u)) {
     return true;
   }
+  if (isGclChrome(u)) return true;
   return false;
+}
+
+/**
+ * GCL (gclcars.ca) pages start with a Canadian flag + generic white body-style
+ * icons (BMW convertible / Mustang coupe silhouettes). Those are not the car.
+ * Only `/img/tmp/products/…` shots are listing photography.
+ */
+function isGclChrome(url: string): boolean {
+  const u = url.toLowerCase();
+  const fromGclCdn = /dp-prod\.s3|gclcars\.ca/i.test(u);
+  if (!fromGclCdn) return false;
+  if (/\/img\/tmp\/products\//i.test(u)) return false;
+  if (/\/languages\/|\/en\.png|\/zh\.png|flag|maple/i.test(u)) return true;
+  if (/\/car_style\/|style_convertible|style_coupe|style_sedan|style_suv|style_truck|style_wagon|style_van|style_hatch|style_minivan/i.test(u))
+    return true;
+  if (/logo-gcl|gclcanada|\/user\.png|card-[1-4]\.(png|jpe?g)|gcl-wechat/i.test(u)) return true;
+  // Any other GCL site chrome (header, cards, icons)
+  if (/\.png(\?|$)/i.test(u)) return true;
+  return true;
 }
 
 /**
@@ -109,6 +129,24 @@ export function isLikelyJunk(url: string): boolean {
     isNonListingAsset(url) ||
     isPromoOrChrome(url)
   );
+}
+
+/**
+ * Photos Imagine may use as subject identity. Drops flags, body-style icons,
+ * interiors-first, and dealer chrome. Prefers real listing photography.
+ */
+export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
+  const limit = opts?.limit ?? 4;
+  const cleaned = normalizeGalleryUrls(photos).filter((u) => /^https?:\/\//i.test(u));
+  if (!cleaned.length) return [];
+
+  const exteriors = cleaned.filter((u) => !isInteriorPhoto(u));
+  const pool = exteriors.length ? exteriors : cleaned;
+  const preferred = pool.filter(
+    (u) => /\/img\/tmp\/products\//i.test(u) || /listing-images/i.test(u),
+  );
+  const use = preferred.length ? preferred : pool;
+  return use.slice(0, limit);
 }
 
 /**

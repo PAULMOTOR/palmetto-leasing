@@ -12,6 +12,7 @@ import { fetchDealerInventory } from "./fetch-dealer";
 import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "@/lib/imagine/persist-image";
 import { listingFingerprint } from "./parse-vehicles";
+import { selectImagineRefs } from "@/lib/leasing/gallery";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
 const POOL_VERSION = "11-paul-motor-co";
@@ -109,6 +110,28 @@ async function runInventoryCrawlInner(opts?: {
       set name = 'Paul Motor Co.'
       where id = 'paul-motor' and name <> 'Paul Motor Co.'
     `;
+    // One-shot: GCL tiles were rendered from flag / body-style chrome. Drop those
+    // studio thumbs so the next Imagine pass uses real /products/ listing photos.
+    const gclRev = await sql<{ value: string }>`
+      select value from app_meta where key = 'gcl_imagine_rev' limit 1
+    `;
+    if (gclRev[0]?.value !== "2") {
+      await sql`
+        update vehicles
+        set thumbnail_url = '', updated_at = now()
+        where thumbnail_url like 'data:image/%'
+          and (
+            dealership_id like '%gcl%'
+            or dealer_listing_url like '%gclcars.ca%'
+          )
+      `;
+      await sql`
+        insert into app_meta (key, value, updated_at)
+        values ('gcl_imagine_rev', '2', now())
+        on conflict (key) do update set value = excluded.value, updated_at = now()
+      `;
+      notes.push("Reset GCL Imagine tiles so they re-render from listing photos");
+    }
 
     const ver = await sql<{ value: string }>`
       select value from app_meta where key = 'pool_version' limit 1
@@ -266,7 +289,7 @@ async function runInventoryCrawlInner(opts?: {
             exteriorColor: item.exterior_color,
             bodyStyle: item.body_style,
           },
-          referencePhotoUrls: item.photos.filter((p) => p.startsWith("http")).slice(0, 2),
+          referencePhotoUrls: selectImagineRefs(item.photos, { limit: 3 }),
         });
         if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
           await sql`

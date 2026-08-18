@@ -6,6 +6,7 @@ import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "./persist-image";
 import { parsePhotos } from "@/lib/leasing/types";
+import { selectImagineRefs } from "@/lib/leasing/gallery";
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
@@ -44,9 +45,9 @@ export async function generateMissingImagineThumbs(opts?: {
     body_style: string;
     thumbnail_url: string;
     photo_urls: string;
-    price_cents: number;
+    dealership_id: string;
   }>`
-    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents
+    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id
     from vehicles
     where status = 'active'
     order by price_cents desc
@@ -75,14 +76,15 @@ export async function generateMissingImagineThumbs(opts?: {
 
   for (const r of need) {
     const photos = parsePhotos(r.photo_urls);
-    const refs = [
-      ...photos.filter((p) => /^https?:\/\//i.test(p) && !isEphemeralImagineUrl(p)),
-      ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
-        ? [r.thumbnail_url]
-        : []),
-    ]
-      .filter((u, i, a) => a.indexOf(u) === i)
-      .slice(0, 4);
+    const refs = selectImagineRefs(
+      [
+        ...photos,
+        ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
+          ? [r.thumbnail_url]
+          : []),
+      ],
+      { limit: 4 },
+    );
 
     if (refs.length === 0) {
       skipped += 1;

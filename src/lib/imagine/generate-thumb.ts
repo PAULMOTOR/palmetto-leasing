@@ -10,6 +10,7 @@ import {
   type ThumbSubject,
 } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
+import { selectImagineRefs } from "@/lib/leasing/gallery";
 
 export type ImagineThumbResult = {
   ok: boolean;
@@ -42,7 +43,7 @@ export async function generateVehicleThumbnail(opts: {
   }
 
   // Prefer 2–3 exterior-looking refs; skip nothing — API needs subject identity
-  const refs = (opts.referencePhotoUrls || []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 3);
+  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 4 });
   const origin =
     opts.publicOrigin ||
     process.env.PUBLIC_SITE_URL ||
