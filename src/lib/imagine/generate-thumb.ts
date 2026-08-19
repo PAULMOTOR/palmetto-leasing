@@ -73,9 +73,24 @@ export async function generateVehicleThumbnail(opts: {
         });
         const persisted = await finalize(dual);
         if (persisted) return { ok: true, url: persisted, mode: "edit" };
+
+        const dualUrl = await callXaiJson(EDIT_URL, key, {
+          model: MODEL,
+          prompt,
+          aspect_ratio: "1:1",
+          response_format: "url",
+          image: [
+            { url: styleLockUrl, type: "image_url" },
+            { url: ref, type: "image_url" },
+          ],
+        });
+        const dualUrlP = await finalize(dualUrl);
+        if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit" };
+        // Do not fall back to a single dealer photo — those are often nadir
+        // (Testarossa, etc.) and Imagine will copy that camera.
+        continue;
       }
 
-      // Single subject + ultra-strict prompt (no style lock available)
       const single = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt: buildThumbEditPrompt(opts.car),
@@ -85,23 +100,6 @@ export async function generateVehicleThumbnail(opts: {
       });
       const singleP = await finalize(single);
       if (singleP) return { ok: true, url: singleP, mode: "edit" };
-
-      const byUrl = await callXaiJson(EDIT_URL, key, {
-        model: MODEL,
-        prompt: styleUri
-          ? prompt
-          : buildThumbEditPrompt(opts.car),
-        aspect_ratio: "1:1",
-        response_format: "url",
-        image: styleUri
-          ? [
-              { url: styleLockUrl, type: "image_url" },
-              { url: ref, type: "image_url" },
-            ]
-          : { url: ref, type: "image_url" },
-      });
-      const byUrlP = await finalize(byUrl);
-      if (byUrlP) return { ok: true, url: byUrlP, mode: "edit" };
     }
 
     const gen = await callXaiJson(GEN_URL, key, {

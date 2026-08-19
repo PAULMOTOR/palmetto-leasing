@@ -49,19 +49,21 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `Think: the car is driving toward the bottom edge of the square. ` +
     `NEVER put the nose at the top. NEVER put the rear wing at the bottom. That is upside down and rejected. ` +
     // —— Camera: elevated FRONT-TOP, not nadir ——
-    `CAMERA (mandatory): elevated FRONT-TOP product shot — the camera is above AND slightly in front of the car, looking down the hood toward the roof. ` +
-    `You MUST clearly see the FRONT of the car (grille, headlights, bumper) AND the hood AND the roof. The windshield is a visible trapezoid. ` +
-    `FORBIDDEN — true overhead / nadir / plan view looking straight down so only the roof is visible and the front fascia disappears. That angle is rejected. ` +
+    `CAMERA (mandatory): copy the TEMPLATE camera. Elevated FRONT-TOP — camera sits above AND in front of the windshield, looking down the hood. ` +
+    `The FRONT FACE of the car (grille, headlights, bumper) must fill much of the BOTTOM third of the square, as large and readable as the roof. ` +
+    `The windshield is a wide trapezoid, not a thin slit. You are looking slightly down the nose, not straight down at the roof. ` +
+    `FORBIDDEN — drone / satellite / nadir / plan view (roof-only, headlights tiny or hidden). Classic cars like Testarossa are often listed as top-down photos — NEVER copy that angle. ` +
     `FORBIDDEN — eye-level 3/4 hero, side profile, rear 3/4, low front shot. ` +
-    `Tilt is about 40–50 degrees from vertical (dealership catalog, same as the template). Body axis perfectly vertical in the frame. ` +
+    `Tilt ~40–50° from vertical, same as the template. Body axis vertical in the frame. ` +
     // —— Wheels straight; hidden in arches from this camera ——
     `WHEELS (mandatory): steering is locked STRAIGHT at 0°. Front wheels point exactly toward the bottom of the frame, parallel to the car's centerline. ` +
     `Do NOT turn, steer, or angle the wheels left or right. No opposite lock. No toe-out. Both fronts match. ` +
     `From this camera the tires sit in the arches — do not render visible turned tire sidewalls or wheel faces kicking out to the sides. ` +
     // —— Scale + fill the square ——
-    `CANVAS: the photograph fills the entire 1:1 square EDGE TO EDGE. Pure #FFFFFF to every pixel. ` +
-    `No inset picture, no gray studio plate, no letterbox, no border, no frame, no polaroid margin. ` +
-    `SCALE: whole car fits comfortably (~70% of frame height) with even white margin on all four sides (~8–12%). Nothing clipped. ` +
+    `CANVAS: output a SQUARE (width in pixels == height). The photo fills that square EDGE TO EDGE. ` +
+    `Background is pure #FFFFFF (RGB 255,255,255) to every pixel — never gray, never off-white, never a gray studio plate floating inside a white tile. ` +
+    `No inset picture, no letterbox bars, no portrait crop, no landscape crop, no border, no frame. ` +
+    `SCALE: whole car ~70% of frame height with even white margin (~8–12%) on all four sides. Nothing clipped. ` +
     // —— Studio ——
     `BACKGROUND: pure seamless #FFFFFF only. ` +
     `SHADOW: soft short contact shadow under the car, centered with the car. ` +
@@ -89,10 +91,9 @@ export function buildStyleLockAddendum(): string {
   return (
     ` DUAL-IMAGE RULES: Image 0 is the studio TEMPLATE (full car, elevated FRONT-TOP, nose DOWN / front at bottom, dead-centered, straight wheels, white to the edges). ` +
     `Image 1 is the SUBJECT car identity only (paint, body, badges). Discard every overlay, caption, and watermark on Image 1. ` +
-    `Output MUST match Image 0 for: elevated front-top camera (front fascia visible, not nadir), nose-DOWN orientation, ` +
-    `straight unturned wheels, perfect centering, white background filling the square edge-to-edge, soft shadow, equal margins. ` +
-    `Output MUST match Image 1 for car identity only. ` +
-    `Discard Image 1's angle, rotation, steered wheels, text, and off-center framing completely. ` +
+    `Output MUST match Image 0 for CAMERA HEIGHT and ANGLE (headlights large at the bottom — not a roof-only drone shot), ` +
+    `nose-DOWN orientation, straight unturned wheels, perfect centering, #FFFFFF filling the square with equal width and height, soft shadow. ` +
+    `NEVER copy Image 1's camera, crop, gray backdrop, or portrait framing — dealer photos of older Ferraris are often nadir and must be discarded. ` +
     `Final check: car dead-center; headlights and grille readable near the BOTTOM; roof visible; rear at TOP; wheels straight; no text; white to all four edges.`
   );
 }

@@ -82,7 +82,7 @@ function TileThumb({
         onError={() => {
           setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
         }}
-        className="h-full w-full max-h-full max-w-full bg-white object-contain object-center transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]"
+        className="h-full w-full max-h-full max-w-full bg-white object-cover object-center transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]"
         style={{
           backgroundColor: "#FFFFFF",
           objectPosition: "50% 50%",
