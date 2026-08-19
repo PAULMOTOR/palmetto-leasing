@@ -19,6 +19,7 @@ export type HandoffPayload = {
     trim?: string;
     stock?: string;
     image?: string;
+    photoUrl?: string;
   };
   dealer: { name: string };
   price: number;
@@ -30,6 +31,9 @@ export type HandoffPayload = {
   creditConsent: boolean;
   /** Public HTTPS URL of the inventory tile the customer saw. */
   image?: string;
+  photoUrl?: string;
+  heroImageUrl?: string;
+  photos?: string[];
   kmPerYear?: number;
   excessKmPenalty?: number;
   // extras the CRM already stores (address / job / notes)
@@ -116,7 +120,7 @@ export async function handoffLeaseToCrm(input: {
   const site =
     process.env.PUBLIC_SITE_URL?.trim() ||
     process.env.VITE_PUBLIC_SITE_URL?.trim() ||
-    "https://palmettoleasing.com";
+    "https://www.palmettoleasing.com";
 
   const app = input.application ?? {};
   const name = input.customerName.trim();
@@ -124,6 +128,7 @@ export async function handoffLeaseToCrm(input: {
   const email = input.customerEmail.trim().toLowerCase();
   const phone = field(input.customerPhone);
   const creditConsent = app.consentCredit === true || app.creditConsent === true;
+  const image = publicImageUrl(input.image);
 
   const payload: HandoffPayload = {
     referenceId,
@@ -137,7 +142,8 @@ export async function handoffLeaseToCrm(input: {
       vin: field(input.vin).toUpperCase(),
       trim: field(input.trim) || undefined,
       stock: field(input.stock) || undefined,
-      image: publicImageUrl(input.image),
+      image,
+      photoUrl: image,
     },
     dealer: { name: input.dealerName },
     price: dollarsSeen(input.quote.priceCents),
@@ -147,7 +153,10 @@ export async function handoffLeaseToCrm(input: {
     monthly: monthlySeen(input.quote.monthlyPaymentCents),
     rate: rateSeen(input.quote.baseInterestRate),
     creditConsent,
-    image: publicImageUrl(input.image),
+    image,
+    photoUrl: image,
+    heroImageUrl: image,
+    photos: image ? [image] : undefined,
     kmPerYear: input.quote.kmPerYear,
     excessKmPenalty: input.quote.excessKmPenaltyPerKm,
     firstName: nameParts[0] || "",

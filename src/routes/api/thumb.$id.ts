@@ -1,12 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
+import { palmettoOrigin } from "@/lib/leasing/thumb-url";
 
 const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
 
+function cors(headers: Record<string, string> = {}) {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    ...headers,
+  };
+}
+
 function redirectTo(path: string) {
+  const loc = /^https?:\/\//i.test(path)
+    ? path
+    : `${palmettoOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
   return new Response(null, {
     status: 302,
-    headers: { Location: path, "Cache-Control": "public, max-age=120" },
+    headers: cors({ Location: loc, "Cache-Control": "public, max-age=120" }),
   });
 }
 
@@ -23,6 +35,7 @@ function dataUriToResponse(uri: string): Response | null {
         "Content-Length": String(buf.length),
         "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
         "X-Content-Type-Options": "nosniff",
+        "Access-Control-Allow-Origin": "*",
       },
     });
   } catch {
@@ -33,6 +46,11 @@ function dataUriToResponse(uri: string): Response | null {
 export const Route = createFileRoute("/api/thumb/$id")({
   server: {
     handlers: {
+      OPTIONS: async () =>
+        new Response(null, {
+          status: 204,
+          headers: cors({ "Access-Control-Max-Age": "86400" }),
+        }),
       GET: async ({ params }) => {
         const id = decodeURIComponent(params.id || "").trim();
         if (!id || id.length > 160) return redirectTo(PLACEHOLDER);

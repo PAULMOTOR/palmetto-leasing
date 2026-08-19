@@ -12,7 +12,7 @@ import {
 } from "./catalog";
 import { loadQuoteSettings, loadQuoteSettingsAsync } from "./quote-config";
 import { handoffLeaseToCrm } from "@/lib/crm/handoff";
-import { absolutePublicTileUrl, publicTileUrl, slimPhotoUrls } from "@/lib/leasing/thumb-url";
+import { inventoryTileHandoffUrl, publicTileUrl, slimPhotoUrls } from "@/lib/leasing/thumb-url";
 import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { getSql, dbSource } from "@/lib/db";
 import type { Vehicle, VehicleCard } from "./types";
@@ -403,13 +403,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         trim = v.trim || "";
         vin = v.vin || "";
         stock = v.stock_number || "";
-        image = absolutePublicTileUrl(
-          v.id,
-          v.thumbnail_url,
-          process.env.PUBLIC_SITE_URL?.trim() ||
-            process.env.VITE_PUBLIC_SITE_URL?.trim() ||
-            "https://www.palmettoleasing.com",
-        );
+        image = inventoryTileHandoffUrl(v.id);
       }
     } catch {
       /* static */
@@ -427,16 +421,11 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       trim = v.trim || "";
       vin = v.vin || "";
       stock = v.stock_number || "";
-      image = absolutePublicTileUrl(
-        v.id,
-        v.thumbnail_url,
-        process.env.PUBLIC_SITE_URL?.trim() ||
-          process.env.VITE_PUBLIC_SITE_URL?.trim() ||
-          "https://www.palmettoleasing.com",
-      );
+      image = inventoryTileHandoffUrl(v.id);
     }
 
     const quote = calculateLease(priceCents, settings);
+    if (!image) image = inventoryTileHandoffUrl(data.vehicleId);
     const handoff = await handoffLeaseToCrm({
       vehicleId: data.vehicleId,
       vehicleLabel,
