@@ -10,6 +10,20 @@ export function publicTileUrl(vehicleId: string, thumbnailUrl: string | null | u
   return t;
 }
 
+/** Absolute HTTPS URL of the inventory tile — safe to POST to the CRM. */
+export function absolutePublicTileUrl(
+  vehicleId: string,
+  thumbnailUrl: string | null | undefined,
+  origin: string,
+): string {
+  const rel = publicTileUrl(vehicleId, thumbnailUrl).trim();
+  if (!rel) return "";
+  if (/^https?:\/\//i.test(rel)) return rel;
+  const base = (origin || "https://www.palmettoleasing.com").replace(/\/$/, "");
+  if (rel.startsWith("/")) return `${base}${rel}`;
+  return `${base}/${rel}`;
+}
+
 export function slimPhotoUrls(photos: string[]): string[] {
   return photos.filter(
     (p) =>

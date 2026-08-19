@@ -12,6 +12,7 @@ import {
 } from "./catalog";
 import { loadQuoteSettings, loadQuoteSettingsAsync } from "./quote-config";
 import { handoffLeaseToCrm } from "@/lib/crm/handoff";
+import { absolutePublicTileUrl, publicTileUrl, slimPhotoUrls } from "@/lib/leasing/thumb-url";
 import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { getSql, dbSource } from "@/lib/db";
 import type { Vehicle, VehicleCard } from "./types";
@@ -24,7 +25,6 @@ import {
   isEphemeralImagineUrl,
 } from "@/lib/imagine/persist-image";
 import { normalizeDealerListingUrl } from "./seed";
-import { publicTileUrl, slimPhotoUrls } from "./thumb-url";
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
@@ -381,6 +381,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
     let trim = "";
     let vin = "";
     let stock = "";
+    let image = "";
 
     try {
       const sql = await getSql();
@@ -402,6 +403,13 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         trim = v.trim || "";
         vin = v.vin || "";
         stock = v.stock_number || "";
+        image = absolutePublicTileUrl(
+          v.id,
+          v.thumbnail_url,
+          process.env.PUBLIC_SITE_URL?.trim() ||
+            process.env.VITE_PUBLIC_SITE_URL?.trim() ||
+            "https://www.palmettoleasing.com",
+        );
       }
     } catch {
       /* static */
@@ -419,6 +427,13 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       trim = v.trim || "";
       vin = v.vin || "";
       stock = v.stock_number || "";
+      image = absolutePublicTileUrl(
+        v.id,
+        v.thumbnail_url,
+        process.env.PUBLIC_SITE_URL?.trim() ||
+          process.env.VITE_PUBLIC_SITE_URL?.trim() ||
+          "https://www.palmettoleasing.com",
+      );
     }
 
     const quote = calculateLease(priceCents, settings);
@@ -439,6 +454,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       trim,
       vin,
       stock,
+      image,
     });
 
     return {

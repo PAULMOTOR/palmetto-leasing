@@ -18,6 +18,7 @@ export type HandoffPayload = {
     vin: string;
     trim?: string;
     stock?: string;
+    image?: string;
   };
   dealer: { name: string };
   price: number;
@@ -27,6 +28,8 @@ export type HandoffPayload = {
   monthly: number;
   rate: number;
   creditConsent: boolean;
+  /** Public HTTPS URL of the inventory tile the customer saw. */
+  image?: string;
   kmPerYear?: number;
   excessKmPenalty?: number;
   // extras the CRM already stores (address / job / notes)
@@ -79,6 +82,12 @@ function field(v: unknown): string {
   return String(v).trim();
 }
 
+function publicImageUrl(v: unknown): string | undefined {
+  const s = field(v);
+  if (!/^https?:\/\//i.test(s)) return undefined;
+  return s.slice(0, 500);
+}
+
 function yearSeen(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[^\d]/g, ""));
   return Number.isFinite(n) && n >= 1980 && n <= 2100 ? Math.round(n) : null;
@@ -101,6 +110,7 @@ export async function handoffLeaseToCrm(input: {
   trim?: string;
   vin?: string | null;
   stock?: string | null;
+  image?: string | null;
 }): Promise<HandoffResult> {
   const referenceId = `pml-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const site =
@@ -127,6 +137,7 @@ export async function handoffLeaseToCrm(input: {
       vin: field(input.vin).toUpperCase(),
       trim: field(input.trim) || undefined,
       stock: field(input.stock) || undefined,
+      image: publicImageUrl(input.image),
     },
     dealer: { name: input.dealerName },
     price: dollarsSeen(input.quote.priceCents),
@@ -136,6 +147,7 @@ export async function handoffLeaseToCrm(input: {
     monthly: monthlySeen(input.quote.monthlyPaymentCents),
     rate: rateSeen(input.quote.baseInterestRate),
     creditConsent,
+    image: publicImageUrl(input.image),
     kmPerYear: input.quote.kmPerYear,
     excessKmPenalty: input.quote.excessKmPenaltyPerKm,
     firstName: nameParts[0] || "",
