@@ -11,6 +11,8 @@ import { selectImagineRefs } from "@/lib/leasing/gallery";
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
   force?: boolean;
+  /** Case-insensitive substring against year/make/model/trim. */
+  match?: string;
 }): Promise<{
   attempted: number;
   succeeded: number;
@@ -32,27 +34,54 @@ export async function generateMissingImagineThumbs(opts?: {
   }
 
   const force = Boolean(opts?.force);
-  const limit = Math.min(opts?.limit ?? (force ? 12 : 40), force ? 25 : 60);
+  const match = opts?.match?.trim() || "";
+  const limit = Math.min(opts?.limit ?? (match ? 8 : force ? 12 : 40), match ? 15 : force ? 25 : 60);
 
   const sql = await getSql();
-  const rows = await sql<{
-    id: string;
-    year: number;
-    make: string;
-    model: string;
-    trim: string;
-    exterior_color: string;
-    body_style: string;
-    thumbnail_url: string;
-    photo_urls: string;
-    dealership_id: string;
-  }>`
-    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id
-    from vehicles
-    where status = 'active'
-    order by price_cents desc
-    limit 800
-  `;
+  const like = match ? `%${match}%` : "";
+  const rows = match
+    ? await sql<{
+        id: string;
+        year: number;
+        make: string;
+        model: string;
+        trim: string;
+        exterior_color: string;
+        body_style: string;
+        thumbnail_url: string;
+        photo_urls: string;
+        dealership_id: string;
+      }>`
+        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id
+        from vehicles
+        where status = 'active'
+          and (
+            make ilike ${like}
+            or model ilike ${like}
+            or coalesce(trim, '') ilike ${like}
+            or (cast(year as text) || ' ' || make || ' ' || model || ' ' || coalesce(trim, '')) ilike ${like}
+          )
+        order by price_cents desc
+        limit 80
+      `
+    : await sql<{
+        id: string;
+        year: number;
+        make: string;
+        model: string;
+        trim: string;
+        exterior_color: string;
+        body_style: string;
+        thumbnail_url: string;
+        photo_urls: string;
+        dealership_id: string;
+      }>`
+        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id
+        from vehicles
+        where status = 'active'
+        order by price_cents desc
+        limit 800
+      `;
 
   const withRefs = rows.filter((r) => {
     const photos = parsePhotos(r.photo_urls);
@@ -63,8 +92,9 @@ export async function generateMissingImagineThumbs(opts?: {
   });
 
   // Studio tile = persisted data URI. Dealer HTTP photos are fallbacks, not finished tiles.
+  // `match` always re-renders (prompt fixes).
   const needsRender = withRefs.filter((r) => {
-    if (force) return true;
+    if (force || match) return true;
     return !isStudioThumbUrl(r.thumbnail_url);
   });
 

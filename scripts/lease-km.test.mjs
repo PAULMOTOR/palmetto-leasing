@@ -72,3 +72,28 @@ test("canonical make grouping", () => {
   assert.equal(canonicalMake("Mercedes Benz"), "Mercedes-Benz");
   assert.equal(canonicalMake("Mercedes-Benz"), "Mercedes-Benz");
 });
+
+test("marketing suffixes stripped from vehicle titles", () => {
+  const MARKETING_RE =
+    /\b(warranty|ppf|ceramic|optioned|novitec|lowering|must\s*see|no accidents|clean carfax|loaded|rare find|price drop|make an offer|highly optioned|full ppf|ferrari warranty)\b/i;
+  function cleanNamePart(raw) {
+    let s = String(raw || "")
+      .replace(/!+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const chunks = s.split(/\s*[|•]\s*|\s+-\s+/);
+    const kept = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const c = chunks[i].trim();
+      if (!c) continue;
+      if (i > 0 && MARKETING_RE.test(c)) continue;
+      kept.push(c);
+    }
+    return kept.join(" ").replace(/\s+/g, " ").trim();
+  }
+  assert.equal(cleanNamePart("296 GTB - Ferrari Warranty! Full PPF!"), "296 GTB");
+  assert.equal(
+    cleanNamePart("488 - Ferrari Warranty 2028! Highly Optioned! Full PPF"),
+    "488",
+  );
+});

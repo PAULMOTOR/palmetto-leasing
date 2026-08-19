@@ -23,6 +23,7 @@ import {
   isLikelyJunk,
 } from "@/lib/leasing/gallery";
 import { formatCad, formatCadExact, formatNumber, cn } from "@/lib/utils";
+import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
 const TERM_OPTIONS = LEASE_TERM_OPTIONS;
 
@@ -105,10 +106,7 @@ export function VehicleCard({
   onToggleLease: () => void;
   quoteSettings?: QuoteSettings;
 }) {
-  const title = [vehicle.year, vehicle.make, vehicle.model, vehicle.trim]
-    .filter(Boolean)
-    .join(" ");
-  const shortTitle = [vehicle.year, vehicle.make, vehicle.model].join(" ");
+  const title = vehicleDisplayTitle(vehicle);
   const delay = index < 3 ? 0 : Math.min(index, 12) * 35;
   const settings = quoteSettings ?? DEFAULT_QUOTE_SETTINGS;
 
@@ -152,8 +150,7 @@ export function VehicleCard({
             </p>
 
             <h3 className="max-w-full px-1 text-[13px] leading-snug font-normal tracking-wide break-words text-fg-muted sm:text-sm">
-              {shortTitle}
-              {vehicle.trim ? ` ${vehicle.trim}` : ""}
+              {title}
             </h3>
 
             <p className="mt-1 text-[13px] font-medium tabular-nums tracking-wide text-price sm:text-sm">

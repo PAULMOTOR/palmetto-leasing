@@ -476,6 +476,7 @@ export const triggerImagineThumbs = createServerFn({ method: "POST" })
       .object({
         limit: z.number().int().min(1).max(60).optional(),
         force: z.boolean().optional(),
+        match: z.string().min(2).max(80).optional(),
       })
       .optional()
       .parse(input ?? {}),
@@ -484,6 +485,7 @@ export const triggerImagineThumbs = createServerFn({ method: "POST" })
     return generateMissingImagineThumbs({
       limit: data?.limit ?? 40,
       force: data?.force ?? false,
+      match: data?.match,
     });
   });
 
