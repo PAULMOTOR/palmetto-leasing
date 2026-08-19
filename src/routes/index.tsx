@@ -17,6 +17,7 @@ import {
 import { getQuoteSettings } from "@/lib/leasing/settings";
 import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
 import { cn } from "@/lib/utils";
+import { canonicalMake, uniqueCanonicalMakes } from "@/lib/leasing/makes";
 
 export const Route = createFileRoute("/")({
   component: InventoryPage,
@@ -151,18 +152,20 @@ function InventoryPage() {
     [dealerPool],
   );
   const makes = useMemo(
-    () => [...new Set(dealerPool.map((v) => v.make))].sort(),
+    () => uniqueCanonicalMakes(dealerPool.map((v) => v.make)),
     [dealerPool],
   );
   const models = useMemo(() => {
-    const pool = make ? dealerPool.filter((v) => v.make === make) : dealerPool;
+    const pool = make
+      ? dealerPool.filter((v) => canonicalMake(v.make) === make)
+      : dealerPool;
     return [...new Set(pool.map((v) => v.model))].sort();
   }, [dealerPool, make]);
 
   const filtered = useMemo(() => {
     let list = dealerPool;
     if (year) list = list.filter((v) => String(v.year) === year);
-    if (make) list = list.filter((v) => v.make === make);
+    if (make) list = list.filter((v) => canonicalMake(v.make) === make);
     if (model) list = list.filter((v) => v.model === model);
     if (monthly) list = list.filter((v) => inMonthlyRange(v.monthly_payment_cents, monthly));
     return list;

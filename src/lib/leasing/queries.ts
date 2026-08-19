@@ -346,6 +346,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         source: z.enum(["lease_quote", "apply_now", "dealer_application"]).optional(),
         termMonths: z.number().int().min(12).max(72).optional(),
         downPaymentRate: z.number().min(0).max(0.5).optional(),
+        kmPerYear: z.number().int().min(6000).max(200000).optional(),
         application: z
           .object({
             address: z.string().max(200).optional(),
@@ -369,6 +370,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       ...(typeof data.downPaymentRate === "number"
         ? { downPaymentRate: data.downPaymentRate }
         : {}),
+      ...(typeof data.kmPerYear === "number" ? { kmPerYear: data.kmPerYear } : {}),
     };
     let vehicleLabel = "";
     let dealerName = "";

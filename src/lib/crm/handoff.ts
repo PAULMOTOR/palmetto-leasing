@@ -27,6 +27,8 @@ export type HandoffPayload = {
   monthly: number;
   rate: number;
   creditConsent: boolean;
+  kmPerYear?: number;
+  excessKmPenalty?: number;
   // extras the CRM already stores (address / job / notes)
   firstName?: string;
   lastName?: string;
@@ -134,6 +136,8 @@ export async function handoffLeaseToCrm(input: {
     monthly: monthlySeen(input.quote.monthlyPaymentCents),
     rate: rateSeen(input.quote.baseInterestRate),
     creditConsent,
+    kmPerYear: input.quote.kmPerYear,
+    excessKmPenalty: input.quote.excessKmPenaltyPerKm,
     firstName: nameParts[0] || "",
     lastName: nameParts.slice(1).join(" "),
     address: field(app.address),

@@ -31,6 +31,60 @@ export function residualForTerm(termMonths: number): number {
   return RESIDUAL_BY_TERM[best];
 }
 
+/** Included km/year before residual starts dropping. */
+export const BASE_KM_PER_YEAR = 6_000;
+export const KM_STEP = 1_000;
+
+/**
+ * Residual % deducted from the base RV for each 1,000 km/yr above 6,000.
+ * Mapped by lease year (25 mo → 2, 37 → 3, 49 → 4, 61 → 5).
+ */
+export const RV_DEDUCTION_PER_CLICK_BY_YEAR: Record<number, number> = {
+  1: 0.01,
+  2: 0.015,
+  3: 0.018,
+  4: 0.02,
+  5: 0.0225,
+  6: 0.025,
+};
+
+export function leaseTermYears(termMonths: number): number {
+  if (!Number.isFinite(termMonths) || termMonths <= 0) return 3;
+  return Math.max(1, Math.min(6, Math.round(termMonths / 12)));
+}
+
+export function rvDeductionPerClick(termMonths: number): number {
+  return RV_DEDUCTION_PER_CLICK_BY_YEAR[leaseTermYears(termMonths)] ?? 0.02;
+}
+
+export function kmSliderClicks(kmPerYear: number): number {
+  if (!Number.isFinite(kmPerYear)) return 0;
+  return Math.max(0, Math.round((kmPerYear - BASE_KM_PER_YEAR) / KM_STEP));
+}
+
+export function snapKmPerYear(kmPerYear: number): number {
+  if (!Number.isFinite(kmPerYear)) return BASE_KM_PER_YEAR;
+  const snapped = Math.round(kmPerYear / KM_STEP) * KM_STEP;
+  return Math.max(BASE_KM_PER_YEAR, snapped);
+}
+
+/** Base RV % minus mileage clicks. Never below 0. */
+export function mileageAdjustedResidualRate(termMonths: number, kmPerYear: number): number {
+  const base = residualForTerm(termMonths);
+  const clicks = kmSliderClicks(snapKmPerYear(kmPerYear));
+  return Math.max(0, base - clicks * rvDeductionPerClick(termMonths));
+}
+
+/**
+ * Excess km penalty: 1% of MSRP per 1,000 km over the allowance.
+ * Penalty per extra km = (MSRP × 0.01) / 1000
+ * $200,000 car → $2.00 / km
+ */
+export function excessKmPenaltyPerKm(priceCents: number): number {
+  const msrp = Math.max(0, priceCents) / 100;
+  return Math.round(((msrp * 0.01) / 1000) * 100) / 100;
+}
+
 /** Price tiers for minimum cash down. */
 export const PRICE_1M_CENTS = 100_000_000; // $1,000,000
 export const PRICE_300K_CENTS = 30_000_000; // $300,000
@@ -77,6 +131,7 @@ export type QuoteSettings = {
   termMonths: number;
   residualRate: number;
   downPaymentRate: number;
+  kmPerYear: number;
 };
 
 export const DEFAULT_QUOTE_SETTINGS: QuoteSettings = {
@@ -84,6 +139,7 @@ export const DEFAULT_QUOTE_SETTINGS: QuoteSettings = {
   termMonths: DEFAULT_TERM_MONTHS,
   residualRate: DEFAULT_RESIDUAL_RATE,
   downPaymentRate: DEFAULT_DOWN_PAYMENT_RATE,
+  kmPerYear: BASE_KM_PER_YEAR,
 };
 
 export type LeaseQuote = {
@@ -96,9 +152,11 @@ export type LeaseQuote = {
   monthlyPaymentCents: number;
   termMonths: number;
   downRate: number;
-  /** Effective residual rate after any high-down adjustment. */
+  /** Effective residual rate after mileage + high-down adjustments. */
   residualRate: number;
-  /** Program residual before high-down offset. */
+  /** Program residual for the term (before km or down). */
+  programResidualRate: number;
+  /** Residual after km deduction, before high-down offset. */
   scheduledResidualRate: number;
   /** True when residual was reduced because down > scheduled depreciation. */
   residualReducedByDown: boolean;
@@ -106,12 +164,17 @@ export type LeaseQuote = {
   moneyFactor: number;
   highValueForcedDown: boolean;
   minDownRate: number;
+  kmPerYear: number;
+  kmSliderClicks: number;
+  /** Dollars per extra km over the selected allowance. */
+  excessKmPenaltyPerKm: number;
 };
 
 /**
  * monthly = depreciation/term + (cap + residual) * moneyFactor
  *
- * Residual starts from term schedule (25→63% …).
+ * Residual starts from term schedule (25→63% …), then drops by a
+ * term-specific % for each 1,000 km/yr above 6,000.
  * If cash down exceeds scheduled depreciation (price − scheduled residual),
  * residual falls 1:1 with the excess so financed amount never goes below residual
  * (depreciation floors at $0 — no negative cap-cost math).
@@ -124,7 +187,10 @@ export function calculateLease(
 ): LeaseQuote {
   const base: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
   const termMonths = base.termMonths;
-  const scheduledResidualRate = residualForTerm(termMonths);
+  const kmPerYear = snapKmPerYear(base.kmPerYear ?? BASE_KM_PER_YEAR);
+  const clicks = kmSliderClicks(kmPerYear);
+  const programResidualRate = residualForTerm(termMonths);
+  const scheduledResidualRate = mileageAdjustedResidualRate(termMonths, kmPerYear);
   const minDownRate = minDownRateForPrice(priceCents);
   const highValueForcedDown = isHighValueVehicle(priceCents);
   const downPaymentRate = effectiveDownRate(priceCents, base.downPaymentRate);
@@ -161,12 +227,16 @@ export function calculateLease(
     termMonths,
     downRate: downPaymentRate,
     residualRate,
+    programResidualRate,
     scheduledResidualRate,
     residualReducedByDown,
     baseInterestRate: base.baseInterestRate,
     moneyFactor,
     highValueForcedDown,
     minDownRate,
+    kmPerYear,
+    kmSliderClicks: clicks,
+    excessKmPenaltyPerKm: excessKmPenaltyPerKm(price),
   };
 }
 

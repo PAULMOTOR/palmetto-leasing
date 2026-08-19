@@ -25,6 +25,7 @@ export function loadQuoteSettings(): QuoteSettings {
     termMonths: Math.round(numEnv("QUOTE_TERM_MONTHS", DEFAULT_QUOTE_SETTINGS.termMonths)),
     residualRate: numEnv("QUOTE_RESIDUAL_RATE", DEFAULT_QUOTE_SETTINGS.residualRate),
     downPaymentRate: numEnv("QUOTE_DOWN_PAYMENT_RATE", DEFAULT_QUOTE_SETTINGS.downPaymentRate),
+    kmPerYear: DEFAULT_QUOTE_SETTINGS.kmPerYear,
   };
 }
 
@@ -61,6 +62,7 @@ export async function loadQuoteSettingsAsync(): Promise<QuoteSettings> {
         termMonths: Math.round(numOr(r.term_months, envDefaults.termMonths)),
         residualRate: numOr(r.residual_rate, envDefaults.residualRate),
         downPaymentRate: numOr(r.down_payment_rate, envDefaults.downPaymentRate),
+        kmPerYear: envDefaults.kmPerYear,
       };
       cache = { at: Date.now(), value };
       return value;

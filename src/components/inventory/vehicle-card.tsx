@@ -8,6 +8,9 @@ import {
   minDownRateForPrice,
   defaultDownRateForPrice,
   MAX_DOWN_RATE,
+  BASE_KM_PER_YEAR,
+  KM_STEP,
+  rvDeductionPerClick,
   type LeaseQuote,
   type QuoteSettings,
   DEFAULT_QUOTE_SETTINGS,
@@ -220,11 +223,13 @@ function InCardQuote({
   const [downRate, setDownRate] = useState(() =>
     Math.max(minDownRateForPrice(vehicle.price_cents), defaultDownRateForPrice(vehicle.price_cents)),
   );
+  const [kmPerYear, setKmPerYear] = useState(BASE_KM_PER_YEAR);
 
   // Re-clamp when vehicle / price tier changes
   useEffect(() => {
     const floor = minDownRateForPrice(vehicle.price_cents);
     setDownRate((r) => Math.min(MAX_DOWN_RATE, Math.max(floor, r)));
+    setKmPerYear(BASE_KM_PER_YEAR);
   }, [vehicle.price_cents, vehicle.id]);
   const [step, setStep] = useState<"quote" | "apply" | "done">("quote");
   const [name, setName] = useState("");
@@ -268,8 +273,9 @@ function InCardQuote({
         ...baseSettings,
         termMonths,
         downPaymentRate: downRate,
+        kmPerYear,
       }),
-    [vehicle.price_cents, baseSettings, termMonths, downRate],
+    [vehicle.price_cents, baseSettings, termMonths, downRate, kmPerYear],
   );
 
   useEffect(() => {
@@ -349,7 +355,8 @@ function InCardQuote({
           source: "apply_now",
           termMonths,
           downPaymentRate: downRate,
-          notes: `In-card apply · ${vehicle.year} ${vehicle.make} ${vehicle.model} · ${termMonths}mo · ${(downRate * 100).toFixed(0)}% down`,
+          notes: `In-card apply · ${vehicle.year} ${vehicle.make} ${vehicle.model} · ${termMonths}mo · ${(downRate * 100).toFixed(0)}% down · ${formatNumber(kmPerYear)} km/yr`,
+          kmPerYear,
           application: {
             address,
             city,
@@ -406,7 +413,8 @@ function InCardQuote({
           </p>
           <p className="mt-0.5 text-[11px] text-fg-subtle">
             {quote.termMonths} mo · {(quote.downRate * 100).toFixed(0)}% down ·{" "}
-            {(quote.residualRate * 100).toFixed(0)}% residual · {aprPct}% APR
+            {(quote.residualRate * 100).toFixed(1)}% residual · {aprPct}% APR ·{" "}
+            {formatNumber(quote.kmPerYear)} km/yr
           </p>
         </div>
         <button
@@ -472,16 +480,72 @@ function InCardQuote({
               {formatCad(quote.residualCents)}
             </span>{" "}
             <span className="text-fg-subtle">
-              ({(quote.residualRate * 100).toFixed(0)}%)
+              ({(quote.residualRate * 100).toFixed(quote.kmSliderClicks > 0 ? 1 : 0)}%)
             </span>
           </p>
           {quote.residualReducedByDown ? (
             <p className="mt-1 text-[10px] leading-snug text-fg-subtle">
               High cash down reduced residual from{" "}
-              {(quote.scheduledResidualRate * 100).toFixed(0)}% so financed amount stays
+              {(quote.scheduledResidualRate * 100).toFixed(1)}% so financed amount stays
               non-negative
             </p>
           ) : null}
+        </div>
+        <div>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">
+              Annual kilometres
+            </p>
+            <p className="text-[13px] font-medium tabular-nums text-fg">
+              {formatNumber(kmPerYear)} km/yr
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Decrease annual kilometres"
+              disabled={kmPerYear <= BASE_KM_PER_YEAR}
+              onClick={() => setKmPerYear((k) => Math.max(BASE_KM_PER_YEAR, k - KM_STEP))}
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-fg disabled:opacity-30"
+            >
+              −
+            </button>
+            <input
+              type="range"
+              min={BASE_KM_PER_YEAR}
+              max={Math.max(40_000, kmPerYear)}
+              step={KM_STEP}
+              value={kmPerYear}
+              onChange={(e) => setKmPerYear(Number(e.target.value))}
+              className="box-border h-1.5 min-w-0 w-full max-w-full cursor-pointer appearance-none rounded-full bg-border accent-[var(--color-fg,#111)] [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fg"
+              aria-label="Annual kilometre allowance"
+            />
+            <button
+              type="button"
+              aria-label="Increase annual kilometres"
+              onClick={() => setKmPerYear((k) => k + KM_STEP)}
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-fg"
+            >
+              +
+            </button>
+          </div>
+          <div className="mt-1 flex justify-between text-[10px] text-fg-subtle">
+            <span>{formatNumber(BASE_KM_PER_YEAR)} included</span>
+            <span>+{formatNumber(KM_STEP)} km steps</span>
+          </div>
+          {quote.kmSliderClicks > 0 ? (
+            <p className="mt-1 text-[10px] leading-snug text-fg-subtle">
+              Extra {formatNumber(quote.kmSliderClicks * KM_STEP)} km/yr lowers residual by{" "}
+              {(quote.kmSliderClicks * rvDeductionPerClick(termMonths) * 100).toFixed(2)} pp
+              (base {(quote.programResidualRate * 100).toFixed(0)}% →{" "}
+              {(quote.scheduledResidualRate * 100).toFixed(1)}%)
+            </p>
+          ) : (
+            <p className="mt-1 text-[10px] leading-snug text-fg-subtle">
+              {formatNumber(BASE_KM_PER_YEAR)} km/yr included. Each extra {formatNumber(KM_STEP)}{" "}
+              km/yr lowers residual.
+            </p>
+          )}
         </div>
       </div>
 
@@ -505,6 +569,18 @@ function InCardQuote({
           </dd>
         </div>
       </dl>
+      <p className="mb-4 text-[12px] tabular-nums text-fg-muted">
+        Excess Kilometre Penalty:{" "}
+        <span className="font-medium text-fg">
+          {new Intl.NumberFormat("en-CA", {
+            style: "currency",
+            currency: "CAD",
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }).format(quote.excessKmPenaltyPerKm)}
+        </span>{" "}
+        per extra km
+      </p>
 
       {step === "quote" && (
         <>
@@ -577,7 +653,7 @@ function InCardQuote({
               {formatCadExact(quote.monthlyPaymentCents)}/mo
             </span>
             {" · "}
-            {termMonths} mo · {(downRate * 100).toFixed(0)}% down
+            {termMonths} mo · {(downRate * 100).toFixed(0)}% down · {formatNumber(kmPerYear)} km/yr
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Full name" value={name} onChange={setName} required />

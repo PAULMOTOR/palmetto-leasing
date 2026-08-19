@@ -8,6 +8,7 @@ import {
   loadQuoteSettingsAsync,
   saveQuoteSettings,
 } from "./quote-config";
+import { DEFAULT_QUOTE_SETTINGS } from "./calc";
 import { activeDealers } from "./catalog";
 import { DEALERS } from "./seed";
 
@@ -40,6 +41,7 @@ export const updateQuoteSettings = createServerFn({ method: "POST" })
       termMonths: data.termMonths,
       residualRate: data.residualRate,
       downPaymentRate: data.downPaymentRate,
+      kmPerYear: DEFAULT_QUOTE_SETTINGS.kmPerYear,
     });
     return { ok: true as const, settings };
   });
