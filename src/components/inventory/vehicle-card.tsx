@@ -132,17 +132,21 @@ export function VehicleCard({
         )}
       >
         <div className="flex flex-col">
-          {/* Square stage — car always geometrically centered in the tile */}
-          <div
+          {/* Square stage — click the car to open the lease quote */}
+          <button
+            type="button"
+            onClick={onToggleLease}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Close lease quote for ${title}` : `Open lease quote for ${title}`}
             className={cn(
-              "relative w-full overflow-hidden bg-white",
+              "relative w-full cursor-pointer overflow-hidden bg-white text-left",
               expanded
                 ? "aspect-[5/4] max-h-[42vh] md:aspect-auto md:max-h-none md:min-h-[280px] md:flex-1"
                 : "aspect-square",
             )}
           >
             <TileThumb vehicle={vehicle} title={title} priority={index < 3} />
-          </div>
+          </button>
 
           <div className="flex flex-col items-center bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">
             <p className="mb-1.5 max-w-[94%] text-[9px] font-medium tracking-[0.22em] text-fg-subtle uppercase sm:text-[10px] sm:tracking-[0.26em]">
