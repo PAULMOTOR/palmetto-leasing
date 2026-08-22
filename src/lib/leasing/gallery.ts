@@ -13,15 +13,11 @@ const SKIP_RE =
 function isNonListingAsset(url: string): boolean {
   if (!url) return true;
   if (url.startsWith("data:image/")) return true;
-  if (url.startsWith("/vehicles/") || url.includes("/vehicles/")) return true;
+  // Our local seed files only — do NOT match dealer filenames like
+  // `…/Lease-Sniper-…-porsche-911-2026-….jpg` (that was blocking Re-render).
+  if (url.startsWith("/vehicles/") || /(?:^|\/)vehicles\//i.test(url)) return true;
   if (/imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(url)) return true;
-  if (
-    /palmetto-style-lock|top-porsche|front-porsche|top-ferrari|front-ferrari|top-bentley|front-bentley|top-mclaren|front-mclaren|top-urus|front-urus|top-rolls|front-rolls|bmw-m8|mercedes-amg|rolls-ghost|aston-db12|ferrari-roma|lamborghini-urus|mclaren-720s|porsche-911|bentley-gt|range-rover/i.test(
-      url,
-    )
-  ) {
-    return true;
-  }
+  if (/palmetto-style-lock/i.test(url)) return true;
   return false;
 }
 

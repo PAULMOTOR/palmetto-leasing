@@ -7,6 +7,7 @@ import { generateVehicleThumbnail } from "./generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "./persist-image";
 import { parsePhotos } from "@/lib/leasing/types";
 import { selectImagineRefs } from "@/lib/leasing/gallery";
+import { fetchListingGallery } from "@/lib/leasing/fetch-listing-gallery";
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
@@ -188,8 +189,10 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
     body_style: string;
     thumbnail_url: string;
     photo_urls: string;
+    dealer_listing_url: string;
   }>`
-    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls
+    select id, year, make, model, trim, exterior_color, body_style,
+           thumbnail_url, photo_urls, dealer_listing_url
     from vehicles
     where id = ${id} and status = 'active'
     limit 1
@@ -198,15 +201,20 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   if (!r) return { ok: false, hasApiKey: true, error: "Vehicle not found" };
 
   const photos = parsePhotos(r.photo_urls);
-  const refs = selectImagineRefs(
-    [
-      ...photos,
-      ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
-        ? [r.thumbnail_url]
-        : []),
-    ],
-    { limit: 4 },
-  );
+  const seed = [
+    ...photos,
+    ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
+      ? [r.thumbnail_url]
+      : []),
+  ];
+  let refs = selectImagineRefs(seed, { limit: 4 });
+  if (refs.length === 0 && r.dealer_listing_url?.startsWith("http")) {
+    const live = await fetchListingGallery(r.dealer_listing_url, { limit: 8 });
+    refs = selectImagineRefs(live.photos, { limit: 4 });
+  }
+  if (refs.length === 0) {
+    refs = seed.filter((u) => /^https?:\/\//i.test(u) && !isEphemeralImagineUrl(u)).slice(0, 4);
+  }
   if (refs.length === 0) {
     return { ok: false, hasApiKey: true, error: "No listing photos to render from" };
   }
