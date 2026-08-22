@@ -133,6 +133,25 @@ async function runInventoryCrawlInner(opts?: {
       notes.push("Reset GCL Imagine tiles so they re-render from listing photos");
     }
 
+    // One-shot: Lease Sniper tiles mixed theme icons + other cars from VDP HTML.
+    const lsRev = await sql<{ value: string }>`
+      select value from app_meta where key = 'leasesniper_imagine_rev' limit 1
+    `;
+    if (lsRev[0]?.value !== "1") {
+      await sql`
+        update vehicles
+        set thumbnail_url = '', updated_at = now()
+        where dealer_listing_url like '%leasesniper.ca%'
+          and thumbnail_url like 'data:image/%'
+      `;
+      await sql`
+        insert into app_meta (key, value, updated_at)
+        values ('leasesniper_imagine_rev', '1', now())
+        on conflict (key) do update set value = excluded.value, updated_at = now()
+      `;
+      notes.push("Reset Lease Sniper Imagine tiles so they re-render from listing photos");
+    }
+
     const ver = await sql<{ value: string }>`
       select value from app_meta where key = 'pool_version' limit 1
     `;

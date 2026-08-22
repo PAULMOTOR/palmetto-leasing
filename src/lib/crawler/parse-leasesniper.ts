@@ -137,8 +137,37 @@ function parseCards(html: string): {
   return out;
 }
 
-async function extraPhotos(slug: string, featured: string): Promise<string[]> {
-  const photos = featured ? [featured] : [];
+function isSniperListingPhoto(url: string): boolean {
+  if (!/^https?:\/\//i.test(url)) return false;
+  if (/\/wp-content\/themes\//i.test(url)) return false;
+  if (/\.png(\?|$)/i.test(url)) return false;
+  if (!/\/wp-content\/uploads\//i.test(url)) return false;
+  return /\.(jpe?g|webp)(\?|$)/i.test(url);
+}
+
+export function leaseSniperSlugFromUrl(url: string): string | null {
+  const m = url.match(/\/leaselisting\/([^/?#]+)\/?/i);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]!);
+  } catch {
+    return m[1]!;
+  }
+}
+
+/**
+ * Photos of THIS car only — WP media attached to the listing.
+ * Avoids theme icons and the related-inventory strip of other cars on the VDP.
+ */
+export async function fetchLeaseSniperListingPhotos(listingUrlOrSlug: string): Promise<string[]> {
+  const slug = leaseSniperSlugFromUrl(listingUrlOrSlug) || listingUrlOrSlug.replace(/\/$/, "").split("/").pop() || "";
+  if (!slug) return [];
+  const photos: string[] = [];
+  const push = (u: string) => {
+    const url = u.split("?")[0]!;
+    if (!isSniperListingPhoto(url) || photos.includes(url)) return;
+    photos.push(url);
+  };
   try {
     const res = await fetch(
       `https://leasesniper.ca/wp-json/wp/v2/leaselisting?slug=${encodeURIComponent(slug)}&per_page=1`,
@@ -148,27 +177,59 @@ async function extraPhotos(slug: string, featured: string): Promise<string[]> {
       },
     );
     if (!res.ok) return photos;
-    const rows = (await res.json()) as { id?: number }[];
+    const rows = (await res.json()) as { id?: number; featured_media?: number }[];
     const id = rows[0]?.id;
+    const featuredId = rows[0]?.featured_media;
     if (!id) return photos;
+
+    if (featuredId) {
+      try {
+        const feat = await fetch(`https://leasesniper.ca/wp-json/wp/v2/media/${featuredId}`, {
+          headers: { accept: "application/json", "user-agent": UA },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (feat.ok) {
+          const body = (await feat.json()) as { source_url?: string };
+          if (body.source_url) push(body.source_url);
+        }
+      } catch {
+        /* media parent still runs */
+      }
+    }
+
     const mediaRes = await fetch(
-      `https://leasesniper.ca/wp-json/wp/v2/media?parent=${id}&per_page=20`,
+      `https://leasesniper.ca/wp-json/wp/v2/media?parent=${id}&per_page=40`,
       {
         headers: { accept: "application/json", "user-agent": UA },
         signal: AbortSignal.timeout(12_000),
       },
     );
-    if (!mediaRes.ok) return photos;
-    const media = (await mediaRes.json()) as { source_url?: string }[];
-    for (const m of media) {
-      const u = m.source_url || "";
-      if (/^https?:\/\//i.test(u) && !photos.includes(u) && !/logo|fav\.png|c1\.png/i.test(u)) {
-        photos.push(u);
+    if (mediaRes.ok) {
+      const media = (await mediaRes.json()) as { source_url?: string }[];
+      for (const m of media) {
+        if (m.source_url) push(m.source_url);
       }
     }
   } catch {
-    /* featured only */
+    /* empty — caller may have the card thumb */
   }
+  return photos.slice(0, 16);
+}
+
+async function extraPhotos(slug: string, featured: string): Promise<string[]> {
+  const fromWp = await fetchLeaseSniperListingPhotos(slug);
+  const photos: string[] = [];
+  const push = (u: string) => {
+    const url = (u || "").split("?")[0]!;
+    if (!url || photos.includes(url)) return;
+    if (featured && url === featured.split("?")[0]) {
+      photos.unshift(url);
+      return;
+    }
+    if (isSniperListingPhoto(url) || url === featured) photos.push(url);
+  };
+  if (featured) push(featured);
+  for (const u of fromWp) push(u);
   return photos.slice(0, 16);
 }
 

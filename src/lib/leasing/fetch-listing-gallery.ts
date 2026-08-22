@@ -9,6 +9,7 @@ import {
   upgradeImageUrl,
   normalizeGalleryUrls,
 } from "./gallery";
+import { fetchLeaseSniperListingPhotos, isLeaseSniperUrl } from "@/lib/crawler/parse-leasesniper";
 
 export async function fetchListingGallery(
   listingUrl: string,
@@ -20,6 +21,18 @@ export async function fetchListingGallery(
   }
 
   try {
+    if (isLeaseSniperUrl(listingUrl)) {
+      const wp = await fetchLeaseSniperListingPhotos(listingUrl);
+      if (wp.length) {
+        const selected = selectGalleryPhotos(wp, { limit, preferInteriorShare: 0.4 });
+        return {
+          photos: selected,
+          interiors: selected.filter((u) => isInteriorPhoto(u)).length,
+          source: "leasesniper-wp",
+        };
+      }
+    }
+
     const res = await fetch(listingUrl, {
       headers: {
         "user-agent":
@@ -33,7 +46,8 @@ export async function fetchListingGallery(
     if (!res.ok) return { photos: [], interiors: 0, source: `http-${res.status}` };
     const html = await res.text();
     const found = extractImageUrls(html, listingUrl);
-    const selected = selectGalleryPhotos(found, { limit, preferInteriorShare: 0.4 });
+    const pool = isLeaseSniperUrl(listingUrl) ? keepLeaseSniperShoot(found, html) : found;
+    const selected = selectGalleryPhotos(pool, { limit, preferInteriorShare: 0.4 });
     const interiors = selected.filter((u) => isInteriorPhoto(u)).length;
     return {
       photos: selected,
@@ -125,6 +139,24 @@ function extractImageUrls(html: string, baseUrl: string): string[] {
   }
 
   return normalizeGalleryUrls(urls);
+}
+
+/** Same photo shoot as og:image — drops the related-inventory strip of other cars. */
+function keepLeaseSniperShoot(urls: string[], html: string): string[] {
+  const listing = urls.filter((u) => /leasesniper\.ca\/wp-content\/uploads\/.+\.(jpe?g|webp)/i.test(u));
+  const og =
+    html.match(/property=["']og:image["'][^>]*content=["']([^"']+)/i)?.[1] ||
+    html.match(/content=["']([^"']+)["'][^>]*property=["']og:image/i)?.[1] ||
+    "";
+  const file = (og.split("/").pop() || "").split("?")[0] || "";
+  const stem = file
+    .replace(/-\d+-scaled\.(jpe?g|webp)$/i, "")
+    .replace(/-scaled\.(jpe?g|webp)$/i, "");
+  if (stem.length >= 12) {
+    const same = listing.filter((u) => u.includes(stem));
+    if (same.length >= 2) return same;
+  }
+  return listing;
 }
 
 function walkImages(node: unknown, push: (u: string) => void, depth = 0): void {

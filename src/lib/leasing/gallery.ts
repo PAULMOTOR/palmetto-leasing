@@ -44,6 +44,7 @@ function isPromoOrChrome(url: string): boolean {
     return true;
   }
   if (isGclChrome(u)) return true;
+  if (isLeaseSniperChrome(u)) return true;
   return false;
 }
 
@@ -64,6 +65,23 @@ function isGclChrome(url: string): boolean {
   // Any other GCL site chrome (header, cards, icons)
   if (/\.png(\?|$)/i.test(u)) return true;
   return true;
+}
+
+/**
+ * Lease Sniper VDPs mix the car with theme icons (dollar / transmission / seat)
+ * and a "related inventory" strip of OTHER cars. Only `/wp-content/uploads/…jpg`
+ * attached to this listing are the real photos.
+ */
+function isLeaseSniperChrome(url: string): boolean {
+  const u = url.toLowerCase();
+  if (!/leasesniper\.ca|cloudwaysapps\.com/i.test(u)) return false;
+  if (/\/wp-content\/themes\//i.test(u)) return true;
+  if (/\/(fav|logo|c1|cx\d+|dollar|cross\d+|fl)\.png/i.test(u)) return true;
+  if (/\/img\/cf\d+\.png/i.test(u)) return true;
+  if (/porsche-logo|logo\.png/i.test(u)) return true;
+  // Old PNG icons in the media library — listing photos are jpeg/webp
+  if (/\.png(\?|$)/i.test(u)) return true;
+  return false;
 }
 
 /**
@@ -143,7 +161,10 @@ export function selectImagineRefs(photos: string[], opts?: { limit?: number }): 
   const exteriors = cleaned.filter((u) => !isInteriorPhoto(u));
   const pool = exteriors.length ? exteriors : cleaned;
   const preferred = pool.filter(
-    (u) => /\/img\/tmp\/products\//i.test(u) || /listing-images/i.test(u),
+    (u) =>
+      /\/img\/tmp\/products\//i.test(u) ||
+      /listing-images/i.test(u) ||
+      /leasesniper\.ca\/wp-content\/uploads\/.+\.(jpe?g|webp)/i.test(u),
   );
   const use = preferred.length ? preferred : pool;
   return use.slice(0, limit);
