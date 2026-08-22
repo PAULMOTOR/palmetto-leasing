@@ -13,6 +13,7 @@ import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "@/lib/imagine/persist-image";
 import { listingFingerprint } from "./parse-vehicles";
 import { selectImagineRefs } from "@/lib/leasing/gallery";
+import { parsePhotos } from "@/lib/leasing/types";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
 const POOL_VERSION = "11-paul-motor-co";
@@ -263,42 +264,38 @@ async function runInventoryCrawlInner(opts?: {
 
     listingsFound = uniqueFeed.length;
     const seenExternal = new Set<string>();
-    const newForImagine: SeedVehicle[] = [];
 
     for (const item of uniqueFeed) {
       const key = `${item.dealership_id}::${item.external_id}`;
       seenExternal.add(key);
       const result = await upsertVehicle(sql, item, runId);
-      if (result === "added") {
-        added += 1;
-        newForImagine.push(item);
-      } else if (result === "updated") {
-        updated += 1;
-        newForImagine.push(item);
-      }
+      if (result === "added") added += 1;
+      else if (result === "updated") updated += 1;
     }
 
     if (wantThumbs && process.env.XAI_API_KEY?.trim()) {
-      const missingStudio = await sql<{ id: string }>`
-        select id from vehicles
+      const missing = await sql<{
+        id: string;
+        year: number;
+        make: string;
+        model: string;
+        trim: string;
+        exterior_color: string;
+        body_style: string;
+        photo_urls: string;
+      }>`
+        select id, year, make, model, trim, exterior_color, body_style, photo_urls
+        from vehicles
         where status = 'active'
           and (thumbnail_url is null
             or thumbnail_url = ''
             or thumbnail_url not like 'data:image/%')
+        order by last_seen_at desc
+        limit ${MAX_IMAGINE_PER_CRAWL}
       `;
-      const missingIds = new Set(missingStudio.map((r) => r.id));
-      const batch = newForImagine
-        .filter((v) => {
-          const id = `${v.dealership_id}_${v.external_id}`
-            .toLowerCase()
-            .replace(/[^a-z0-9_]+/g, "_");
-          return missingIds.has(id) && v.photos.some((p) => p.startsWith("http"));
-        })
-        .slice(0, MAX_IMAGINE_PER_CRAWL);
-      for (const item of batch) {
-        const id = `${item.dealership_id}_${item.external_id}`
-          .toLowerCase()
-          .replace(/[^a-z0-9_]+/g, "_");
+      for (const item of missing) {
+        const refs = selectImagineRefs(parsePhotos(item.photo_urls), { limit: 3 });
+        if (!refs.length) continue;
         const imag = await generateVehicleThumbnail({
           car: {
             year: item.year,
@@ -308,22 +305,22 @@ async function runInventoryCrawlInner(opts?: {
             exteriorColor: item.exterior_color,
             bodyStyle: item.body_style,
           },
-          referencePhotoUrls: selectImagineRefs(item.photos, { limit: 3 }),
+          referencePhotoUrls: refs,
         });
         if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
           await sql`
             update vehicles
             set thumbnail_url = ${imag.url}, updated_at = now()
-            where id = ${id}
+            where id = ${item.id}
           `;
           imagined += 1;
         } else if (imag.error) {
-          notes.push(`Imagine ${item.external_id}: ${imag.error}`);
-        } else if (imag.ok && imag.url) {
-          notes.push(`Imagine ${item.external_id}: refused ephemeral URL`);
+          notes.push(`Imagine ${item.id}: ${imag.error}`);
         }
       }
-      notes.push(`Imagine thumbs generated: ${imagined}/${batch.length}`);
+      notes.push(
+        `Imagine first tiles: ${imagined}/${missing.length} missing (existing studio tiles untouched)`,
+      );
     } else if (wantThumbs) {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
     }

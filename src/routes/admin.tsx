@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -18,13 +18,13 @@ import {
   getInventoryStats,
   getRecentCrawlRuns,
   triggerCrawl,
-  triggerImagineThumbs,
 } from "@/lib/leasing/queries";
 import type { QuoteSettings } from "@/lib/leasing/calc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { RendersPanel } from "@/components/admin/renders-panel";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -43,8 +43,8 @@ function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<QuoteSettings | null>(null);
   const [crawling, setCrawling] = useState(false);
-  const [imagining, setImagining] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [tab, setTab] = useState<"inventory" | "renders">("inventory");
   const [hasImagineKey, setHasImagineKey] = useState<boolean | null>(null);
   const [thumbStats, setThumbStats] = useState<{ imagined: number; missing: number } | null>(null);
   const [runs, setRuns] = useState<
@@ -146,29 +146,6 @@ function AdminPage() {
     }
   }
 
-  async function onImagine(force: boolean) {
-    setImagining(true);
-    try {
-      // missing-only by default (up to 40); force re-renders already done tiles
-      const r = await triggerImagineThumbs({
-        data: { limit: force ? 12 : 40, force },
-      });
-      if (!r.hasApiKey) {
-        toast.error("XAI_API_KEY missing on Vercel");
-        return;
-      }
-      toast.success(force ? "Re-render batch done" : "Studio tiles for unrendered cars", {
-        description: `${r.succeeded}/${r.attempted} ok · ${r.remaining ?? 0} still missing · click again if remaining > 0`,
-      });
-      if (r.errors?.length) toast.message("Some failed", { description: r.errors[0] });
-      if (token) await refresh(token);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Imagine failed");
-    } finally {
-      setImagining(false);
-    }
-  }
-
   async function onToggle(d: AdminDealer) {
     if (!token) return;
     await updateDealer({ data: { token, id: d.id, active: !d.active } });
@@ -221,7 +198,7 @@ function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[960px] px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-medium tracking-tight">Admin</h1>
@@ -238,31 +215,58 @@ function AdminPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => token && refresh(token)} disabled={loading}>
-            <RefreshCw className={loading ? "animate-spin" : ""} />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={onCrawl} disabled={crawling}>
-            {crawling ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            Pool inventory now
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onImagine(false)} disabled={imagining}>
-            {imagining ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            Render missing tiles
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onImagine(true)} disabled={imagining}>
-            Re-render top 12
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-            <Plus />
-            Add dealer
-          </Button>
+          <div className="inline-flex rounded-full border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setTab("inventory")}
+              className={cn(
+                "h-8 rounded-full px-3.5 text-xs font-medium",
+                tab === "inventory" ? "bg-fg text-primary-fg" : "text-fg-muted hover:text-fg",
+              )}
+            >
+              Inventory
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("renders")}
+              className={cn(
+                "h-8 rounded-full px-3.5 text-xs font-medium",
+                tab === "renders" ? "bg-fg text-primary-fg" : "text-fg-muted hover:text-fg",
+              )}
+            >
+              Renders
+            </button>
+          </div>
+          {tab === "inventory" && (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => token && refresh(token)} disabled={loading}>
+                <RefreshCw className={loading ? "animate-spin" : ""} />
+                Refresh
+              </Button>
+              <Button size="sm" onClick={onCrawl} disabled={crawling}>
+                {crawling ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                Pool inventory now
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+                <Plus />
+                Add dealer
+              </Button>
+            </>
+          )}
           <Button asChild variant="ghost" size="sm">
-            <Link to="/">Inventory</Link>
+            <Link to="/">View site</Link>
           </Button>
         </div>
       </div>
 
+      {tab === "renders" && token ? (
+        <RendersPanel
+          token={token}
+          imagined={thumbStats?.imagined}
+          missing={thumbStats?.missing}
+        />
+      ) : (
+        <>
       {settings && token && (
         <QuoteSettingsEditor
           token={token}
@@ -311,6 +315,8 @@ function AdminPage() {
             await refresh(token);
           }}
         />
+      )}
+        </>
       )}
     </div>
   );

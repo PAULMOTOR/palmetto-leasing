@@ -68,6 +68,10 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `BACKGROUND: pure seamless #FFFFFF only. ` +
     `SHADOW: soft short contact shadow under the car, centered with the car. ` +
     `LIGHTING: soft-box studio, even, realistic paint and glass. Photoreal — not CGI plastic. ` +
+    `PAINT (mandatory): high-gloss OEM clearcoat with crisp, hard-edged specular highlights and sharp reflections in body panels and glass — like a freshly waxed show car. ` +
+    `Copy the GLOSS of the template. Highlights are tight streaks and bright studio-light kicks, not soft clouds. ` +
+    `FORBIDDEN: matte, satin, suede, rubberized, or vinyl-wrap dullness. ` +
+    `FORBIDDEN: feathered, airbrushed, or soft-gradient highlights that flatten the paint and make it look fake. ` +
     `NO TEXT of any kind — no letters, numbers, prices, slogans, "Warranty", "PPF", license-plate words, watermarks, logos, people, or props. ` +
     `Output one 1:1 square image that bleeds to the edges.`
   );
@@ -82,7 +86,7 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
     `ORIENTATION: nose DOWN — front bumper at BOTTOM, rear at TOP. ` +
     `CAMERA: elevated front-top (grille AND roof both visible). NOT a straight-down overhead. ` +
     `Wheels steered STRAIGHT, hidden in the arches. ` +
-    `Pure #FFFFFF fills the square edge to edge. Soft under-car shadow. No text, no gray inset, no 3/4 hero.`
+    `Pure #FFFFFF fills the square edge to edge. Soft under-car shadow. High-gloss paint with crisp specular highlights — not matte, not airbrushed. No text, no gray inset, no 3/4 hero.`
   );
 }
 
@@ -92,8 +96,9 @@ export function buildStyleLockAddendum(): string {
     ` DUAL-IMAGE RULES: Image 0 is the studio TEMPLATE (full car, elevated FRONT-TOP, nose DOWN / front at bottom, dead-centered, straight wheels, white to the edges). ` +
     `Image 1 is the SUBJECT car identity only (paint, body, badges). Discard every overlay, caption, and watermark on Image 1. ` +
     `Output MUST match Image 0 for CAMERA HEIGHT and ANGLE (headlights large at the bottom — not a roof-only drone shot), ` +
-    `nose-DOWN orientation, straight unturned wheels, perfect centering, #FFFFFF filling the square with equal width and height, soft shadow. ` +
-    `NEVER copy Image 1's camera, crop, gray backdrop, or portrait framing — dealer photos of older Ferraris are often nadir and must be discarded. ` +
-    `Final check: car dead-center; headlights and grille readable near the BOTTOM; roof visible; rear at TOP; wheels straight; no text; white to all four edges.`
+    `nose-DOWN orientation, straight unturned wheels, perfect centering, #FFFFFF filling the square with equal width and height, soft shadow, ` +
+    `and GLOSSY paint with crisp hard highlights (never copy a matte or dull lot photo's finish). ` +
+    `NEVER copy Image 1's camera, crop, gray backdrop, paint dullness, or portrait framing — dealer photos of older Ferraris are often nadir and must be discarded. ` +
+    `Final check: car dead-center; headlights and grille readable near the BOTTOM; roof visible; rear at TOP; wheels straight; high-gloss paint; no text; white to all four edges.`
   );
 }

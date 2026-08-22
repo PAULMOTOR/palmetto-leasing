@@ -162,3 +162,75 @@ export async function generateMissingImagineThumbs(opts?: {
     hasApiKey: true,
   };
 }
+
+/** Replace one vehicle's studio tile. Does not run on crawl or page load. */
+export async function generateVehicleThumbById(vehicleId: string): Promise<{
+  ok: boolean;
+  hasApiKey: boolean;
+  error?: string;
+  updatedAt?: string;
+}> {
+  const hasApiKey = Boolean(process.env.XAI_API_KEY?.trim());
+  if (!hasApiKey) {
+    return { ok: false, hasApiKey: false, error: "XAI_API_KEY is not set on this deployment" };
+  }
+  const id = vehicleId.trim();
+  if (!id) return { ok: false, hasApiKey: true, error: "Missing vehicle" };
+
+  const sql = await getSql();
+  const rows = await sql<{
+    id: string;
+    year: number;
+    make: string;
+    model: string;
+    trim: string;
+    exterior_color: string;
+    body_style: string;
+    thumbnail_url: string;
+    photo_urls: string;
+  }>`
+    select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls
+    from vehicles
+    where id = ${id} and status = 'active'
+    limit 1
+  `;
+  const r = rows[0];
+  if (!r) return { ok: false, hasApiKey: true, error: "Vehicle not found" };
+
+  const photos = parsePhotos(r.photo_urls);
+  const refs = selectImagineRefs(
+    [
+      ...photos,
+      ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
+        ? [r.thumbnail_url]
+        : []),
+    ],
+    { limit: 4 },
+  );
+  if (refs.length === 0) {
+    return { ok: false, hasApiKey: true, error: "No listing photos to render from" };
+  }
+
+  const imag = await generateVehicleThumbnail({
+    car: {
+      year: Number(r.year),
+      make: r.make,
+      model: r.model,
+      trim: r.trim,
+      exteriorColor: r.exterior_color,
+      bodyStyle: r.body_style,
+    },
+    referencePhotoUrls: refs,
+  });
+  if (!imag.ok || !imag.url || !isStudioThumbUrl(imag.url)) {
+    return { ok: false, hasApiKey: true, error: imag.error || "Imagine returned no studio image" };
+  }
+
+  const now = new Date().toISOString();
+  await sql`
+    update vehicles
+    set thumbnail_url = ${imag.url}, updated_at = now()
+    where id = ${r.id}
+  `;
+  return { ok: true, hasApiKey: true, updatedAt: now };
+}
