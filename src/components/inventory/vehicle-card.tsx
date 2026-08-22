@@ -442,7 +442,8 @@ function InCardQuote({
             ))}
           </div>
         </div>
-        <div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+        <div className="min-w-0">
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Cash down</p>
             <p className="text-[13px] font-medium tabular-nums text-fg">
@@ -492,7 +493,7 @@ function InCardQuote({
             </p>
           ) : null}
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">
               Annual kilometres
@@ -547,6 +548,7 @@ function InCardQuote({
               km/yr lowers residual.
             </p>
           )}
+        </div>
         </div>
       </div>
 
