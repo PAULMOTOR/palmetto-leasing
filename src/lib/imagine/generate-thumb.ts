@@ -18,6 +18,8 @@ export type ImagineThumbResult = {
   url?: string;
   b64?: string;
   mode: "edit" | "generate" | "skipped" | "error";
+  /** photographed = from this car's listing photos; inferred = guess / stock. */
+  source?: "photographed" | "inferred";
   error?: string;
 };
 
@@ -36,7 +38,11 @@ export async function generateVehicleThumbnail(opts: {
   car: ThumbSubject;
   referencePhotoUrls?: string[];
   publicOrigin?: string;
+  /** True when listing cover is AutoTrader stock / no real dealer photography yet. */
+  listingPhotosArePlaceholder?: boolean;
 }): Promise<ImagineThumbResult> {
+  const placeholder = Boolean(opts.listingPhotosArePlaceholder);
+  const editSource = placeholder ? "inferred" : "photographed";
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) {
     return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
@@ -72,7 +78,7 @@ export async function generateVehicleThumbnail(opts: {
           ],
         });
         const persisted = await finalize(dual);
-        if (persisted) return { ok: true, url: persisted, mode: "edit" };
+        if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
 
         const dualUrl = await callXaiJson(EDIT_URL, key, {
           model: MODEL,
@@ -85,7 +91,7 @@ export async function generateVehicleThumbnail(opts: {
           ],
         });
         const dualUrlP = await finalize(dualUrl);
-        if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit" };
+        if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
         // Do not fall back to a single dealer photo — those are often nadir
         // (Testarossa, etc.) and Imagine will copy that camera.
         continue;
@@ -99,7 +105,7 @@ export async function generateVehicleThumbnail(opts: {
         image: { url: subjectUri, type: "image_url" },
       });
       const singleP = await finalize(single);
-      if (singleP) return { ok: true, url: singleP, mode: "edit" };
+      if (singleP) return { ok: true, url: singleP, mode: "edit", source: editSource };
     }
 
     const gen = await callXaiJson(GEN_URL, key, {
@@ -110,7 +116,7 @@ export async function generateVehicleThumbnail(opts: {
       response_format: "b64_json",
     });
     const genP = await finalize(gen);
-    if (genP) return { ok: true, url: genP, mode: "generate" };
+    if (genP) return { ok: true, url: genP, mode: "generate", source: "inferred" };
 
     return { ok: false, mode: "error", error: gen.error || "Imagine returned no durable image" };
   } catch (err) {

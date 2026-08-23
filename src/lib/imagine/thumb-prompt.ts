@@ -98,7 +98,8 @@ export function buildStyleLockAddendum(): string {
     `Output MUST match Image 0 for CAMERA HEIGHT and ANGLE (headlights large at the bottom — not a roof-only drone shot), ` +
     `nose-DOWN orientation, straight unturned wheels, perfect centering, #FFFFFF filling the square with equal width and height, soft shadow, ` +
     `and GLOSSY paint with crisp hard highlights (never copy a matte or dull lot photo's finish). ` +
+    `PAINT COLOR comes only from Image 1 and the stated exterior color — NEVER copy Image 0's color (the template may be a different car in a different color). ` +
     `NEVER copy Image 1's camera, crop, gray backdrop, paint dullness, or portrait framing — dealer photos of older Ferraris are often nadir and must be discarded. ` +
-    `Final check: car dead-center; headlights and grille readable near the BOTTOM; roof visible; rear at TOP; wheels straight; high-gloss paint; no text; white to all four edges.`
+    `Final check: car dead-center; headlights and grille readable near the BOTTOM; roof visible; rear at TOP; wheels straight; high-gloss paint in the SUBJECT color; no text; white to all four edges.`
   );
 }

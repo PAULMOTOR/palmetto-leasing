@@ -11,9 +11,14 @@ import {
 import { fetchDealerInventory } from "./fetch-dealer";
 import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "@/lib/imagine/persist-image";
+import {
+  isPlaceholderListing,
+  listingHasActualDealerPhotos,
+} from "@/lib/imagine/thumb-source";
 import { listingFingerprint } from "./parse-vehicles";
 import { selectImagineRefs } from "@/lib/leasing/gallery";
-import { parsePhotos } from "@/lib/leasing/types";
+import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
+import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
 const POOL_VERSION = "11-paul-motor-co";
@@ -81,6 +86,7 @@ async function runInventoryCrawlInner(opts?: {
 }): Promise<CrawlResult> {
   const sql = await getSql();
   const wantThumbs = opts?.generateThumbs !== false;
+  await ensurePortalSchema();
 
   const runRows = await sql<{ id: number }>`
     insert into crawl_runs (status) values ('running') returning id
@@ -274,7 +280,7 @@ async function runInventoryCrawlInner(opts?: {
     }
 
     if (wantThumbs && process.env.XAI_API_KEY?.trim()) {
-      const missing = await sql<{
+      const candidates = await sql<{
         id: string;
         year: number;
         make: string;
@@ -283,19 +289,48 @@ async function runInventoryCrawlInner(opts?: {
         exterior_color: string;
         body_style: string;
         photo_urls: string;
+        thumbnail_url: string;
+        thumbnail_source: string;
+        specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, body_style, photo_urls
+        select id, year, make, model, trim, exterior_color, body_style,
+               photo_urls, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source,
+               specs_json
         from vehicles
         where status = 'active'
-          and (thumbnail_url is null
+          and (
+            thumbnail_url is null
             or thumbnail_url = ''
-            or thumbnail_url not like 'data:image/%')
-        order by last_seen_at desc
-        limit ${MAX_IMAGINE_PER_CRAWL}
+            or thumbnail_url not like 'data:image/%'
+            or coalesce(thumbnail_source, '') = 'inferred'
+          )
+        order by
+          case when coalesce(thumbnail_source, '') = 'inferred' then 0 else 1 end,
+          last_seen_at desc
+        limit ${MAX_IMAGINE_PER_CRAWL * 3}
       `;
-      for (const item of missing) {
-        const refs = selectImagineRefs(parsePhotos(item.photo_urls), { limit: 3 });
-        if (!refs.length) continue;
+      const batch = candidates.filter((item) => {
+        const placeholder = isPlaceholderListing(item.specs_json);
+        const photos = parsePhotos(item.photo_urls);
+        const actual = listingHasActualDealerPhotos(photos, {
+          placeholder,
+          source: parseSpecs(item.specs_json).source,
+        });
+        const studio = isStudioThumbUrl(item.thumbnail_url);
+        const inferred = item.thumbnail_source === "inferred";
+        if (inferred && studio) return actual;
+        if (!studio) return true;
+        return false;
+      }).slice(0, MAX_IMAGINE_PER_CRAWL);
+
+      for (const item of batch) {
+        const photos = parsePhotos(item.photo_urls);
+        const placeholder = isPlaceholderListing(item.specs_json);
+        const actual = listingHasActualDealerPhotos(photos, {
+          placeholder,
+          source: parseSpecs(item.specs_json).source,
+        });
+        const refs = selectImagineRefs(photos, { limit: 3 });
         const imag = await generateVehicleThumbnail({
           car: {
             year: item.year,
@@ -306,11 +341,15 @@ async function runInventoryCrawlInner(opts?: {
             bodyStyle: item.body_style,
           },
           referencePhotoUrls: refs,
+          listingPhotosArePlaceholder: placeholder || !actual,
         });
         if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
+          const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
           await sql`
             update vehicles
-            set thumbnail_url = ${imag.url}, updated_at = now()
+            set thumbnail_url = ${imag.url},
+                thumbnail_source = ${source},
+                updated_at = now()
             where id = ${item.id}
           `;
           imagined += 1;
@@ -319,7 +358,7 @@ async function runInventoryCrawlInner(opts?: {
         }
       }
       notes.push(
-        `Imagine first tiles: ${imagined}/${missing.length} missing (existing studio tiles untouched)`,
+        `Imagine tiles: ${imagined}/${batch.length} (photographed locked; inferred re-rendered only with dealer photos)`,
       );
     } else if (wantThumbs) {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
@@ -413,26 +452,46 @@ async function upsertVehicle(
     ? item.thumbnail
     : item.photos.find((p) => p.startsWith("http")) || item.thumbnail;
 
-  const existing = await sql<{ id: string; thumbnail_url: string }>`
-    select id, thumbnail_url from vehicles where id = ${id} limit 1
+  const existing = await sql<{ id: string; thumbnail_url: string; thumbnail_source: string }>`
+    select id, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source
+    from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
-  // Never prefer expired imgen tmp URLs — only keep durable data:/cdn thumbs
-  const keepThumb =
-    !isNew &&
-    existing[0]?.thumbnail_url &&
-    !isEphemeralImagineUrl(existing[0].thumbnail_url) &&
-    (existing[0].thumbnail_url.startsWith("data:image/") ||
-      existing[0].thumbnail_url.startsWith("http"))
-      ? existing[0].thumbnail_url
-      : thumbnail;
+  const incomingPlaceholder = isPlaceholderListing(item.specs);
+  const incomingActual = listingHasActualDealerPhotos(
+    item.photos.length ? item.photos : [item.thumbnail].filter(Boolean),
+    { placeholder: incomingPlaceholder, source: item.specs?.source },
+  );
+  const prevUrl = existing[0]?.thumbnail_url || "";
+  const prevSource = existing[0]?.thumbnail_source || "";
+  const prevStudio =
+    Boolean(prevUrl) &&
+    !isEphemeralImagineUrl(prevUrl) &&
+    (prevUrl.startsWith("data:image/") || prevUrl.startsWith("http"));
+
+  // Photographed studio tiles stay. Inferred guesses stay until real dealer
+  // photography appears — then Imagine replaces them in this same crawl.
+  let keepThumb = thumbnail;
+  let thumbSource = prevSource;
+  if (!isNew && prevUrl.startsWith("data:image/") && !isEphemeralImagineUrl(prevUrl)) {
+    if (prevSource === "photographed" || (prevSource === "" && incomingActual)) {
+      keepThumb = prevUrl;
+      thumbSource = "photographed";
+    } else {
+      keepThumb = prevUrl;
+      thumbSource = "inferred";
+    }
+  } else if (!isNew && prevStudio) {
+    keepThumb = prevUrl.startsWith("data:image/") || prevUrl.startsWith("http") ? prevUrl : thumbnail;
+    thumbSource = prevSource || (incomingActual ? "dealer" : "dealer");
+  }
 
   await sql`
     insert into vehicles (
       id, dealership_id, external_id, slug, year, make, model, trim,
       body_style, exterior_color, interior_color, mileage, price_cents,
       currency, vin, stock_number, description, specs_json, thumbnail_url,
-      photo_urls, dealer_listing_url, status, is_premium,
+      photo_urls, dealer_listing_url, status, is_premium, thumbnail_source,
       first_seen_at, last_seen_at, updated_at
     ) values (
       ${id}, ${item.dealership_id}, ${item.external_id}, ${slug},
@@ -440,7 +499,7 @@ async function upsertVehicle(
       ${item.body_style}, ${item.exterior_color}, ${item.interior_color},
       ${item.mileage}, ${item.price_cents}, 'CAD', ${item.vin},
       ${item.stock_number}, ${item.description}, ${specsJson}, ${keepThumb},
-      ${photosJson}, ${listingUrl}, 'active', ${isPremium},
+      ${photosJson}, ${listingUrl}, 'active', ${isPremium}, ${thumbSource},
       now(), now(), now()
     )
     on conflict (id) do update set
@@ -462,6 +521,7 @@ async function upsertVehicle(
       dealer_listing_url = excluded.dealer_listing_url,
       status = 'active',
       is_premium = excluded.is_premium,
+      thumbnail_source = excluded.thumbnail_source,
       removed_at = null,
       last_seen_at = now(),
       updated_at = now()

@@ -62,6 +62,7 @@ export function RendersPanel({
             ? {
                 ...r,
                 hasStudio: true,
+                inferred: res.source === "inferred",
                 updatedAt: v,
                 tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(v)}`,
               }
@@ -82,8 +83,8 @@ export function RendersPanel({
         <div>
           <h2 className="text-sm font-medium">Studio tiles</h2>
           <p className="mt-0.5 max-w-xl text-[12px] text-fg-subtle">
-            Visitors always see the saved tile — nothing re-renders on page load. Replace a bad
-            one here. New cars get a first tile when they enter the pool.
+            Visitors always see the saved tile — photographed cars stay locked. Inferred tiles
+            (stock / no dealer photos) re-render automatically when real photography lands.
             {imagined != null ? ` ${imagined} studio · ${missing ?? 0} still dealer photos.` : null}
           </p>
         </div>
@@ -120,6 +121,11 @@ export function RendersPanel({
                 {!r.hasStudio && (
                   <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
                     Dealer photo
+                  </span>
+                )}
+                {r.inferred && (
+                  <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                    Inferred
                   </span>
                 )}
               </div>

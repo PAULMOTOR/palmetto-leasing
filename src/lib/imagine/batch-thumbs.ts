@@ -5,9 +5,14 @@
 import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "./persist-image";
-import { parsePhotos } from "@/lib/leasing/types";
+import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
 import { selectImagineRefs } from "@/lib/leasing/gallery";
 import { fetchListingGallery } from "@/lib/leasing/fetch-listing-gallery";
+import {
+  isPlaceholderListing,
+  listingHasActualDealerPhotos,
+} from "@/lib/imagine/thumb-source";
+import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
@@ -39,6 +44,7 @@ export async function generateMissingImagineThumbs(opts?: {
   const limit = Math.min(opts?.limit ?? (match ? 8 : force ? 12 : 40), match ? 15 : force ? 25 : 60);
 
   const sql = await getSql();
+  await ensurePortalSchema();
   const like = match ? `%${match}%` : "";
   const rows = match
     ? await sql<{
@@ -52,8 +58,11 @@ export async function generateMissingImagineThumbs(opts?: {
         thumbnail_url: string;
         photo_urls: string;
         dealership_id: string;
+        thumbnail_source: string;
+        specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id
+        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
+               coalesce(thumbnail_source, '') as thumbnail_source, specs_json
         from vehicles
         where status = 'active'
           and (
@@ -76,8 +85,11 @@ export async function generateMissingImagineThumbs(opts?: {
         thumbnail_url: string;
         photo_urls: string;
         dealership_id: string;
+        thumbnail_source: string;
+        specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id
+        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
+               coalesce(thumbnail_source, '') as thumbnail_source, specs_json
         from vehicles
         where status = 'active'
         order by price_cents desc
@@ -96,7 +108,13 @@ export async function generateMissingImagineThumbs(opts?: {
   // `match` always re-renders (prompt fixes).
   const needsRender = withRefs.filter((r) => {
     if (force || match) return true;
-    return !isStudioThumbUrl(r.thumbnail_url);
+    if (!isStudioThumbUrl(r.thumbnail_url)) return true;
+    if (r.thumbnail_source !== "inferred") return false;
+    const placeholder = isPlaceholderListing(r.specs_json);
+    return listingHasActualDealerPhotos(parsePhotos(r.photo_urls), {
+      placeholder,
+      source: parseSpecs(r.specs_json).source,
+    });
   });
 
   const need = needsRender.slice(0, limit);
@@ -107,6 +125,11 @@ export async function generateMissingImagineThumbs(opts?: {
 
   for (const r of need) {
     const photos = parsePhotos(r.photo_urls);
+    const placeholder = isPlaceholderListing(r.specs_json);
+    const actual = listingHasActualDealerPhotos(photos, {
+      placeholder,
+      source: parseSpecs(r.specs_json).source,
+    });
     const refs = selectImagineRefs(
       [
         ...photos,
@@ -133,12 +156,16 @@ export async function generateMissingImagineThumbs(opts?: {
           bodyStyle: r.body_style,
         },
         referencePhotoUrls: refs,
+        listingPhotosArePlaceholder: placeholder || !actual,
       });
 
       if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
+        const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
         await sql`
           update vehicles
-          set thumbnail_url = ${imag.url}, updated_at = now()
+          set thumbnail_url = ${imag.url},
+              thumbnail_source = ${source},
+              updated_at = now()
           where id = ${r.id}
         `;
         succeeded += 1;
@@ -170,6 +197,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   hasApiKey: boolean;
   error?: string;
   updatedAt?: string;
+  source?: "photographed" | "inferred";
 }> {
   const hasApiKey = Boolean(process.env.XAI_API_KEY?.trim());
   if (!hasApiKey) {
@@ -179,6 +207,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   if (!id) return { ok: false, hasApiKey: true, error: "Missing vehicle" };
 
   const sql = await getSql();
+  await ensurePortalSchema();
   const rows = await sql<{
     id: string;
     year: number;
@@ -190,9 +219,10 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
     thumbnail_url: string;
     photo_urls: string;
     dealer_listing_url: string;
+    specs_json: string;
   }>`
     select id, year, make, model, trim, exterior_color, body_style,
-           thumbnail_url, photo_urls, dealer_listing_url
+           thumbnail_url, photo_urls, dealer_listing_url, specs_json
     from vehicles
     where id = ${id} and status = 'active'
     limit 1
@@ -201,6 +231,11 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   if (!r) return { ok: false, hasApiKey: true, error: "Vehicle not found" };
 
   const photos = parsePhotos(r.photo_urls);
+  const placeholder = isPlaceholderListing(r.specs_json);
+  const actual = listingHasActualDealerPhotos(photos, {
+    placeholder,
+    source: parseSpecs(r.specs_json).source,
+  });
   const seed = [
     ...photos,
     ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
@@ -215,9 +250,6 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   if (refs.length === 0) {
     refs = seed.filter((u) => /^https?:\/\//i.test(u) && !isEphemeralImagineUrl(u)).slice(0, 4);
   }
-  if (refs.length === 0) {
-    return { ok: false, hasApiKey: true, error: "No listing photos to render from" };
-  }
 
   const imag = await generateVehicleThumbnail({
     car: {
@@ -229,16 +261,20 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
       bodyStyle: r.body_style,
     },
     referencePhotoUrls: refs,
+    listingPhotosArePlaceholder: placeholder || !actual,
   });
   if (!imag.ok || !imag.url || !isStudioThumbUrl(imag.url)) {
     return { ok: false, hasApiKey: true, error: imag.error || "Imagine returned no studio image" };
   }
 
+  const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
   const now = new Date().toISOString();
   await sql`
     update vehicles
-    set thumbnail_url = ${imag.url}, updated_at = now()
+    set thumbnail_url = ${imag.url},
+        thumbnail_source = ${source},
+        updated_at = now()
     where id = ${r.id}
   `;
-  return { ok: true, hasApiKey: true, updatedAt: now };
+  return { ok: true, hasApiKey: true, updatedAt: now, source };
 }

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { generateVehicleThumbById } from "@/lib/imagine/batch-thumbs";
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
+import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 
 export type AdminRenderRow = {
   id: string;
@@ -18,6 +19,7 @@ export type AdminRenderRow = {
   priceCents: number;
   mileage: number;
   hasStudio: boolean;
+  inferred: boolean;
   tileUrl: string;
   updatedAt: string;
 };
@@ -26,6 +28,7 @@ export const listAdminRenders = createServerFn({ method: "GET" })
   .validator((input: unknown) => z.object({ token: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
+    await ensurePortalSchema();
     const sql = await getSql();
     const rows = await sql<{
       id: string;
@@ -36,11 +39,13 @@ export const listAdminRenders = createServerFn({ method: "GET" })
       price_cents: number;
       mileage: number;
       thumbnail_url: string;
+      thumbnail_source: string;
       updated_at: string;
       dealer_name: string;
     }>`
       select v.id, v.year, v.make, v.model, v.trim, v.price_cents, v.mileage,
-             v.thumbnail_url, v.updated_at::text as updated_at, d.name as dealer_name
+             v.thumbnail_url, coalesce(v.thumbnail_source, '') as thumbnail_source,
+             v.updated_at::text as updated_at, d.name as dealer_name
       from vehicles v
       join dealerships d on d.id = v.dealership_id
       where v.status = 'active' and d.active = true
@@ -59,6 +64,7 @@ export const listAdminRenders = createServerFn({ method: "GET" })
         priceCents: Number(r.price_cents),
         mileage: Number(r.mileage),
         hasStudio,
+        inferred: hasStudio && r.thumbnail_source === "inferred",
         tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(updatedAt)}`,
         updatedAt,
       } satisfies AdminRenderRow;

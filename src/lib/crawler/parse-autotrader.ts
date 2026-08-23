@@ -16,6 +16,7 @@ type AtListing = {
   url?: string;
   description?: string;
   images?: string[];
+  isCoverImagePlaceholder?: boolean;
   price?: { priceRaw?: number; priceFormatted?: string };
   vehicle?: {
     make?: string;
@@ -26,6 +27,9 @@ type AtListing = {
     fuel?: string;
     mileageInKm?: string;
     articleType?: string;
+    bodyColor?: string;
+    bodyColorRaw?: string;
+    bodyColorOriginal?: string;
   };
 };
 
@@ -110,6 +114,14 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
     let listingUrl = l.url || pageUrl;
     if (listingUrl.startsWith("/")) listingUrl = `https://www.autotrader.ca${listingUrl}`;
 
+    const exterior =
+      (v.bodyColorOriginal || v.bodyColorRaw || v.bodyColor || "").trim() || colorFromSlug(listingUrl);
+    const uniqueShots = new Set(
+      photos.map((u) => u.replace(/\/\d{2,4}x\d{2,4}\.(?:jpe?g|webp)(\?.*)?$/i, "")),
+    ).size;
+    const placeholder =
+      Boolean(l.isCoverImagePlaceholder) || photos.length === 0 || uniqueShots <= 1;
+
     out.push({
       external_id: `at-${external_id}`,
       dealership_id: dealerId,
@@ -118,7 +130,7 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
       model,
       trim,
       body_style: guessBody(model, trim),
-      exterior_color: "",
+      exterior_color: exterior,
       interior_color: "",
       mileage,
       price_cents: priceCents,
@@ -136,6 +148,7 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
         seats: "—",
         doors: "—",
         source: "autotrader",
+        photosPlaceholder: placeholder ? "1" : "0",
       },
       thumbnail: photos[0] || "/vehicles/top-porsche-911.jpg",
       photos,
@@ -228,4 +241,19 @@ function guessBody(model: string, trim: string): string {
   if (/spider|spyder|volante|roadster|convertible|cabrio|z8/.test(m)) return "Convertible";
   if (/van|metris|sprinter/.test(m)) return "Van";
   return "Coupe";
+}
+
+/** AutoTrader slugs often include `gasoline-grey-cat_…`. */
+function colorFromSlug(url: string): string {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    const m = path.match(/gasoline-([a-z]+(?:-[a-z]+)*)-cat_/i);
+    if (!m?.[1] || m[1] === "other") return "";
+    return m[1]
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  } catch {
+    return "";
+  }
 }
