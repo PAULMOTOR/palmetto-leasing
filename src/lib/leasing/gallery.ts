@@ -153,43 +153,51 @@ export function isLikelyJunk(url: string): boolean {
 }
 
 /**
- * Photos Imagine may use as subject identity.
- * Slot 0 = hero/front exterior. Slot 1 = rear or 3/4 (walkaround last shot
- * if filenames are UUID-only). Then interior, then other exteriors.
+ * Dealer-page order: first real exterior is the money shot (livery/stripes).
+ * Interiors come after. Never lead with a cabin or a random mid-gallery crop.
  */
+export function listingPhotosInDealerOrder(photos: string[], limit = 12): string[] {
+  const cleaned = normalizeGalleryUrls(photos).filter((u) => /^https?:\/\//i.test(u));
+  const exteriors = cleaned.filter((u) => !isInteriorPhoto(u));
+  const interiors = cleaned.filter((u) => isInteriorPhoto(u));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (u?: string) => {
+    if (!u || seen.has(u) || out.length >= limit) return;
+    seen.add(u);
+    out.push(u);
+  };
+  push(exteriors[0]);
+  for (const u of exteriors.slice(1)) push(u);
+  for (const u of interiors) push(u);
+  return out;
+}
+
+export function listingMainShot(photos: string[]): string | undefined {
+  return listingPhotosInDealerOrder(photos, 1)[0];
+}
 export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
   const limit = opts?.limit ?? 4;
-  const cleaned = normalizeGalleryUrls(photos).filter((u) => /^https?:\/\//i.test(u));
-  if (!cleaned.length) return [];
+  const ordered = listingPhotosInDealerOrder(photos, 24);
+  if (!ordered.length) return [];
 
-  const interiors = cleaned.filter((u) => isInteriorPhoto(u));
-  const exteriors = cleaned.filter((u) => !isInteriorPhoto(u));
-  const preferred = exteriors.filter(
-    (u) =>
-      /\/img\/tmp\/products\//i.test(u) ||
-      /listing-images/i.test(u) ||
-      /leasesniper\.ca\/wp-content\/uploads\/.+\.(jpe?g|webp)/i.test(u),
-  );
-  const ext = preferred.length ? preferred : exteriors.length ? exteriors : cleaned;
+  const interiors = ordered.filter((u) => isInteriorPhoto(u));
+  const exteriors = ordered.filter((u) => !isInteriorPhoto(u));
 
   const out: string[] = [];
-  const hero = ext[0];
+  const hero = exteriors[0];
   if (hero) out.push(hero);
 
-  const namedRear = ext.filter((u) => isRearOrThreeQuarterPhoto(u) && u !== hero);
-  const walkaroundRear = ext.length > 1 ? ext[ext.length - 1] : undefined;
+  const namedRear = exteriors.filter((u) => isRearOrThreeQuarterPhoto(u) && u !== hero);
+  const walkaroundRear = exteriors.length > 1 ? exteriors[exteriors.length - 1] : undefined;
   const rear = namedRear[0] || (walkaroundRear && walkaroundRear !== hero ? walkaroundRear : undefined);
   if (rear && !out.includes(rear)) out.push(rear);
 
   if (interiors.length && out.length < limit) {
-    const cabin = interiors[Math.floor(interiors.length / 2)] || interiors[0];
+    const cabin = interiors[0];
     if (cabin && !out.includes(cabin)) out.push(cabin);
   }
-  for (const u of ext) {
-    if (out.length >= limit) break;
-    if (!out.includes(u)) out.push(u);
-  }
-  for (const u of cleaned) {
+  for (const u of exteriors) {
     if (out.length >= limit) break;
     if (!out.includes(u)) out.push(u);
   }

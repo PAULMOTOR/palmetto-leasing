@@ -17,7 +17,7 @@ import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { getSql, dbSource } from "@/lib/db";
 import type { Vehicle, VehicleCard } from "./types";
 import { parsePhotos, parseSpecs } from "./types";
-import { buildVehicleGalleryPool, selectGalleryPhotos } from "./gallery";
+import { buildVehicleGalleryPool, listingPhotosInDealerOrder } from "./gallery";
 import { fetchListingGallery } from "./fetch-listing-gallery";
 import { generateMissingImagineThumbs } from "@/lib/imagine/batch-thumbs";
 import {
@@ -319,12 +319,23 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
       }
     }
 
-    // Prefer live dealer photos; fall back to stored listing photos only
-    const pool = live.length > 0 ? live : localPool;
-    const merged = selectGalleryPhotos(pool, {
-      limit: 12,
-      preferInteriorShare: 0.4,
-    });
+    // Live dealer VDP first — main shot stays index 0 (livery / stripes).
+    const pool = live.length > 0 ? [...live, ...localPool] : localPool;
+    const merged = listingPhotosInDealerOrder(pool, 12);
+
+    if (live.length && merged.length && data.vehicleId) {
+      try {
+        const sql = await getSql();
+        await sql`
+          update vehicles
+          set photo_urls = ${JSON.stringify(merged)},
+              updated_at = now()
+          where id = ${data.vehicleId}
+        `;
+      } catch {
+        /* gallery persist is best-effort */
+      }
+    }
 
     return {
       photos: merged,

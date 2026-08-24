@@ -5,7 +5,7 @@
 import {
   isInteriorPhoto,
   isLikelyJunk,
-  selectGalleryPhotos,
+  listingPhotosInDealerOrder,
   upgradeImageUrl,
   normalizeGalleryUrls,
 } from "./gallery";
@@ -25,7 +25,7 @@ export async function fetchListingGallery(
     if (isLeaseSniperUrl(listingUrl)) {
       const wp = await fetchLeaseSniperListingPhotos(listingUrl);
       if (wp.length) {
-        const selected = selectGalleryPhotos(wp, { limit, preferInteriorShare: 0.4 });
+        const selected = listingPhotosInDealerOrder(wp, limit);
         return {
           photos: selected,
           interiors: selected.filter((u) => isInteriorPhoto(u)).length,
@@ -58,7 +58,7 @@ export async function fetchListingGallery(
     }
     const found = extractImageUrls(html, listingUrl);
     const pool = isLeaseSniperUrl(listingUrl) ? keepLeaseSniperShoot(found, html) : found;
-    const selected = selectGalleryPhotos(pool, { limit, preferInteriorShare: 0.4 });
+    const selected = listingPhotosInDealerOrder(pool, limit);
     const interiors = selected.filter((u) => isInteriorPhoto(u)).length;
     return {
       photos: selected,

@@ -6,7 +6,7 @@ import { getSql } from "@/lib/db";
 import { generateVehicleThumbnail } from "./generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "./persist-image";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
-import { selectImagineRefs } from "@/lib/leasing/gallery";
+import { selectImagineRefs, listingPhotosInDealerOrder } from "@/lib/leasing/gallery";
 import { fetchListingGallery } from "@/lib/leasing/fetch-listing-gallery";
 import {
   isPlaceholderListing,
@@ -237,16 +237,26 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   const stored = parsePhotos(r.photo_urls);
   let photos = stored;
   if (r.dealer_listing_url?.startsWith("http")) {
-    const live = await fetchListingGallery(r.dealer_listing_url, { limit: 12 });
+    const live = await fetchListingGallery(r.dealer_listing_url, { limit: 24 });
     if (live.photos.length) photos = [...live.photos, ...stored];
   }
-  const refs = selectImagineRefs(photos, { limit: 4 });
+  const ordered = listingPhotosInDealerOrder(photos, 16);
+  const refs = selectImagineRefs(ordered, { limit: 4 });
   if (refs.length === 0) {
     return {
       ok: false,
       hasApiKey: true,
       error: "No listing photos to render from (chrome/stock skipped)",
     };
+  }
+
+  if (ordered.length) {
+    await sql`
+      update vehicles
+      set photo_urls = ${JSON.stringify(ordered)},
+          updated_at = now()
+      where id = ${r.id}
+    `;
   }
 
   const imag = await generateVehicleThumbnail({
