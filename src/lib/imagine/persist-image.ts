@@ -1,7 +1,4 @@
-/**
- * xAI imgen URLs under /xai-tmp-imgen/ expire (404 after hours/days).
- * Always persist to a durable form before writing to Neon.
- */
+import { normalizeStudioTileDataUri } from "./normalize-tile";
 
 export function isEphemeralImagineUrl(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -64,16 +61,16 @@ export async function persistImagineResult(opts: {
       : `data:image/jpeg;base64,${opts.b64}`;
     // Cap ~700KB base64 payload for Neon row size comfort
     if (raw.length <= 950_000) {
-      return { durableUrl: raw };
+      return { durableUrl: normalizeStudioTileDataUri(raw) || raw };
     }
   }
 
   if (opts.url) {
     if (opts.url.startsWith("data:image/")) {
-      return { durableUrl: opts.url };
+      return { durableUrl: normalizeStudioTileDataUri(opts.url) || opts.url };
     }
     const data = await urlToDataUri(opts.url, { maxBytes: 700_000 });
-    if (data) return { durableUrl: data };
+    if (data) return { durableUrl: normalizeStudioTileDataUri(data) || data };
     // Last resort: keep URL only if not ephemeral (shouldn't happen for imgen)
     if (!isEphemeralImagineUrl(opts.url)) {
       return { durableUrl: opts.url };

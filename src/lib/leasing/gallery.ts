@@ -6,6 +6,9 @@
 const INTERIOR_RE =
   /interior|cabin|seat|cockpit|dash|dashboard|console|leather|steering|wheel.?int|upholst|rear.?seat|front.?seat|door.?panel|headliner|suede|alcantara/i;
 
+const REAR_RE =
+  /(?:^|[\/_-])(rear|back|behind|aft|tail|stern|engine.?cover|louver|decklid|boot|trunk)(?:[\/_.-]|$)|3[-_]?4|three[-_]?quarter|rear[-_]?qtr|side[-_]?rear/i;
+
 const SKIP_RE =
   /logo|icon|sprite|pixel|1x1|favicon|badge\.svg|placeholder|data:image\/svg|spacer|blank|loading|avatar|profile|banner.?ad|feedback-dan|\/feedback\/|as24-home|\/assets\/as24|promo|advert|testimonial|reviewer|host-with|microphone|podcast|carfax|wechat|favicon/i;
 
@@ -136,6 +139,10 @@ export function isInteriorPhoto(url: string, alt = ""): boolean {
   return INTERIOR_RE.test(s);
 }
 
+export function isRearOrThreeQuarterPhoto(url: string, alt = ""): boolean {
+  return REAR_RE.test(`${url} ${alt}`) && !isInteriorPhoto(url, alt);
+}
+
 export function isLikelyJunk(url: string): boolean {
   return (
     SKIP_RE.test(url) ||
@@ -146,8 +153,9 @@ export function isLikelyJunk(url: string): boolean {
 }
 
 /**
- * Photos Imagine may use as subject identity. Mixes exteriors + an interior
- * when present so cabin color and rear/side details (wings vs no wing) survive.
+ * Photos Imagine may use as subject identity.
+ * Slot 0 = hero/front exterior. Slot 1 = rear or 3/4 (walkaround last shot
+ * if filenames are UUID-only). Then interior, then other exteriors.
  */
 export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
   const limit = opts?.limit ?? 4;
@@ -165,13 +173,21 @@ export function selectImagineRefs(photos: string[], opts?: { limit?: number }): 
   const ext = preferred.length ? preferred : exteriors.length ? exteriors : cleaned;
 
   const out: string[] = [];
-  const extSlots = Math.max(1, limit - (interiors.length ? 1 : 0));
-  for (const u of spaceSample(ext, extSlots)) {
-    if (!out.includes(u)) out.push(u);
-  }
+  const hero = ext[0];
+  if (hero) out.push(hero);
+
+  const namedRear = ext.filter((u) => isRearOrThreeQuarterPhoto(u) && u !== hero);
+  const walkaroundRear = ext.length > 1 ? ext[ext.length - 1] : undefined;
+  const rear = namedRear[0] || (walkaroundRear && walkaroundRear !== hero ? walkaroundRear : undefined);
+  if (rear && !out.includes(rear)) out.push(rear);
+
   if (interiors.length && out.length < limit) {
     const cabin = interiors[Math.floor(interiors.length / 2)] || interiors[0];
     if (cabin && !out.includes(cabin)) out.push(cabin);
+  }
+  for (const u of ext) {
+    if (out.length >= limit) break;
+    if (!out.includes(u)) out.push(u);
   }
   for (const u of cleaned) {
     if (out.length >= limit) break;

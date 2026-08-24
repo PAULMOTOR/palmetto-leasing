@@ -42,7 +42,10 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
 
   return (
     `Photoreal luxury inventory thumbnail of this exact car: ${label}. ${colorBit} ${interiorBit} ` +
-    `Subject photos are this VIN only — copy its REAL body. Do not invent a rear spoiler, wing, ducktail, body kit, or extra vents unless they are visible on the subject photos (G-Wagons and many Mercedes have NO wing). ` +
+    `Subject photos are this VIN only — copy its REAL body. ` +
+    `Image 2 (when present) is a REAR or 3/4 of this exact car: engine cover, rear window OR no window, louvers, spoiler, and tail lights MUST match Image 2. ` +
+    `If Image 2 shows a louvered deck / no rear glass (e.g. 812 Competizione), do NOT paint a rear window. ` +
+    `Do not invent a rear spoiler, wing, ducktail, body kit, or extra vents unless they are visible on the subject photos (G-Wagons often have NO wing). ` +
     `Ignore text, banners, prices, watermarks, and overlays. ` +
     // —— Shape: long and skinny, not a ball ——
     `SHOW THE ENTIRE CAR nose to tail. The car must look LONG and SLENDER in the frame, like a scale model shot from a high boom. ` +
@@ -62,11 +65,13 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     // —— Wheels ——
     `WHEELS: steering straight 0°. From this height tires sit in the arches; do not paint turned sidewalls. Copy real wheels from subject photos. ` +
     // —— Canvas ——
-    `SQUARE output, #FFFFFF to every edge. No letterbox, no cutout halo, no gray studio plate. Car ~70% of frame height, even 8–12% white margin. ` +
-    // —— True studio, not a Photoshop extract ——
-    `The car was PHOTOGRAPHED in a seamless white cyclorama. It is NOT an outdoor photo with the background deleted. ` +
-    `FORBIDDEN: cut-out edges, fringe, fake floating sticker, hard drop-shadow, ground that looks like a white oval under a pasted car. ` +
-    `SHADOW: one soft, short contact shadow hugging the tires/rockers — the car sits in the white, it is not stuck on. ` +
+    `CANVAS (mandatory): the photograph BLEEDS to all four edges of the square. ` +
+    `Pixel (0,0) and every edge pixel are the same seamless floor as under the car. ` +
+    `FORBIDDEN: a white picture-frame, letterbox, gray plate inset inside a white tile, polaroid border, or any margin of a different color. ` +
+    `FLOOR (identical on every tile): pure #FFFFFF (RGB 255,255,255) cyclorama — not gray, not #EEE, not #F5F5F5, not a paper sweep. ` +
+    `Do NOT copy the gray studio floor from dealer photos. ` +
+    `SHADOW (identical on every tile): one soft short contact shadow hugging the tires, light gray (~12% opacity), same as the template. No hard oval drop-shadow. ` +
+    `Car ~70% of frame height with even 8–12% WHITE margin that IS the floor, not a second frame. ` +
     `HEADLIGHTS OFF. DRLs off. No glowing lamps. ` +
     // —— Interior through glass ——
     `INTERIOR (mandatory): look through the windshield (or open cabin on convertibles). Leather seats, dash, and steering wheel are READABLE. ` +
@@ -95,10 +100,10 @@ export function buildStyleLockAddendum(): string {
   return (
     ` MULTI-IMAGE RULES: Image 0 is the TEMPLATE (long slender car, high overhead telephoto, nose DOWN, headlights OFF, lit interior, true white cyclorama). ` +
     `Images 1 and 2 (if present) are THIS listing's dealer photos — different angles of the same VIN. ` +
-    `Copy Image 0 for camera height, long proportions, studio lighting, windshield/cabin lighting, and white ground. ` +
-    `Copy Images 1–2 for identity: exact body (wing or NO wing), exact paint, exact wheels, exact interior color. ` +
-    `NEVER add a spoiler/wing/kit that is not in Images 1–2. NEVER copy Image 1's outdoor lighting, cutout, or wide-angle lens. ` +
-    `NEVER copy Image 0's paint color or brand. ` +
-    `Final check: car looks long not spherical; headlights off; seats lit; no fake wing; no cutout shadow; white to all four edges.`
+    `Copy Image 0 for camera height, long proportions, studio lighting, windshield/cabin lighting, WHITE floor, and the contact shadow. ` +
+    `Copy Images 1–2 for identity: exact body, rear window or NO rear window, wing or NO wing, exact paint, exact wheels, exact interior. ` +
+    `Image 2 is the rear/3/4 when present — trust it over a generic model memory (rare 812s have louvers instead of glass). ` +
+    `NEVER copy Image 1–2's gray floor, outdoor light, cutout, or wide-angle lens. NEVER copy Image 0's paint color or brand. ` +
+    `Final check: floor #FFFFFF to every edge (no white frame around a gray plate); long not spherical; headlights off; seats lit; rear matches Image 2; no invented glass or wing.`
   );
 }
