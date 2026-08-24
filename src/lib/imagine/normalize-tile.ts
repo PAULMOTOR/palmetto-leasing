@@ -103,20 +103,19 @@ function cropUniformBorder(src: Raster): Raster {
   return { width: side, height: side, data: out };
 }
 
-/** Extra cyclorama above the car (leftover softbox) → crop and re-square. */
+/** Extra top cyclorama: crop then PAD to square (never upscale — that ate the margin). */
 function equalizeVerticalMargins(src: Raster): Raster {
   const { width: w, height: h, data } = src;
-  const corners = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
-  const bgL = corners.reduce((s, i) => s + lum(data, i), 0) / 4;
+  const bg = sampleBg(src);
 
   const rowHasCar = (y: number) => {
     let hits = 0;
     const step = 4;
     for (let x = 0; x < w; x += step) {
       const i = (y * w + x) * 4;
-      if (chroma(data, i) > 18 || Math.abs(lum(data, i) - bgL) > 22) hits += 1;
+      if (chroma(data, i) > 18 || Math.abs(lum(data, i) - bg.L) > 22) hits += 1;
     }
-    return hits > w / step * 0.08;
+    return hits > (w / step) * 0.08;
   };
 
   let top = 0;
@@ -127,18 +126,87 @@ function equalizeVerticalMargins(src: Raster): Raster {
   const topGap = top;
   const botGap = h - 1 - bot;
   const extra = topGap - botGap;
-  if (extra < 16 || topGap < 24) return src;
-  if (bot - top < h * 0.45) return src;
-
-  const cropTop = Math.min(extra, topGap - botGap);
-  const nh = h - cropTop;
-  if (nh < h * 0.72) return src;
-
-  const cropped: Raster = { width: w, height: nh, data: new Uint8Array(w * nh * 4) };
-  for (let y = 0; y < nh; y++) {
-    cropped.data.set(data.subarray(((y + cropTop) * w) * 4, ((y + cropTop + 1) * w) * 4), y * w * 4);
+  let work = src;
+  if (extra >= 16 && topGap >= 24 && bot - top >= h * 0.45) {
+    const cropTop = extra;
+    const nh = h - cropTop;
+    if (nh >= h * 0.72) {
+      const cropped: Raster = { width: w, height: nh, data: new Uint8Array(w * nh * 4) };
+      for (let y = 0; y < nh; y++) {
+        cropped.data.set(
+          data.subarray(((y + cropTop) * w) * 4, ((y + cropTop + 1) * w) * 4),
+          y * w * 4,
+        );
+      }
+      work = padToSquare(cropped, bg);
+    }
   }
-  return scaleNearest(cropped, w, w);
+  return ensureMinMargin(work, bg);
+}
+
+function sampleBg(src: Raster): { r: number; g: number; b: number; L: number } {
+  const { width: w, height: h, data } = src;
+  const idx = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
+  const r = Math.round(idx.reduce((s, i) => s + data[i]!, 0) / 4);
+  const g = Math.round(idx.reduce((s, i) => s + data[i + 1]!, 0) / 4);
+  const b = Math.round(idx.reduce((s, i) => s + data[i + 2]!, 0) / 4);
+  return { r, g, b, L: (r * 299 + g * 587 + b * 114) / 1000 };
+}
+
+function fillBg(out: Uint8Array, bg: { r: number; g: number; b: number }) {
+  for (let i = 0; i < out.length; i += 4) {
+    out[i] = bg.r;
+    out[i + 1] = bg.g;
+    out[i + 2] = bg.b;
+    out[i + 3] = 255;
+  }
+}
+
+function padToSquare(src: Raster, bg: { r: number; g: number; b: number }): Raster {
+  const side = Math.max(src.width, src.height);
+  if (src.width === side && src.height === side) return src;
+  const out = new Uint8Array(side * side * 4);
+  fillBg(out, bg);
+  const ox = Math.floor((side - src.width) / 2);
+  const oy = Math.floor((side - src.height) / 2);
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      const si = (y * src.width + x) * 4;
+      const di = ((y + oy) * side + (x + ox)) * 4;
+      out[di] = src.data[si]!;
+      out[di + 1] = src.data[si + 1]!;
+      out[di + 2] = src.data[si + 2]!;
+      out[di + 3] = 255;
+    }
+  }
+  return { width: side, height: side, data: out };
+}
+
+function ensureMinMargin(src: Raster, bg: { r: number; g: number; b: number; L: number }): Raster {
+  const { width: w, height: h, data } = src;
+  const min = Math.round(h * 0.1);
+  const rowHasCar = (y: number) => {
+    let hits = 0;
+    for (let x = 0; x < w; x += 4) {
+      const i = (y * w + x) * 4;
+      if (chroma(data, i) > 18 || Math.abs(lum(data, i) - bg.L) > 22) hits += 1;
+    }
+    return hits > w / 4 * 0.08;
+  };
+  let top = 0;
+  while (top < h * 0.4 && !rowHasCar(top)) top += 1;
+  let bot = h - 1;
+  while (bot > h * 0.6 && !rowHasCar(bot)) bot -= 1;
+  if (top >= min && h - 1 - bot >= min) return src;
+  const carH = bot - top + 1;
+  if (carH < h * 0.4) return src;
+  const inner = h - 2 * min;
+  const scale = inner / carH;
+  if (scale >= 0.98) return src;
+  const nw = Math.max(2, Math.round(w * scale));
+  const nh = Math.max(2, Math.round(h * scale));
+  const small = scaleNearest(src, nw, nh);
+  return padToSquare(small, bg);
 }
 
 function scaleNearest(src: Raster, nw: number, nh: number): Raster {

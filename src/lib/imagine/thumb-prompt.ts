@@ -20,26 +20,21 @@ function subjectLine(car: ThumbSubject): string {
 
 export function buildThumbEditPrompt(car: ThumbSubject): string {
   const label = subjectLine(car);
-  const colorBit = car.exteriorColor?.trim()
-    ? `Exact paint from the subject photo: ${car.exteriorColor}.`
-    : `Exact paint, body lines, and badges from the subject photo.`;
-  const cabinBit = car.interiorColor?.trim()
-    ? ` Interior: ${car.interiorColor}.`
-    : "";
+  const paint = car.exteriorColor?.trim() || "the exact paint in Image 1";
+  const cabin = car.interiorColor?.trim() || "the exact interior in Image 1";
 
   return (
-    `Create a photorealistic luxury dealership inventory thumbnail of this exact car: ${label}. ${colorBit}${cabinBit} ` +
-    `Use Image 1 only for the car's identity (shape, paint, badges, interior, rear). Ignore text, banners, prices, watermarks. ` +
-    `SHOW THE ENTIRE CAR — nose to tail. Mirrors, roof, rear bumper, and any wing stay in frame. ` +
-    `CENTERING: dead-centered on BOTH axes. Equal cyclorama above the rear and below the nose — no empty band at the top. Hood badge on the vertical midline. ` +
-    `ORIENTATION: nose DOWN — front bumper, headlights, and grille at the BOTTOM. Rear at the TOP. ` +
-    `CAMERA: copy Image 0 exactly — same boom height, same telephoto, same tilt. Grille AND roof both readable, like Image 0. Do not raise to a roof-only nadir. Do not drop to a front-heavy hero. ` +
-    `WHEELS: straight 0°. Tires in the arches. ` +
-    `SQUARE, edge to edge. Whole car ~70% of frame height with matching top and bottom margin. ` +
-    `STUDIO: seamless infinity cyclorama, off-white to light grey. Soft contact shadow that fades into the floor. Lighting is a huge overhead chimera that is OUT OF FRAME. ` +
-    `FORBIDDEN: any visible softbox, octabox, ceiling panel, light bank, stand, or a white burst/hot rectangle above the car. The top of the frame is empty cyclorama, not a studio ceiling. ` +
-    `HEADLIGHTS OFF. High-gloss paint with crisp speculars. Photoreal, not CGI. ` +
-    `NO TEXT, plates, people, or props.`
+    `THIS VIN: ${label}. PAINT: ${paint}. INTERIOR: ${cabin}. ` +
+    `Image 0 is a GREYSCALE camera plate with NO color — never copy yellow, gold, or any paint from it. ` +
+    `Image 1 is the real car. Copy its EXACT paint, livery, racing stripes, carbon, badges, interior, and rear. ` +
+    `If Image 1 is red, the output is red. If it is black, the output is black. Never invent Giallo/yellow unless Image 1 is yellow. ` +
+    `SHOW THE ENTIRE CAR — nose to tail, including mirrors and any wing. ` +
+    `CENTERING: dead-centered. Equal cyclorama buffer on ALL four sides (at least ~10%). The car must not touch any edge. ` +
+    `ORIENTATION: nose DOWN (grille at BOTTOM), rear at TOP. ` +
+    `CAMERA: copy Image 0 boom/tilt/telephoto. Grille AND roof readable. Not nadir, not 3/4, not eye-level. ` +
+    `WHEELS straight. ` +
+    `STUDIO: seamless off-white/light-grey infinity cyclorama. Soft fading shadow. Lights OUT OF FRAME — no visible softbox, ceiling panel, or white burst above the car. ` +
+    `HEADLIGHTS OFF. High-gloss OEM paint. No text, plates, or people.`
   );
 }
 
@@ -49,9 +44,9 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
 
 export function buildStyleLockAddendum(): string {
   return (
-    ` DUAL-IMAGE: Image 0 is the TEMPLATE — copy camera, lighting, infinity floor, and shadow only. Never copy Image 0's yellow paint, body, or interior. ` +
-    `Image 1 is THIS VIN — copy paint, body, interior, rear window/louvers/wing. Never copy Image 1's camera or 3/4 angle. ` +
-    `Final check: same camera as Image 0; this car's color; empty cyclorama above the car (no softbox in frame); no 3/4.`
+    ` DUAL-IMAGE: Image 0 is GREYSCALE camera/lighting only — it has no paint. ` +
+    `Image 1 is THIS VIN. Copy paint, stripes/livery, interior, and rear from Image 1 only. ` +
+    `Final check: color matches Image 1 (not yellow unless the car is yellow); car not touching edges; no 3/4.`
   );
 }
 
