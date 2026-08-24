@@ -82,41 +82,42 @@ export async function generateVehicleThumbnail(opts: {
       return { ok: false, mode: "error", error: "Studio template missing" };
     }
 
+    const lastErrors: string[] = [];
     for (const ref of refs) {
       const subjectUri = await fetchImageAsDataUri(ref);
-      if (!subjectUri) continue;
+      if (!subjectUri) {
+        lastErrors.push(`download failed: ${ref.slice(0, 80)}`);
+        continue;
+      }
 
+      // API: multiple images must be an array of URL/data-URI strings (not {url,type} maps).
       const dual = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "b64_json",
-        image: [
-          { url: styleUri, type: "image_url" },
-          { url: subjectUri, type: "image_url" },
-        ],
+        image: [styleUri, subjectUri],
       });
       const persisted = await finalize(dual);
       if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
+      lastErrors.push(dual.error || "b64 edit empty");
 
       const dualUrl = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "url",
-        image: [
-          { url: styleLockUrl, type: "image_url" },
-          { url: ref, type: "image_url" },
-        ],
+        image: [styleLockUrl, ref],
       });
       const dualUrlP = await finalize(dualUrl);
       if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
+      lastErrors.push(dualUrl.error || "url edit empty");
     }
 
     return {
       ok: false,
       mode: "error",
-      error: refs.length ? "Imagine edit failed (no 3/4 fallback)" : "No listing photos to render from",
+      error: lastErrors[0] || (refs.length ? "Imagine edit failed" : "No listing photos to render from"),
     };
   } catch (err) {
     return {
