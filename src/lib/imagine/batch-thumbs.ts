@@ -234,25 +234,19 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   const r = rows[0];
   if (!r) return { ok: false, hasApiKey: true, error: "Vehicle not found" };
 
-  const photos = parsePhotos(r.photo_urls);
-  const placeholder = isPlaceholderListing(r.specs_json);
-  const actual = listingHasActualDealerPhotos(photos, {
-    placeholder,
-    source: parseSpecs(r.specs_json).source,
-  });
-  const seed = [
-    ...photos,
-    ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
-      ? [r.thumbnail_url]
-      : []),
-  ];
-  let refs = selectImagineRefs(seed, { limit: 4 });
-  if (refs.length === 0 && r.dealer_listing_url?.startsWith("http")) {
-    const live = await fetchListingGallery(r.dealer_listing_url, { limit: 8 });
-    refs = selectImagineRefs(live.photos, { limit: 4 });
+  const stored = parsePhotos(r.photo_urls);
+  let photos = stored;
+  if (r.dealer_listing_url?.startsWith("http")) {
+    const live = await fetchListingGallery(r.dealer_listing_url, { limit: 12 });
+    if (live.photos.length) photos = [...live.photos, ...stored];
   }
+  const refs = selectImagineRefs(photos, { limit: 4 });
   if (refs.length === 0) {
-    refs = seed.filter((u) => /^https?:\/\//i.test(u) && !isEphemeralImagineUrl(u)).slice(0, 4);
+    return {
+      ok: false,
+      hasApiKey: true,
+      error: "No listing photos to render from (chrome/stock skipped)",
+    };
   }
 
   const imag = await generateVehicleThumbnail({
@@ -266,20 +260,19 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
       bodyStyle: r.body_style,
     },
     referencePhotoUrls: refs,
-    listingPhotosArePlaceholder: placeholder || !actual,
+    listingPhotosArePlaceholder: false,
   });
   if (!imag.ok || !imag.url || !isStudioThumbUrl(imag.url)) {
     return { ok: false, hasApiKey: true, error: imag.error || "Imagine returned no studio image" };
   }
 
-  const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
   const now = new Date().toISOString();
   await sql`
     update vehicles
     set thumbnail_url = ${imag.url},
-        thumbnail_source = ${source},
+        thumbnail_source = ${"photographed"},
         updated_at = now()
     where id = ${r.id}
   `;
-  return { ok: true, hasApiKey: true, updatedAt: now, source };
+  return { ok: true, hasApiKey: true, updatedAt: now, source: "photographed" };
 }

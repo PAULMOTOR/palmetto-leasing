@@ -36,6 +36,7 @@ const STYLE_LOCK_PATH = "/vehicles/palmetto-style-lock.jpg";
 
 function loadStyleLockFromDisk(): string | null {
   const files = [
+    path.join(process.cwd(), "src/lib/imagine/palmetto-style-lock.jpg"),
     path.join(process.cwd(), "public/vehicles/palmetto-style-lock.jpg"),
     path.join(process.cwd(), "dist/client/vehicles/palmetto-style-lock.jpg"),
     path.join(process.cwd(), "vehicles/palmetto-style-lock.jpg"),

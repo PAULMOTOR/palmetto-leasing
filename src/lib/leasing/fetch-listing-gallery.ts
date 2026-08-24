@@ -10,6 +10,7 @@ import {
   normalizeGalleryUrls,
 } from "./gallery";
 import { fetchLeaseSniperListingPhotos, isLeaseSniperUrl } from "@/lib/crawler/parse-leasesniper";
+import { extractGclProductPhotos } from "@/lib/crawler/parse-html-cards";
 
 export async function fetchListingGallery(
   listingUrl: string,
@@ -45,6 +46,16 @@ export async function fetchListingGallery(
     });
     if (!res.ok) return { photos: [], interiors: 0, source: `http-${res.status}` };
     const html = await res.text();
+    if (/gclcars\.ca/i.test(listingUrl)) {
+      const gcl = extractGclProductPhotos(html);
+      if (gcl.length) {
+        return {
+          photos: gcl.slice(0, limit),
+          interiors: 0,
+          source: "gcl-vdp",
+        };
+      }
+    }
     const found = extractImageUrls(html, listingUrl);
     const pool = isLeaseSniperUrl(listingUrl) ? keepLeaseSniperShoot(found, html) : found;
     const selected = selectGalleryPhotos(pool, { limit, preferInteriorShare: 0.4 });
