@@ -1,7 +1,6 @@
 /**
- * Template = public/vehicles/palmetto-style-lock.jpg (yellow Urus "before" set).
- * Image 0 ALWAYS: camera + chimera lighting + infinity floor.
- * Images 1–2: this VIN only (paint, body, interior, rear). Never their camera.
+ * Frozen prompt — this is the recipe that produced the good "Before 6" tiles.
+ * Do not keep stacking rules. Image 0 = camera/light. Image 1 = this VIN.
  */
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
@@ -21,16 +20,27 @@ function subjectLine(car: ThumbSubject): string {
 
 export function buildThumbEditPrompt(car: ThumbSubject): string {
   const label = subjectLine(car);
-  const paint = car.exteriorColor?.trim() || "the paint in the dealer photos";
-  const cabin = car.interiorColor?.trim() || "the interior color in the dealer photos";
+  const colorBit = car.exteriorColor?.trim()
+    ? `Exact paint from the subject photo: ${car.exteriorColor}.`
+    : `Exact paint, body lines, and badges from the subject photo.`;
+  const cabinBit = car.interiorColor?.trim()
+    ? ` Interior: ${car.interiorColor}.`
+    : "";
 
   return (
-    `Luxury studio catalog thumbnail of this exact ${label}. Paint ${paint}. Cabin ${cabin}. ` +
-    `Match Image 0 exactly for CAMERA and LIGHTING: high overhead boom, nose at the BOTTOM, a bit of the front fascia visible, car long and slender, whole car in the square. ` +
-    `Massive chimera softbox from above. Infinity-edge cyclorama (soft off-white to light grey, no hard white flood, no spray-paint). Soft drop shadow that fades into the floor. Optional faint glossy reflection. ` +
-    `Headlights OFF. Wheels straight. Cabin lit through the glass. High-gloss paint, a few crisp speculars. ` +
-    `FORBIDDEN: 3/4 hero, eye-level, side profile, dealer-lot photo, phone snapshot, ball-like wide-angle, hard cutout. ` +
-    `Square 1:1, no text, no plates, no people.`
+    `Create a photorealistic luxury dealership inventory thumbnail of this exact car: ${label}. ${colorBit}${cabinBit} ` +
+    `Use Image 1 only for the car's identity (shape, paint, badges, interior, rear). Ignore text, banners, prices, watermarks. ` +
+    `SHOW THE ENTIRE CAR — nose to tail. Mirrors, roof, rear bumper, and any wing stay in frame. ` +
+    `CENTERING: dead-centered. Longitudinal axis = vertical midline. Hood badge on the centerline. ` +
+    `ORIENTATION: nose DOWN — front bumper, headlights, and grille at the BOTTOM. Rear at the TOP. ` +
+    `CAMERA: copy Image 0. Elevated front-top, looking down the hood. Grille AND roof both readable. ` +
+    `Tilt ~40–50° from vertical. Body axis vertical. NOT a 3/4 hero. NOT eye-level. NOT a drone nadir. ` +
+    `WHEELS: straight 0°. Tires in the arches. ` +
+    `SQUARE, edge to edge. Whole car ~70% of frame height, even margin. ` +
+    `STUDIO: infinity-edge cyclorama, off-white to light grey, massive chimera softbox from above. Soft drop shadow that fades into the floor. ` +
+    `Do not flood the floor with hard #FFFFFF. Do not spray-paint white over the ground. ` +
+    `HEADLIGHTS OFF. High-gloss paint with crisp speculars. Photoreal, not CGI. ` +
+    `NO TEXT, plates, people, or props.`
   );
 }
 
@@ -40,9 +50,9 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
 
 export function buildStyleLockAddendum(): string {
   return (
-    ` Image 0 is the TEMPLATE (camera, chimera, infinity floor, shadow) — copy those, never its yellow paint, body, or interior. ` +
-    `Images 1 and 2 (if present) are THIS VIN: copy paint, body, badges, interior color, and rear (louvers vs glass, wing vs none). ` +
-    `Do not copy Images 1–2 camera or lighting.`
+    ` DUAL-IMAGE: Image 0 is the TEMPLATE — copy camera, lighting, infinity floor, and shadow only. Never copy Image 0's yellow paint, body, or interior. ` +
+    `Image 1 is THIS VIN — copy paint, body, interior, rear window/louvers/wing. Never copy Image 1's camera or 3/4 angle. ` +
+    `Final check: overhead like Image 0; this car's color and body; soft studio; no 3/4.`
   );
 }
 

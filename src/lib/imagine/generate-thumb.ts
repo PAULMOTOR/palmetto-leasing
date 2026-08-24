@@ -1,12 +1,12 @@
 /**
- * Generate unique Palmetto studio thumbnails via xAI Grok Imagine API.
- * Always persists output to a durable data URI — imgen.x.ai tmp URLs expire (404).
- * Style-lock is image[0] only when we have a single dealer photo.
- * With 2–3 listing photos we send those alone so the template car cannot leak.
+ * Dual-image only: Image 0 = on-disk studio template, Image 1 = this VIN.
+ * Never send dealer photos without the template (that produced 3/4 heroes).
+ * Never fall back to text-to-image (that produced random cars).
  */
+import fs from "node:fs";
+import path from "node:path";
 import {
   buildThumbEditPrompt,
-  buildThumbTextPrompt,
   buildStyleLockAddendum,
   type ThumbSubject,
 } from "./thumb-prompt";
@@ -31,9 +31,26 @@ type XaiImageResponse = {
 };
 
 const EDIT_URL = "https://api.x.ai/v1/images/edits";
-const GEN_URL = "https://api.x.ai/v1/images/generations";
 const MODEL = "grok-imagine-image-quality";
 const STYLE_LOCK_PATH = "/vehicles/palmetto-style-lock.jpg";
+
+function loadStyleLockFromDisk(): string | null {
+  const files = [
+    path.join(process.cwd(), "public/vehicles/palmetto-style-lock.jpg"),
+    path.join(process.cwd(), "dist/client/vehicles/palmetto-style-lock.jpg"),
+    path.join(process.cwd(), "vehicles/palmetto-style-lock.jpg"),
+  ];
+  for (const file of files) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const buf = fs.readFileSync(file);
+      if (buf.length > 2000) return `data:image/jpeg;base64,${buf.toString("base64")}`;
+    } catch {
+      /* next */
+    }
+  }
+  return null;
+}
 
 export async function generateVehicleThumbnail(opts: {
   car: ThumbSubject;
@@ -49,68 +66,57 @@ export async function generateVehicleThumbnail(opts: {
     return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
   }
 
-  // Prefer 2–3 exterior-looking refs; skip nothing — API needs subject identity
-  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 6 });
+  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 4 });
   const origin =
     opts.publicOrigin ||
     process.env.PUBLIC_SITE_URL ||
     process.env.VITE_PUBLIC_SITE_URL ||
     "https://www.palmettoleasing.com";
   const styleLockUrl = `${origin.replace(/\/$/, "")}${STYLE_LOCK_PATH}`;
+  const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
   try {
-    const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
-
-    const subjectUris: { uri: string; url: string }[] = [];
-    for (const ref of refs) {
-      if (subjectUris.length >= 2) break;
-      const subjectUri = await fetchImageAsDataUri(ref);
-      if (subjectUri) subjectUris.push({ uri: subjectUri, url: ref });
+    const styleUri = loadStyleLockFromDisk() || (await fetchImageAsDataUri(styleLockUrl));
+    if (!styleUri) {
+      return { ok: false, mode: "error", error: "Studio template missing" };
     }
 
-    // Always send the studio template as image 0 so dealer 3/4 shots cannot steal the camera.
-    const useLock = Boolean(styleUri && subjectUris.length);
-    const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
+    for (const ref of refs) {
+      const subjectUri = await fetchImageAsDataUri(ref);
+      if (!subjectUri) continue;
 
-    if (subjectUris.length) {
-      const packed = useLock
-        ? [{ url: styleUri!, type: "image_url" }, ...subjectUris.map((s) => ({ url: s.uri, type: "image_url" }))]
-        : subjectUris.map((s) => ({ url: s.uri, type: "image_url" }));
       const dual = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "b64_json",
-        image: packed.length === 1 ? packed[0] : packed,
+        image: [
+          { url: styleUri, type: "image_url" },
+          { url: subjectUri, type: "image_url" },
+        ],
       });
       const persisted = await finalize(dual);
       if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
 
-      const packedUrl = useLock
-        ? [{ url: styleLockUrl, type: "image_url" }, ...subjectUris.map((s) => ({ url: s.url, type: "image_url" }))]
-        : subjectUris.map((s) => ({ url: s.url, type: "image_url" }));
       const dualUrl = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "url",
-        image: packedUrl.length === 1 ? packedUrl[0] : packedUrl,
+        image: [
+          { url: styleLockUrl, type: "image_url" },
+          { url: ref, type: "image_url" },
+        ],
       });
       const dualUrlP = await finalize(dualUrl);
       if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
     }
 
-    const gen = await callXaiJson(GEN_URL, key, {
-      model: MODEL,
-      prompt: buildThumbTextPrompt(opts.car),
-      aspect_ratio: "1:1",
-      n: 1,
-      response_format: "b64_json",
-    });
-    const genP = await finalize(gen);
-    if (genP) return { ok: true, url: genP, mode: "generate", source: "inferred" };
-
-    return { ok: false, mode: "error", error: gen.error || "Imagine returned no durable image" };
+    return {
+      ok: false,
+      mode: "error",
+      error: refs.length ? "Imagine edit failed (no 3/4 fallback)" : "No listing photos to render from",
+    };
   } catch (err) {
     return {
       ok: false,
