@@ -37,7 +37,7 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `WHEELS: straight 0°. Tires in the arches. ` +
     `SQUARE, edge to edge. Whole car ~70% of frame height, even margin. ` +
     `STUDIO: seamless infinity cyclorama, off-white to light grey. Soft contact shadow that fades into the floor. Lighting is a huge overhead chimera that is OUT OF FRAME. ` +
-    `FORBIDDEN: any visible softbox, octabox, ceiling panel, light bank, stand, or a white burst/hot rectangle above the car. The top of the frame is empty cyclorama, not a studio ceiling. `
+    `FORBIDDEN: any visible softbox, octabox, ceiling panel, light bank, stand, or a white burst/hot rectangle above the car. The top of the frame is empty cyclorama, not a studio ceiling. ` +
     `HEADLIGHTS OFF. High-gloss paint with crisp speculars. Photoreal, not CGI. ` +
     `NO TEXT, plates, people, or props.`
   );
