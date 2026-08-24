@@ -1,8 +1,7 @@
 /**
- * Short Palmetto tile prompt. Long rule-lists made Imagine ignore identity
- * and leak the style-lock car (tan California seats, rear glass).
- *
- * Camera/studio in text. Identity from dealer photos (up to 3).
+ * Template = public/vehicles/palmetto-style-lock.jpg (yellow Urus "before" set).
+ * Image 0 ALWAYS: camera + chimera lighting + infinity floor.
+ * Images 1–2: this VIN only (paint, body, interior, rear). Never their camera.
  */
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
@@ -26,13 +25,11 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
   const cabin = car.interiorColor?.trim() || "the interior color in the dealer photos";
 
   return (
-    `Catalog still of this exact ${label}. ` +
-    `Paint: ${paint}. Cabin leather: ${cabin}. ` +
-    `CAMERA: high boom, long telephoto. The car looks long and slender (not a ball). Nose at the BOTTOM, rear at the TOP, whole car in frame, ~70% of the square. Headlights OFF. Wheels straight. ` +
-    `STUDIO: full-bleed seamless cyclorama — floor may be off-white through light grey, with a smooth graduated falloff. Soft contact shadow that fades into the floor; a faint glossy reflection is fine. ` +
-    `FORBIDDEN: a hard #FFFFFF flood, white spray-paint, cutout halo, sticker drop-shadow, or a white frame around a grey plate. `
-    `GLASS: windshield clean; cabin clearly lit from above so the real leather color reads. ` +
-    `GLOSS: high-gloss paint with a few crisp speculars (invent them if the photos are dark). ` +
+    `Luxury studio catalog thumbnail of this exact ${label}. Paint ${paint}. Cabin ${cabin}. ` +
+    `Match Image 0 exactly for CAMERA and LIGHTING: high overhead boom, nose at the BOTTOM, a bit of the front fascia visible, car long and slender, whole car in the square. ` +
+    `Massive chimera softbox from above. Infinity-edge cyclorama (soft off-white to light grey, no hard white flood, no spray-paint). Soft drop shadow that fades into the floor. Optional faint glossy reflection. ` +
+    `Headlights OFF. Wheels straight. Cabin lit through the glass. High-gloss paint, a few crisp speculars. ` +
+    `FORBIDDEN: 3/4 hero, eye-level, side profile, dealer-lot photo, phone snapshot, ball-like wide-angle, hard cutout. ` +
     `Square 1:1, no text, no plates, no people.`
   );
 }
@@ -41,20 +38,14 @@ export function buildThumbTextPrompt(car: ThumbSubject): string {
   return buildThumbEditPrompt(car);
 }
 
-/** Appended only when Image 0 is the studio template (1 dealer photo). */
 export function buildStyleLockAddendum(): string {
   return (
-    ` Image 0 = camera and lighting only. Image 1 = this VIN. ` +
-    `Do not copy Image 0's body, interior color, or rear window.`
+    ` Image 0 is the TEMPLATE (camera, chimera, infinity floor, shadow) — copy those, never its yellow paint, body, or interior. ` +
+    `Images 1 and 2 (if present) are THIS VIN: copy paint, body, badges, interior color, and rear (louvers vs glass, wing vs none). ` +
+    `Do not copy Images 1–2 camera or lighting.`
   );
 }
 
-/** Appended when 2–3 dealer photos and no template car. */
 export function buildDealerRefsAddendum(): string {
-  return (
-    ` The attached images are THIS VIN from different angles. ` +
-    `Image 1 = exterior identity. Image 2 = REAR or 3/4 — copy that rear exactly (louvers vs glass, wing vs no wing). ` +
-    `Image 3 (if present) = cabin; copy that interior color. ` +
-    `Never invent a generic model's rear window or seats.`
-  );
+  return buildStyleLockAddendum();
 }

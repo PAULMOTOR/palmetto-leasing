@@ -8,7 +8,6 @@ import {
   buildThumbEditPrompt,
   buildThumbTextPrompt,
   buildStyleLockAddendum,
-  buildDealerRefsAddendum,
   type ThumbSubject,
 } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
@@ -64,16 +63,14 @@ export async function generateVehicleThumbnail(opts: {
 
     const subjectUris: { uri: string; url: string }[] = [];
     for (const ref of refs) {
-      if (subjectUris.length >= 3) break;
+      if (subjectUris.length >= 2) break;
       const subjectUri = await fetchImageAsDataUri(ref);
       if (subjectUri) subjectUris.push({ uri: subjectUri, url: ref });
     }
 
-    // 2–3 dealer photos: do NOT send the template car (it leaked tan seats + rear glass).
-    const useLock = Boolean(styleUri && subjectUris.length === 1);
-    const prompt =
-      buildThumbEditPrompt(opts.car) +
-      (useLock ? buildStyleLockAddendum() : buildDealerRefsAddendum());
+    // Always send the studio template as image 0 so dealer 3/4 shots cannot steal the camera.
+    const useLock = Boolean(styleUri && subjectUris.length);
+    const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
     if (subjectUris.length) {
       const packed = useLock
