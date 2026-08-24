@@ -83,6 +83,8 @@ export async function generateVehicleThumbnail(opts: {
     }
 
     const lastErrors: string[] = [];
+    const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
+
     for (const ref of refs) {
       const subjectUri = await fetchImageAsDataUri(ref);
       if (!subjectUri) {
@@ -90,13 +92,13 @@ export async function generateVehicleThumbnail(opts: {
         continue;
       }
 
-      // API: multiple images must be an array of URL/data-URI strings (not {url,type} maps).
+      // Subject FIRST so Imagine uses the listing photo (image: [lock, car] was ignoring the car).
       const dual = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "b64_json",
-        image: [styleUri, subjectUri],
+        images: [asImg(subjectUri), asImg(styleUri)],
       });
       const persisted = await finalize(dual);
       if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
@@ -107,11 +109,23 @@ export async function generateVehicleThumbnail(opts: {
         prompt,
         aspect_ratio: "1:1",
         response_format: "url",
-        image: [styleLockUrl, ref],
+        images: [asImg(ref), asImg(styleLockUrl)],
       });
       const dualUrlP = await finalize(dualUrl);
       if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
       lastErrors.push(dualUrl.error || "url edit empty");
+
+      // Last resort: edit the listing photo alone (never the template alone).
+      const solo = await callXaiJson(EDIT_URL, key, {
+        model: MODEL,
+        prompt,
+        aspect_ratio: "1:1",
+        response_format: "b64_json",
+        image: asImg(subjectUri),
+      });
+      const soloP = await finalize(solo);
+      if (soloP) return { ok: true, url: soloP, mode: "edit", source: editSource };
+      lastErrors.push(solo.error || "solo edit empty");
     }
 
     return {
