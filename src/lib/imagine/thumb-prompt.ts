@@ -28,7 +28,7 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `The FIRST photo is this exact car — copy paint, stripes/livery, carbon, badges, interior, and body from it. ` +
     `The SECOND photo is a greyscale overhead camera plate only (no paint, no body). Use it for boom height, tilt, and studio floor. ` +
     `If the first photo is red, output red. Black → black. Never invent yellow unless the first photo is yellow. ` +
-    `SHOW THE ENTIRE CAR with ~10% cyclorama on all sides — do not touch the edges. ` +
+    `SHOW THE ENTIRE CAR, ~70% of the square — same fill as a catalog plate. Smooth edges, no resize artifacts. ` +
     `Nose DOWN (grille at BOTTOM). Wheels straight. Headlights OFF. Lights out of frame. No text.`
   );
 }

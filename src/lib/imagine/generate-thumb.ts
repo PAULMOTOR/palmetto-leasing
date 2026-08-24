@@ -97,6 +97,7 @@ export async function generateVehicleThumbnail(opts: {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
+        resolution: "2k",
         response_format: "b64_json",
         images: [asImg(subjectUri), asImg(styleUri)],
       });
@@ -108,6 +109,7 @@ export async function generateVehicleThumbnail(opts: {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
+        resolution: "2k",
         response_format: "url",
         images: [asImg(ref), asImg(styleLockUrl)],
       });
@@ -120,6 +122,7 @@ export async function generateVehicleThumbnail(opts: {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
+        resolution: "2k",
         response_format: "b64_json",
         image: asImg(subjectUri),
       });

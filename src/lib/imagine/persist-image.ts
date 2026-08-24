@@ -25,7 +25,7 @@ export async function urlToDataUri(
   imageUrl: string,
   opts?: { maxBytes?: number },
 ): Promise<string | null> {
-  const maxBytes = opts?.maxBytes ?? 900_000;
+  const maxBytes = opts?.maxBytes ?? 1_400_000;
   try {
     const res = await fetch(imageUrl, {
       headers: {
@@ -60,7 +60,7 @@ export async function persistImagineResult(opts: {
       ? opts.b64
       : `data:image/jpeg;base64,${opts.b64}`;
     // Cap ~700KB base64 payload for Neon row size comfort
-    if (raw.length <= 950_000) {
+    if (raw.length <= 1_400_000) {
       return { durableUrl: normalizeStudioTileDataUri(raw) || raw };
     }
   }
@@ -69,7 +69,7 @@ export async function persistImagineResult(opts: {
     if (opts.url.startsWith("data:image/")) {
       return { durableUrl: normalizeStudioTileDataUri(opts.url) || opts.url };
     }
-    const data = await urlToDataUri(opts.url, { maxBytes: 700_000 });
+    const data = await urlToDataUri(opts.url, { maxBytes: 1_400_000 });
     if (data) return { durableUrl: normalizeStudioTileDataUri(data) || data };
     // Last resort: keep URL only if not ephemeral (shouldn't happen for imgen)
     if (!isEphemeralImagineUrl(opts.url)) {
