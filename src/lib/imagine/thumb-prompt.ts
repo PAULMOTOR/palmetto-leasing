@@ -33,12 +33,11 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `SHOW THE ENTIRE CAR — nose to tail. Mirrors, roof, rear bumper, and any wing stay in frame. ` +
     `CENTERING: dead-centered. Longitudinal axis = vertical midline. Hood badge on the centerline. ` +
     `ORIENTATION: nose DOWN — front bumper, headlights, and grille at the BOTTOM. Rear at the TOP. ` +
-    `CAMERA: copy Image 0. Elevated front-top, looking down the hood. Grille AND roof both readable. ` +
-    `Tilt ~40–50° from vertical. Body axis vertical. NOT a 3/4 hero. NOT eye-level. NOT a drone nadir. ` +
+    `CAMERA: copy Image 0 exactly — same boom height, same telephoto, same tilt. Grille AND roof both readable, like Image 0. Do not raise to a roof-only nadir. Do not drop to a front-heavy hero. ` +
     `WHEELS: straight 0°. Tires in the arches. ` +
     `SQUARE, edge to edge. Whole car ~70% of frame height, even margin. ` +
-    `STUDIO: infinity-edge cyclorama, off-white to light grey, massive chimera softbox from above. Soft drop shadow that fades into the floor. ` +
-    `Do not flood the floor with hard #FFFFFF. Do not spray-paint white over the ground. ` +
+    `STUDIO: seamless infinity cyclorama, off-white to light grey. Soft contact shadow that fades into the floor. Lighting is a huge overhead chimera that is OUT OF FRAME. ` +
+    `FORBIDDEN: any visible softbox, octabox, ceiling panel, light bank, stand, or a white burst/hot rectangle above the car. The top of the frame is empty cyclorama, not a studio ceiling. `
     `HEADLIGHTS OFF. High-gloss paint with crisp speculars. Photoreal, not CGI. ` +
     `NO TEXT, plates, people, or props.`
   );
@@ -52,7 +51,7 @@ export function buildStyleLockAddendum(): string {
   return (
     ` DUAL-IMAGE: Image 0 is the TEMPLATE — copy camera, lighting, infinity floor, and shadow only. Never copy Image 0's yellow paint, body, or interior. ` +
     `Image 1 is THIS VIN — copy paint, body, interior, rear window/louvers/wing. Never copy Image 1's camera or 3/4 angle. ` +
-    `Final check: overhead like Image 0; this car's color and body; soft studio; no 3/4.`
+    `Final check: same camera as Image 0; this car's color; empty cyclorama above the car (no softbox in frame); no 3/4.`
   );
 }
 
