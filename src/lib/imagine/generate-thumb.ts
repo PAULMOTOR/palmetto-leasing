@@ -12,6 +12,7 @@ import {
 } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
 import { selectImagineRefs } from "@/lib/leasing/gallery";
+import { STYLE_LOCK_DATA_URI } from "./style-lock-data";
 
 export type ImagineThumbResult = {
   ok: boolean;
@@ -68,16 +69,15 @@ export async function generateVehicleThumbnail(opts: {
   }
 
   const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 4 });
-  const origin =
-    opts.publicOrigin ||
-    process.env.PUBLIC_SITE_URL ||
-    process.env.VITE_PUBLIC_SITE_URL ||
-    "https://www.palmettoleasing.com";
-  const styleLockUrl = `${origin.replace(/\/$/, "")}${STYLE_LOCK_PATH}`;
+  const origin = "https://www.palmettoleasing.com";
+  const styleLockUrl = `${origin}${STYLE_LOCK_PATH}`;
   const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
   try {
-    const styleUri = loadStyleLockFromDisk() || (await fetchImageAsDataUri(styleLockUrl));
+    const styleUri =
+      STYLE_LOCK_DATA_URI ||
+      loadStyleLockFromDisk() ||
+      (await fetchImageAsDataUri(styleLockUrl));
     if (!styleUri) {
       return { ok: false, mode: "error", error: "Studio template missing" };
     }
