@@ -31,11 +31,11 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `Create a photorealistic luxury dealership inventory thumbnail of this exact car: ${label}. ${colorBit}${cabinBit} ` +
     `Use Image 1 only for the car's identity (shape, paint, badges, interior, rear). Ignore text, banners, prices, watermarks. ` +
     `SHOW THE ENTIRE CAR — nose to tail. Mirrors, roof, rear bumper, and any wing stay in frame. ` +
-    `CENTERING: dead-centered. Longitudinal axis = vertical midline. Hood badge on the centerline. ` +
+    `CENTERING: dead-centered on BOTH axes. Equal cyclorama above the rear and below the nose — no empty band at the top. Hood badge on the vertical midline. ` +
     `ORIENTATION: nose DOWN — front bumper, headlights, and grille at the BOTTOM. Rear at the TOP. ` +
     `CAMERA: copy Image 0 exactly — same boom height, same telephoto, same tilt. Grille AND roof both readable, like Image 0. Do not raise to a roof-only nadir. Do not drop to a front-heavy hero. ` +
     `WHEELS: straight 0°. Tires in the arches. ` +
-    `SQUARE, edge to edge. Whole car ~70% of frame height, even margin. ` +
+    `SQUARE, edge to edge. Whole car ~70% of frame height with matching top and bottom margin. ` +
     `STUDIO: seamless infinity cyclorama, off-white to light grey. Soft contact shadow that fades into the floor. Lighting is a huge overhead chimera that is OUT OF FRAME. ` +
     `FORBIDDEN: any visible softbox, octabox, ceiling panel, light bank, stand, or a white burst/hot rectangle above the car. The top of the frame is empty cyclorama, not a studio ceiling. ` +
     `HEADLIGHTS OFF. High-gloss paint with crisp speculars. Photoreal, not CGI. ` +

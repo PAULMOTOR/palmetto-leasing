@@ -22,8 +22,9 @@ export function normalizeStudioTileDataUri(dataUri: string): string | null {
       data: decoded.data as Uint8Array,
     };
     const cropped = cropUniformBorder(raster);
+    const balanced = equalizeVerticalMargins(cropped);
     const encoded = jpeg.encode(
-      { data: cropped.data, width: cropped.width, height: cropped.height },
+      { data: balanced.data, width: balanced.width, height: balanced.height },
       90,
     );
     if (!encoded?.data?.length) return null;
@@ -100,4 +101,60 @@ function cropUniformBorder(src: Raster): Raster {
     }
   }
   return { width: side, height: side, data: out };
+}
+
+/** Extra cyclorama above the car (leftover softbox) → crop and re-square. */
+function equalizeVerticalMargins(src: Raster): Raster {
+  const { width: w, height: h, data } = src;
+  const corners = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
+  const bgL = corners.reduce((s, i) => s + lum(data, i), 0) / 4;
+
+  const rowHasCar = (y: number) => {
+    let hits = 0;
+    const step = 4;
+    for (let x = 0; x < w; x += step) {
+      const i = (y * w + x) * 4;
+      if (chroma(data, i) > 18 || Math.abs(lum(data, i) - bgL) > 22) hits += 1;
+    }
+    return hits > w / step * 0.08;
+  };
+
+  let top = 0;
+  while (top < h * 0.42 && !rowHasCar(top)) top += 1;
+  let bot = h - 1;
+  while (bot > h * 0.58 && !rowHasCar(bot)) bot -= 1;
+
+  const topGap = top;
+  const botGap = h - 1 - bot;
+  const extra = topGap - botGap;
+  if (extra < 16 || topGap < 24) return src;
+  if (bot - top < h * 0.45) return src;
+
+  const cropTop = Math.min(extra, topGap - botGap);
+  const nh = h - cropTop;
+  if (nh < h * 0.72) return src;
+
+  const cropped: Raster = { width: w, height: nh, data: new Uint8Array(w * nh * 4) };
+  for (let y = 0; y < nh; y++) {
+    cropped.data.set(data.subarray(((y + cropTop) * w) * 4, ((y + cropTop + 1) * w) * 4), y * w * 4);
+  }
+  return scaleNearest(cropped, w, w);
+}
+
+function scaleNearest(src: Raster, nw: number, nh: number): Raster {
+  if (src.width === nw && src.height === nh) return src;
+  const out = new Uint8Array(nw * nh * 4);
+  for (let y = 0; y < nh; y++) {
+    const sy = Math.min(src.height - 1, Math.floor((y * src.height) / nh));
+    for (let x = 0; x < nw; x++) {
+      const sx = Math.min(src.width - 1, Math.floor((x * src.width) / nw));
+      const si = (sy * src.width + sx) * 4;
+      const di = (y * nw + x) * 4;
+      out[di] = src.data[si]!;
+      out[di + 1] = src.data[si + 1]!;
+      out[di + 2] = src.data[si + 2]!;
+      out[di + 3] = 255;
+    }
+  }
+  return { width: nw, height: nh, data: out };
 }
