@@ -84,12 +84,37 @@ function isLeaseSniperChrome(url: string): boolean {
 }
 
 /**
+ * AutoTrader JSON often stores slashes as `\u002F`. If we don't decode before
+ * `new URL(..., autotrader.ca)`, we get
+ * `https://www.autotrader.ca/u002F/u002Fprod.pictures.autoscout24.net/...`
+ */
+export function decodeListingPhotoUrl(raw: string): string {
+  if (!raw) return raw;
+  let s = raw.trim().replace(/&/gi, "&");
+  try {
+    if (/\\u00|\\\//.test(s)) s = JSON.parse(`"${s.replace(/"/g, '\\"')}"`) as string;
+  } catch {
+    /* keep */
+  }
+  s = s.replace(/\\u002[fF]/gi, "/").replace(/u002[fF]/g, "/");
+  s = s.replace(/\\u003[aA]/gi, ":").replace(/\\\//g, "/");
+  s = s.replace(
+    /^https?:\/\/(?:www\.)?autotrader\.ca\/+(?:https?:\/+)?(prod\.pictures\.autoscout24\.net\/.*)$/i,
+    "https://$1",
+  );
+  if (s.startsWith("//")) s = `https:${s}`;
+  s = s.replace(/^(https?:\/)\/+/, "$1/");
+  s = s.replace(/([^:])\/{2,}/g, "$1/");
+  return s;
+}
+
+/**
  * Upgrade thumbnail / low-res CDN URLs to full dealer photography size.
  * AutoScout24: .../uuid.jpg/120x90.jpg → .../uuid.jpg/1920x1080.jpg
  */
 export function upgradeImageUrl(url: string): string {
   if (!url || url.startsWith("data:")) return url;
-  let out = url;
+  let out = decodeListingPhotoUrl(url);
 
   // AutoScout / AutoTrader CA listing CDN size segments
   // e.g. /120x90.jpg, /320x240.webp, /640x480.jpg → 1920x1080

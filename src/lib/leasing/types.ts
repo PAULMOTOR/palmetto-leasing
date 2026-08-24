@@ -1,3 +1,5 @@
+import { upgradeImageUrl } from "./gallery";
+
 export type Dealership = {
   id: string;
   name: string;
@@ -103,7 +105,9 @@ export function parseSpecs(json: string): VehicleSpecs {
 export function parsePhotos(json: string): string[] {
   try {
     const v = JSON.parse(json || "[]") as unknown;
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    return Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string").map((x) => upgradeImageUrl(x))
+      : [];
   } catch {
     return [];
   }

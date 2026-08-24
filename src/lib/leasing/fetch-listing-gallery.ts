@@ -7,6 +7,7 @@ import {
   isLikelyJunk,
   listingPhotosInDealerOrder,
   upgradeImageUrl,
+  decodeListingPhotoUrl,
   normalizeGalleryUrls,
 } from "./gallery";
 import { fetchLeaseSniperListingPhotos, isLeaseSniperUrl } from "@/lib/crawler/parse-leasesniper";
@@ -78,7 +79,7 @@ function extractImageUrls(html: string, baseUrl: string): string[] {
   const urls: string[] = [];
   const push = (raw: string) => {
     try {
-      let abs = new URL(raw.trim().replace(/&/g, "&"), baseUrl).toString();
+      let abs = new URL(decodeListingPhotoUrl(raw).replace(/&/g, "&"), baseUrl).toString();
       abs = upgradeImageUrl(abs);
       if (!/^https?:/i.test(abs)) return;
       if (isLikelyJunk(abs)) return;
