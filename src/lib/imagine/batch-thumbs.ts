@@ -54,6 +54,7 @@ export async function generateMissingImagineThumbs(opts?: {
         model: string;
         trim: string;
         exterior_color: string;
+        interior_color: string;
         body_style: string;
         thumbnail_url: string;
         photo_urls: string;
@@ -61,7 +62,7 @@ export async function generateMissingImagineThumbs(opts?: {
         thumbnail_source: string;
         specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
+        select id, year, make, model, trim, exterior_color, interior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
                coalesce(thumbnail_source, '') as thumbnail_source, specs_json
         from vehicles
         where status = 'active'
@@ -81,6 +82,7 @@ export async function generateMissingImagineThumbs(opts?: {
         model: string;
         trim: string;
         exterior_color: string;
+        interior_color: string;
         body_style: string;
         thumbnail_url: string;
         photo_urls: string;
@@ -88,7 +90,7 @@ export async function generateMissingImagineThumbs(opts?: {
         thumbnail_source: string;
         specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
+        select id, year, make, model, trim, exterior_color, interior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
                coalesce(thumbnail_source, '') as thumbnail_source, specs_json
         from vehicles
         where status = 'active'
@@ -153,6 +155,7 @@ export async function generateMissingImagineThumbs(opts?: {
           model: r.model,
           trim: r.trim,
           exteriorColor: r.exterior_color,
+          interiorColor: r.interior_color,
           bodyStyle: r.body_style,
         },
         referencePhotoUrls: refs,
@@ -215,13 +218,14 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
     model: string;
     trim: string;
     exterior_color: string;
+    interior_color: string;
     body_style: string;
     thumbnail_url: string;
     photo_urls: string;
     dealer_listing_url: string;
     specs_json: string;
   }>`
-    select id, year, make, model, trim, exterior_color, body_style,
+    select id, year, make, model, trim, exterior_color, interior_color, body_style,
            thumbnail_url, photo_urls, dealer_listing_url, specs_json
     from vehicles
     where id = ${id} and status = 'active'
@@ -258,6 +262,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
       model: r.model,
       trim: r.trim,
       exteriorColor: r.exterior_color,
+      interiorColor: r.interior_color,
       bodyStyle: r.body_style,
     },
     referencePhotoUrls: refs,

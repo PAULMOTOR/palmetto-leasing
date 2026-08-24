@@ -61,48 +61,48 @@ export async function generateVehicleThumbnail(opts: {
   try {
     const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
 
+    const subjectUris: { uri: string; url: string }[] = [];
     for (const ref of refs) {
+      if (subjectUris.length >= 2) break;
       const subjectUri = await fetchImageAsDataUri(ref);
-      if (!subjectUri) continue;
+      if (subjectUri) subjectUris.push({ uri: subjectUri, url: ref });
+    }
 
-      // Style lock FIRST = composition master; subject SECOND = identity only
-      if (styleUri) {
-        const dual = await callXaiJson(EDIT_URL, key, {
-          model: MODEL,
-          prompt,
-          aspect_ratio: "1:1",
-          response_format: "b64_json",
-          image: [
-            { url: styleUri, type: "image_url" },
-            { url: subjectUri, type: "image_url" },
-          ],
-        });
-        const persisted = await finalize(dual);
-        if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
+    if (styleUri && subjectUris.length) {
+      const image = [
+        { url: styleUri, type: "image_url" },
+        ...subjectUris.map((s) => ({ url: s.uri, type: "image_url" })),
+      ];
+      const dual = await callXaiJson(EDIT_URL, key, {
+        model: MODEL,
+        prompt,
+        aspect_ratio: "1:1",
+        response_format: "b64_json",
+        image,
+      });
+      const persisted = await finalize(dual);
+      if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
 
-        const dualUrl = await callXaiJson(EDIT_URL, key, {
-          model: MODEL,
-          prompt,
-          aspect_ratio: "1:1",
-          response_format: "url",
-          image: [
-            { url: styleLockUrl, type: "image_url" },
-            { url: ref, type: "image_url" },
-          ],
-        });
-        const dualUrlP = await finalize(dualUrl);
-        if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
-        // Do not fall back to a single dealer photo — those are often nadir
-        // (Testarossa, etc.) and Imagine will copy that camera.
-        continue;
-      }
-
+      const imageUrl = [
+        { url: styleLockUrl, type: "image_url" },
+        ...subjectUris.map((s) => ({ url: s.url, type: "image_url" })),
+      ];
+      const dualUrl = await callXaiJson(EDIT_URL, key, {
+        model: MODEL,
+        prompt,
+        aspect_ratio: "1:1",
+        response_format: "url",
+        image: imageUrl,
+      });
+      const dualUrlP = await finalize(dualUrl);
+      if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
+    } else if (subjectUris[0]) {
       const single = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt: buildThumbEditPrompt(opts.car),
         aspect_ratio: "1:1",
         response_format: "b64_json",
-        image: { url: subjectUri, type: "image_url" },
+        image: { url: subjectUris[0].uri, type: "image_url" },
       });
       const singleP = await finalize(single);
       if (singleP) return { ok: true, url: singleP, mode: "edit", source: editSource };

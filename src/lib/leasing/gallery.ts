@@ -146,24 +146,38 @@ export function isLikelyJunk(url: string): boolean {
 }
 
 /**
- * Photos Imagine may use as subject identity. Drops flags, body-style icons,
- * interiors-first, and dealer chrome. Prefers real listing photography.
+ * Photos Imagine may use as subject identity. Mixes exteriors + an interior
+ * when present so cabin color and rear/side details (wings vs no wing) survive.
  */
 export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
   const limit = opts?.limit ?? 4;
   const cleaned = normalizeGalleryUrls(photos).filter((u) => /^https?:\/\//i.test(u));
   if (!cleaned.length) return [];
 
+  const interiors = cleaned.filter((u) => isInteriorPhoto(u));
   const exteriors = cleaned.filter((u) => !isInteriorPhoto(u));
-  const pool = exteriors.length ? exteriors : cleaned;
-  const preferred = pool.filter(
+  const preferred = exteriors.filter(
     (u) =>
       /\/img\/tmp\/products\//i.test(u) ||
       /listing-images/i.test(u) ||
       /leasesniper\.ca\/wp-content\/uploads\/.+\.(jpe?g|webp)/i.test(u),
   );
-  const use = preferred.length ? preferred : pool;
-  return use.slice(0, limit);
+  const ext = preferred.length ? preferred : exteriors.length ? exteriors : cleaned;
+
+  const out: string[] = [];
+  const extSlots = Math.max(1, limit - (interiors.length ? 1 : 0));
+  for (const u of spaceSample(ext, extSlots)) {
+    if (!out.includes(u)) out.push(u);
+  }
+  if (interiors.length && out.length < limit) {
+    const cabin = interiors[Math.floor(interiors.length / 2)] || interiors[0];
+    if (cabin && !out.includes(cabin)) out.push(cabin);
+  }
+  for (const u of cleaned) {
+    if (out.length >= limit) break;
+    if (!out.includes(u)) out.push(u);
+  }
+  return out.slice(0, limit);
 }
 
 /**

@@ -287,13 +287,14 @@ async function runInventoryCrawlInner(opts?: {
         model: string;
         trim: string;
         exterior_color: string;
+        interior_color: string;
         body_style: string;
         photo_urls: string;
         thumbnail_url: string;
         thumbnail_source: string;
         specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, body_style,
+        select id, year, make, model, trim, exterior_color, interior_color, body_style,
                photo_urls, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source,
                specs_json
         from vehicles
@@ -338,6 +339,7 @@ async function runInventoryCrawlInner(opts?: {
             model: item.model,
             trim: item.trim,
             exteriorColor: item.exterior_color,
+            interiorColor: item.interior_color,
             bodyStyle: item.body_style,
           },
           referencePhotoUrls: refs,
