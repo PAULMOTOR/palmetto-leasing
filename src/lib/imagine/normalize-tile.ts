@@ -24,7 +24,6 @@ export function normalizeStudioTileDataUri(dataUri: string): string | null {
       data: decoded.data as Uint8Array,
     };
     const cropped = cropUniformBorder(raster);
-    whitenStudioFloor(cropped);
     const encoded = jpeg.encode(
       { data: cropped.data, width: cropped.width, height: cropped.height },
       90,
@@ -103,37 +102,4 @@ function cropUniformBorder(src: Raster): Raster {
     }
   }
   return { width: side, height: side, data: out };
-}
-
-function whitenStudioFloor(img: Raster): void {
-  const { width: w, height: h, data } = img;
-  const samples: number[] = [];
-  const probe = (x: number, y: number) => {
-    const i = (y * w + x) * 4;
-    if (chroma(data, i) < 14) samples.push(lum(data, i));
-  };
-  for (let i = 0; i < 24; i++) {
-    probe(i, i);
-    probe(w - 1 - i, i);
-    probe(i, h - 1 - i);
-    probe(w - 1 - i, h - 1 - i);
-    probe(Math.floor(w / 2), i);
-    probe(i, Math.floor(h / 2));
-  }
-  if (!samples.length) return;
-  samples.sort((a, b) => a - b);
-  const floorL = samples[Math.floor(samples.length / 2)]!;
-  // White already — nothing to do. Too dark to be a studio cyclorama — skip.
-  if (floorL > 248 || floorL < 190) return;
-
-  const lo = floorL - 18;
-  for (let i = 0; i < data.length; i += 4) {
-    if (chroma(data, i) >= 16) continue;
-    const L = lum(data, i);
-    if (L >= lo && L <= 255) {
-      data[i] = 255;
-      data[i + 1] = 255;
-      data[i + 2] = 255;
-    }
-  }
 }

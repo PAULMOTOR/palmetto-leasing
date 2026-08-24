@@ -1,12 +1,14 @@
 /**
  * Generate unique Palmetto studio thumbnails via xAI Grok Imagine API.
  * Always persists output to a durable data URI — imgen.x.ai tmp URLs expire (404).
- * Style-lock is image[0] (composition master); subject is image[1] (identity only).
+ * Style-lock is image[0] only when we have a single dealer photo.
+ * With 2–3 listing photos we send those alone so the template car cannot leak.
  */
 import {
   buildThumbEditPrompt,
   buildThumbTextPrompt,
   buildStyleLockAddendum,
+  buildDealerRefsAddendum,
   type ThumbSubject,
 } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
@@ -49,63 +51,56 @@ export async function generateVehicleThumbnail(opts: {
   }
 
   // Prefer 2–3 exterior-looking refs; skip nothing — API needs subject identity
-  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 4 });
+  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 6 });
   const origin =
     opts.publicOrigin ||
     process.env.PUBLIC_SITE_URL ||
     process.env.VITE_PUBLIC_SITE_URL ||
     "https://www.palmettoleasing.com";
   const styleLockUrl = `${origin.replace(/\/$/, "")}${STYLE_LOCK_PATH}`;
-  const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
 
   try {
     const styleUri = (await fetchImageAsDataUri(styleLockUrl)) || null;
 
     const subjectUris: { uri: string; url: string }[] = [];
     for (const ref of refs) {
-      if (subjectUris.length >= 2) break;
+      if (subjectUris.length >= 3) break;
       const subjectUri = await fetchImageAsDataUri(ref);
       if (subjectUri) subjectUris.push({ uri: subjectUri, url: ref });
     }
 
-    if (styleUri && subjectUris.length) {
-      const image = [
-        { url: styleUri, type: "image_url" },
-        ...subjectUris.map((s) => ({ url: s.uri, type: "image_url" })),
-      ];
+    // 2–3 dealer photos: do NOT send the template car (it leaked tan seats + rear glass).
+    const useLock = Boolean(styleUri && subjectUris.length === 1);
+    const prompt =
+      buildThumbEditPrompt(opts.car) +
+      (useLock ? buildStyleLockAddendum() : buildDealerRefsAddendum());
+
+    if (subjectUris.length) {
+      const packed = useLock
+        ? [{ url: styleUri!, type: "image_url" }, ...subjectUris.map((s) => ({ url: s.uri, type: "image_url" }))]
+        : subjectUris.map((s) => ({ url: s.uri, type: "image_url" }));
       const dual = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "b64_json",
-        image,
+        image: packed.length === 1 ? packed[0] : packed,
       });
       const persisted = await finalize(dual);
       if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
 
-      const imageUrl = [
-        { url: styleLockUrl, type: "image_url" },
-        ...subjectUris.map((s) => ({ url: s.url, type: "image_url" })),
-      ];
+      const packedUrl = useLock
+        ? [{ url: styleLockUrl, type: "image_url" }, ...subjectUris.map((s) => ({ url: s.url, type: "image_url" }))]
+        : subjectUris.map((s) => ({ url: s.url, type: "image_url" }));
       const dualUrl = await callXaiJson(EDIT_URL, key, {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         response_format: "url",
-        image: imageUrl,
+        image: packedUrl.length === 1 ? packedUrl[0] : packedUrl,
       });
       const dualUrlP = await finalize(dualUrl);
       if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
-    } else if (subjectUris[0]) {
-      const single = await callXaiJson(EDIT_URL, key, {
-        model: MODEL,
-        prompt: buildThumbEditPrompt(opts.car),
-        aspect_ratio: "1:1",
-        response_format: "b64_json",
-        image: { url: subjectUris[0].uri, type: "image_url" },
-      });
-      const singleP = await finalize(single);
-      if (singleP) return { ok: true, url: singleP, mode: "edit", source: editSource };
     }
 
     const gen = await callXaiJson(GEN_URL, key, {
