@@ -1,8 +1,6 @@
 /**
- * Force Imagine tiles to Palmetto canvas rules:
- *  - no white letterbox / inset frame
- *  - floor is #FFFFFF to every edge (dealer gray cycloramas get remapped)
- *  - leave the car and a soft contact shadow alone
+ * Crop a white letterbox / inset frame if Imagine adds one.
+ * Does not recolor the floor — grey-to-off-white cycloramas stay.
  */
 import jpeg from "jpeg-js";
 

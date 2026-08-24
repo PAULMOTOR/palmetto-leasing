@@ -29,7 +29,8 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
     `Catalog still of this exact ${label}. ` +
     `Paint: ${paint}. Cabin leather: ${cabin}. ` +
     `CAMERA: high boom, long telephoto. The car looks long and slender (not a ball). Nose at the BOTTOM, rear at the TOP, whole car in frame, ~70% of the square. Headlights OFF. Wheels straight. ` +
-    `STUDIO: seamless floor to every edge of the square — no picture-frame, no inset plate. Soft smooth shadow under the car; a faint glossy floor reflection is welcome. No hard cutout halo, no sticker drop-shadow. ` +
+    `STUDIO: full-bleed seamless cyclorama — floor may be off-white through light grey, with a smooth graduated falloff. Soft contact shadow that fades into the floor; a faint glossy reflection is fine. ` +
+    `FORBIDDEN: a hard #FFFFFF flood, white spray-paint, cutout halo, sticker drop-shadow, or a white frame around a grey plate. `
     `GLASS: windshield clean; cabin clearly lit from above so the real leather color reads. ` +
     `GLOSS: high-gloss paint with a few crisp speculars (invent them if the photos are dark). ` +
     `Square 1:1, no text, no plates, no people.`
