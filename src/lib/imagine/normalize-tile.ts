@@ -24,11 +24,11 @@ export function normalizeStudioTileDataUri(dataUri: string): string | null {
     const cropped = cropUniformBorder(raster);
     const encoded = jpeg.encode(
       { data: cropped.data, width: cropped.width, height: cropped.height },
-      95,
+      88,
     );
     if (!encoded?.data?.length) return null;
     const out = `data:image/jpeg;base64,${Buffer.from(encoded.data).toString("base64")}`;
-    if (out.length > 1_400_000) return null;
+    if (out.length > 400_000) return null;
     return out;
   } catch {
     return null;
