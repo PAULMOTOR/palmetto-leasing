@@ -1,13 +1,15 @@
 /**
- * One JPEG contact sheet: front | rear on top, interior | empty below.
- * Imagine sees a single identity image instead of three cars.
+ * Hero-dominant identity sheet: the dealer MAIN shot fills the top ~3/4
+ * (paint/this VIN). A thin strip under it holds rear + interior so Imagine
+ * can see slats/wing/seats without treating them as extra cars.
  */
 import jpeg from "jpeg-js";
 
 type Raster = { width: number; height: number; data: Uint8Array };
 
-const CELL = 512;
-const SHEET = CELL * 2;
+const SHEET = 1024;
+const STRIP = 256;
+const HERO_H = SHEET - STRIP;
 const FLOOR = 240;
 
 function decodeJpegDataUri(dataUri: string): Raster | null {
@@ -40,15 +42,22 @@ function fillGrey(r: Raster) {
   }
 }
 
-function blitCover(dst: Raster, dx: number, dy: number, src: Raster) {
-  const scale = Math.max(CELL / src.width, CELL / src.height);
-  const sw = CELL / scale;
-  const sh = CELL / scale;
+function blitCover(
+  dst: Raster,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+  src: Raster,
+) {
+  const scale = Math.max(dw / src.width, dh / src.height);
+  const sw = dw / scale;
+  const sh = dh / scale;
   const sx0 = (src.width - sw) / 2;
   const sy0 = (src.height - sh) / 2;
-  for (let y = 0; y < CELL; y++) {
+  for (let y = 0; y < dh; y++) {
     const sy = Math.min(src.height - 1, Math.max(0, Math.floor(sy0 + y / scale)));
-    for (let x = 0; x < CELL; x++) {
+    for (let x = 0; x < dw; x++) {
       const sx = Math.min(src.width - 1, Math.max(0, Math.floor(sx0 + x / scale)));
       const si = (sy * src.width + sx) * 4;
       const di = ((dy + y) * dst.width + (dx + x)) * 4;
@@ -78,14 +87,14 @@ export function buildIdentityContactSheet(opts: {
     data: new Uint8Array(SHEET * SHEET * 4),
   };
   fillGrey(sheet);
-  if (front) blitCover(sheet, 0, 0, front);
-  if (rear) blitCover(sheet, CELL, 0, rear);
-  if (interior) blitCover(sheet, 0, CELL, interior);
+  if (front) blitCover(sheet, 0, 0, SHEET, HERO_H, front);
+  if (rear) blitCover(sheet, 0, HERO_H, SHEET / 2, STRIP, rear);
+  if (interior) blitCover(sheet, SHEET / 2, HERO_H, SHEET / 2, STRIP, interior);
 
   try {
     const encoded = jpeg.encode(
       { data: sheet.data, width: sheet.width, height: sheet.height },
-      80,
+      82,
     );
     if (!encoded?.data?.length) return opts.front || null;
     return `data:image/jpeg;base64,${Buffer.from(encoded.data).toString("base64")}`;
