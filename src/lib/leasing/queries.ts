@@ -328,6 +328,14 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
       if (scraped.photos.length) {
         live = scraped.photos;
         source = scraped.source;
+      } else if (/^http-(404|410|451)$/.test(scraped.source) && data.vehicleId) {
+        try {
+          const { deleteVehicleIfListingDead } = await import("@/lib/crawler/dead-listings");
+          const sql = await getSql();
+          await deleteVehicleIfListingDead(sql, data.vehicleId, data.listingUrl, scraped.source);
+        } catch {
+          /* keep quote open; next crawl drops it */
+        }
       }
     }
 
