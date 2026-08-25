@@ -48,6 +48,7 @@ export type Vehicle = {
   is_premium: boolean;
   first_seen_at: string;
   last_seen_at: string;
+  updated_at?: string;
   removed_at: string | null;
   dealer_name?: string;
   dealer_city?: string;
