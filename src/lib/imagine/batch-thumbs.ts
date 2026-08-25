@@ -132,17 +132,13 @@ export async function generateMissingImagineThumbs(opts?: {
       placeholder,
       source: parseSpecs(r.specs_json).source,
     });
-    const refs = selectImagineRefs(
-      [
-        ...photos,
-        ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
-          ? [r.thumbnail_url]
-          : []),
-      ],
-      { limit: 4 },
-    );
-
-    if (refs.length === 0) {
+    const pool = [
+      ...photos,
+      ...(r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
+        ? [r.thumbnail_url]
+        : []),
+    ];
+    if (!selectImagineRefs(pool, { limit: 1 }).length) {
       skipped += 1;
       continue;
     }
@@ -158,7 +154,7 @@ export async function generateMissingImagineThumbs(opts?: {
           interiorColor: r.interior_color,
           bodyStyle: r.body_style,
         },
-        referencePhotoUrls: refs,
+        referencePhotoUrls: pool,
         listingPhotosArePlaceholder: placeholder || !actual,
       });
 
@@ -248,8 +244,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
     if (live.photos.length) photos = [...live.photos, ...stored];
   }
   const ordered = listingPhotosInDealerOrder(photos, 16);
-  const refs = selectImagineRefs(ordered, { limit: 4 });
-  if (refs.length === 0) {
+  if (selectImagineRefs(ordered, { limit: 1 }).length === 0) {
     return {
       ok: false,
       hasApiKey: true,
@@ -276,7 +271,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
       interiorColor: r.interior_color,
       bodyStyle: r.body_style,
     },
-    referencePhotoUrls: refs,
+    referencePhotoUrls: ordered,
     listingPhotosArePlaceholder: false,
   });
   if (!imag.ok || !imag.url || !isStudioThumbUrl(imag.url)) {

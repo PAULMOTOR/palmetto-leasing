@@ -211,26 +211,62 @@ export function listingMainShot(photos: string[]): string | undefined {
   return listingPhotosInDealerOrder(photos, 1)[0];
 }
 
+export type IdentityViews = {
+  front?: string;
+  rear?: string;
+  interior?: string;
+};
+
 /**
- * One identity photo for Imagine (two VIN shots get collaged).
- * Prefer a later walkaround / 3/4 (where stripes and rear actually show)
- * over a tight nose-on hero.
+ * Always keep the dealer main shot. Pair it with a later rear/3/4 and a cabin
+ * shot when we can tell them apart. Callers stitch these into one sheet so
+ * Imagine never sees three separate cars.
  */
-export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
-  const limit = opts?.limit ?? 1;
+export function selectIdentityViews(photos: string[]): IdentityViews {
   const ordered = listingPhotosInDealerOrder(photos, 24);
   const exteriors = ordered.filter((u) => !isInteriorPhoto(u));
-  if (!exteriors.length) return [];
+  const namedInteriors = ordered.filter((u) => isInteriorPhoto(u));
+  if (!exteriors.length) return {};
 
-  const later = exteriors[4] || exteriors[3] || exteriors[2];
-  const hero = exteriors[0]!;
-  const out: string[] = [];
-  if (later && later !== hero) out.push(later);
-  else out.push(hero);
-  if (limit > 1 && hero && !out.includes(hero)) out.push(hero);
-  for (const u of exteriors) {
-    if (out.length >= limit) break;
-    if (!out.includes(u)) out.push(u);
+  const front = exteriors[0];
+  const namedRear = exteriors.filter(
+    (u) =>
+      u !== front &&
+      /rear|back|aft|tail|stern|decklid|boot|trunk|louver|side[-_]?rear/i.test(u),
+  );
+  let rear = namedRear[0];
+  if (!rear) {
+    for (const i of [4, 3, 2, exteriors.length - 1]) {
+      const u = exteriors[i];
+      if (u && u !== front) {
+        rear = u;
+        break;
+      }
+    }
+  }
+
+  let interior = namedInteriors[0];
+  if (!interior && ordered.length >= 5) {
+    const tail = [...ordered].reverse().find((u) => u !== front && u !== rear);
+    if (tail) interior = tail;
+  }
+
+  return { front, rear, interior };
+}
+
+/** Flat list of identity URLs (front, rear, interior) for download/stitch. */
+export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
+  const limit = opts?.limit ?? 3;
+  const v = selectIdentityViews(photos);
+  const out = [v.front, v.rear, v.interior].filter((u): u is string => Boolean(u));
+  const seen = new Set(out);
+  if (out.length < limit) {
+    for (const u of listingPhotosInDealerOrder(photos, 24)) {
+      if (seen.has(u)) continue;
+      out.push(u);
+      seen.add(u);
+      if (out.length >= limit) break;
+    }
   }
   return out.slice(0, Math.max(1, limit));
 }

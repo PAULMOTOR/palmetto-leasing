@@ -16,7 +16,6 @@ import {
   listingHasActualDealerPhotos,
 } from "@/lib/imagine/thumb-source";
 import { listingFingerprint } from "./parse-vehicles";
-import { selectImagineRefs } from "@/lib/leasing/gallery";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 
@@ -331,7 +330,6 @@ async function runInventoryCrawlInner(opts?: {
           placeholder,
           source: parseSpecs(item.specs_json).source,
         });
-        const refs = selectImagineRefs(photos, { limit: 3 });
         const imag = await generateVehicleThumbnail({
           car: {
             year: item.year,
@@ -342,7 +340,7 @@ async function runInventoryCrawlInner(opts?: {
             interiorColor: item.interior_color,
             bodyStyle: item.body_style,
           },
-          referencePhotoUrls: refs,
+          referencePhotoUrls: photos,
           listingPhotosArePlaceholder: placeholder || !actual,
         });
         if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {

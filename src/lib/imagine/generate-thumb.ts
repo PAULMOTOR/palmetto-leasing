@@ -3,7 +3,8 @@
  */
 import { buildThumbEditPrompt, type ThumbSubject } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
-import { selectImagineRefs, upgradeImageUrl } from "@/lib/leasing/gallery";
+import { selectIdentityViews, upgradeImageUrl } from "@/lib/leasing/gallery";
+import { buildIdentityContactSheet } from "./contact-sheet";
 
 export type ImagineThumbResult = {
   ok: boolean;
@@ -34,26 +35,29 @@ export async function generateVehicleThumbnail(opts: {
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
 
-  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 1 }).map(upgradeImageUrl);
-  if (!refs.length) return { ok: false, mode: "error", error: "No listing photos to render from" };
+  const views = selectIdentityViews(opts.referencePhotoUrls || []);
+  const frontUrl = views.front ? upgradeImageUrl(views.front) : "";
+  if (!frontUrl) return { ok: false, mode: "error", error: "No listing photos to render from" };
 
   const prompt = buildThumbEditPrompt(opts.car);
   const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
 
   try {
-    let subject: string | null = null;
-    for (const ref of refs) {
-      subject = await fetchImageAsDataUri(ref);
-      if (subject) break;
-    }
-    if (!subject) return { ok: false, mode: "error", error: "Could not download a listing photo" };
+    const [front, rear, interior] = await Promise.all([
+      fetchImageAsDataUri(frontUrl),
+      views.rear ? fetchImageAsDataUri(upgradeImageUrl(views.rear)) : Promise.resolve(null),
+      views.interior ? fetchImageAsDataUri(upgradeImageUrl(views.interior)) : Promise.resolve(null),
+    ]);
+    if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };
+
+    const sheet = buildIdentityContactSheet({ front, rear, interior }) || front;
 
     const dual = await callXai({
       model: MODEL,
       prompt,
       aspect_ratio: "1:1",
       response_format: "b64_json",
-      images: [asImg(subject), asImg(STYLE_LOCK_URL)],
+      images: [asImg(sheet), asImg(STYLE_LOCK_URL)],
     }, key);
     if (!dual.ok) return { ok: false, mode: "error", error: dual.error || "Imagine failed" };
 
