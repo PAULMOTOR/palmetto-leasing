@@ -1,6 +1,6 @@
 /**
- * One Imagine edit: listing photo first, greyscale camera plate second.
- * Public URLs so xAI fetches — data URIs made the Vercel function time out.
+ * Fast 1K dual-image edit (the 15–20s path that made the good tiles).
+ * Do not request 2K — it times out on Vercel.
  */
 import {
   buildThumbEditPrompt,
@@ -57,30 +57,12 @@ export async function generateVehicleThumbnail(opts: {
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
-        resolution: "2k",
         response_format: "url",
         images: [asImg(ref), asImg(STYLE_LOCK_URL)],
       }, key);
       const persisted = await finalize(dual);
       if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
-      lastErrors.push(dual.error || "url edit empty");
-
-      const subjectUri = await fetchImageAsDataUri(ref);
-      if (!subjectUri) {
-        lastErrors.push(`download failed: ${ref.slice(0, 90)}`);
-        continue;
-      }
-      const dualB64 = await callXaiJson({
-        model: MODEL,
-        prompt,
-        aspect_ratio: "1:1",
-        resolution: "2k",
-        response_format: "url",
-        images: [asImg(subjectUri), asImg(STYLE_LOCK_URL)],
-      }, key);
-      const persistedB = await finalize(dualB64);
-      if (persistedB) return { ok: true, url: persistedB, mode: "edit", source: editSource };
-      lastErrors.push(dualB64.error || "data-uri edit empty");
+      lastErrors.push(dual.error || "edit empty");
     }
 
     return {
@@ -89,10 +71,11 @@ export async function generateVehicleThumbnail(opts: {
       error: lastErrors[0] || "Imagine edit failed",
     };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
       mode: "error",
-      error: err instanceof Error ? err.message : String(err),
+      error: /aborted/i.test(msg) ? "Imagine timed out — try again" : msg,
     };
   }
 }
@@ -114,46 +97,36 @@ async function callXaiJson(
   key: string,
 ): Promise<{ ok: boolean; url?: string; b64?: string; error?: string }> {
   try {
-  const res = await fetch(EDIT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(100_000),
-  });
-
-  const text = await res.text();
-  let json: XaiImageResponse | null = null;
-  try {
-    if (text) json = JSON.parse(text) as XaiImageResponse;
-  } catch {
-    const snippet = text.replace(/\s+/g, " ").slice(0, 240);
-    return {
-      ok: false,
-      error: res.ok ? `Non-JSON response: ${snippet}` : `HTTP ${res.status}: ${snippet || res.statusText}`,
-    };
-  }
-
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    if (json) {
-      if (typeof json.error === "object" && json.error?.message) msg = json.error.message;
-      else if (typeof json.error === "string") msg = json.error;
-      else if (json.message) msg = json.message;
-      else if (text) msg = text.slice(0, 200);
-    } else if (text) {
-      msg = text.slice(0, 200);
+    const res = await fetch(EDIT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
+    });
+    const text = await res.text();
+    let json: XaiImageResponse | null = null;
+    try {
+      if (text) json = JSON.parse(text) as XaiImageResponse;
+    } catch {
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 180)}` };
     }
-    return { ok: false, error: String(msg) };
-  }
-
-  const urlOut = json?.data?.[0]?.url;
-  const b64 = json?.data?.[0]?.b64_json;
-  if (urlOut || b64) return { ok: true, url: urlOut, b64 };
-  return { ok: false, error: "Empty Imagine response (no url/b64)" };
+    if (!res.ok) {
+      const err = json?.error;
+      const msg =
+        (typeof err === "object" && err?.message) ||
+        (typeof err === "string" ? err : "") ||
+        json?.message ||
+        text.slice(0, 180);
+      return { ok: false, error: String(msg || `HTTP ${res.status}`) };
+    }
+    const urlOut = json?.data?.[0]?.url;
+    const b64 = json?.data?.[0]?.b64_json;
+    if (urlOut || b64) return { ok: true, url: urlOut, b64 };
+    return { ok: false, error: "Empty Imagine response" };
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
     const msg = err instanceof Error ? err.message : String(err);
@@ -161,34 +134,5 @@ async function callXaiJson(
       return { ok: false, error: "Imagine timed out — try again" };
     }
     return { ok: false, error: msg };
-  }
-}
-
-async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
-  try {
-    const res = await fetch(upgradeImageUrl(imageUrl), {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; PalmettoLeasingBot/2.0; +https://palmettoleasing.com)",
-        accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        referer: (() => {
-          try {
-            return new URL(imageUrl).origin + "/";
-          } catch {
-            return "https://www.palmettoleasing.com/";
-          }
-        })(),
-      },
-      signal: AbortSignal.timeout(12_000),
-      redirect: "follow",
-    });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 800 || buf.length > 4_500_000) return null;
-    const ctype = (res.headers.get("content-type") || "image/jpeg").split(";")[0]!.trim();
-    if (!ctype.startsWith("image/")) return null;
-    return `data:${ctype};base64,${buf.toString("base64")}`;
-  } catch {
-    return null;
   }
 }

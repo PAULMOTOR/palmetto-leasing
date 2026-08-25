@@ -236,7 +236,9 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
 
   const stored = parsePhotos(r.photo_urls);
   let photos = stored;
-  if (r.dealer_listing_url?.startsWith("http")) {
+  // Only scrape the VDP if we have no usable listing photos (keeps re-render ~15–20s).
+  const haveListing = listingPhotosInDealerOrder(stored, 4).length > 0;
+  if (!haveListing && r.dealer_listing_url?.startsWith("http")) {
     const live = await Promise.race([
       fetchListingGallery(r.dealer_listing_url, { limit: 12 }),
       new Promise<{ photos: string[] }>((resolve) =>
