@@ -34,27 +34,26 @@ export async function generateVehicleThumbnail(opts: {
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
 
-  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 2 }).map(upgradeImageUrl);
+  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 1 }).map(upgradeImageUrl);
   if (!refs.length) return { ok: false, mode: "error", error: "No listing photos to render from" };
 
   const prompt = buildThumbEditPrompt(opts.car);
   const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
 
   try {
-    const subjects: string[] = [];
+    let subject: string | null = null;
     for (const ref of refs) {
-      const uri = await fetchImageAsDataUri(ref);
-      if (uri) subjects.push(uri);
-      if (subjects.length >= 2) break;
+      subject = await fetchImageAsDataUri(ref);
+      if (subject) break;
     }
-    if (!subjects.length) return { ok: false, mode: "error", error: "Could not download a listing photo" };
+    if (!subject) return { ok: false, mode: "error", error: "Could not download a listing photo" };
 
     const dual = await callXai({
       model: MODEL,
       prompt,
       aspect_ratio: "1:1",
       response_format: "b64_json",
-      images: [...subjects.map(asImg), asImg(STYLE_LOCK_URL)],
+      images: [asImg(subject), asImg(STYLE_LOCK_URL)],
     }, key);
     if (!dual.ok) return { ok: false, mode: "error", error: dual.error || "Imagine failed" };
 

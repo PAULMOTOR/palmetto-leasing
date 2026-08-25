@@ -212,46 +212,27 @@ export function listingMainShot(photos: string[]): string | undefined {
 }
 
 /**
- * Identity pair for Imagine: a front or front-3/4 PLUS a rear 3/4 / later
- * walkaround. AutoTrader filenames rarely say "rear", so we also take a shot
- * further along the dealer gallery (index 4 / 3 / 2) — that's where livery
- * and stripes usually live.
+ * One identity photo for Imagine (two VIN shots get collaged).
+ * Prefer a later walkaround / 3/4 (where stripes and rear actually show)
+ * over a tight nose-on hero.
  */
 export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
-  const limit = Math.max(2, opts?.limit ?? 2);
+  const limit = opts?.limit ?? 1;
   const ordered = listingPhotosInDealerOrder(photos, 24);
   const exteriors = ordered.filter((u) => !isInteriorPhoto(u));
   if (!exteriors.length) return [];
 
-  const namedFront = exteriors.filter((u) => isFrontOrFrontThreeQuarter(u));
-  const namedRear = exteriors.filter(
-    (u) => /rear|back|aft|tail|stern|decklid|boot|trunk|louver|side[-_]?rear/i.test(u) && !isInteriorPhoto(u),
-  );
-
-  const front =
-    namedFront[0] ||
-    exteriors.find((u) => !namedRear.includes(u)) ||
-    exteriors[0]!;
-
-  let rear: string | undefined = namedRear.find((u) => u !== front);
-  if (!rear) {
-    for (const i of [4, 3, 2, exteriors.length - 1, 1]) {
-      const u = exteriors[i];
-      if (u && u !== front) {
-        rear = u;
-        break;
-      }
-    }
-  }
-
+  const later = exteriors[4] || exteriors[3] || exteriors[2];
+  const hero = exteriors[0]!;
   const out: string[] = [];
-  if (front) out.push(front);
-  if (rear && rear !== front) out.push(rear);
+  if (later && later !== hero) out.push(later);
+  else out.push(hero);
+  if (limit > 1 && hero && !out.includes(hero)) out.push(hero);
   for (const u of exteriors) {
     if (out.length >= limit) break;
     if (!out.includes(u)) out.push(u);
   }
-  return out.slice(0, Math.min(limit, 3));
+  return out.slice(0, Math.max(1, limit));
 }
 
 /**

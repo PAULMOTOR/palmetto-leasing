@@ -1,7 +1,6 @@
 /**
- * Short catalog prompt — the 15s / ~150KB tiles from last week.
- * Paint always follows the dealer photo, never the listing color word
- * ("Grey" was rendering chalk instead of charcoal).
+ * Dual-image only: 1 VIN photo + greyscale camera plate.
+ * Never send two cars — Imagine collages them into stacked 3/4s.
  */
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
@@ -32,9 +31,8 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
 
   return (
     `Catalog still of this exact ${label}. ${paintInstruction(car)} Cabin: ${cabin}. ` +
-    `Photo 1 = this VIN front or front 3/4 (paint, grille, hood stripe). ` +
-    `Photo 2 = this VIN rear or rear 3/4 (stripe, wing, rear glass). Copy livery from whichever shot shows it. ` +
-    `Last photo = greyscale camera plate — camera only, no paint. ` +
+    `First photo = THIS VIN (copy paint, stripes, livery, body). Second photo = greyscale camera plate — camera only, no paint. ` +
+    `ONE car only. Never a collage, never a 3/4 hero, never extra vehicles. ` +
     `High boom, long telephoto, nose at the BOTTOM, whole car ~70% of the square. Wheels straight. Headlights OFF. ` +
     `Seamless studio floor, soft shadow, high-gloss paint, crisp speculars. Square, no text.`
   );
