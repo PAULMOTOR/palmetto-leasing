@@ -60,8 +60,11 @@ export async function persistImagineResult(opts: {
       ? opts.b64
       : `data:image/jpeg;base64,${opts.b64}`;
     // Cap ~700KB base64 payload for Neon row size comfort
-    if (raw.length <= 1_400_000) {
-      return { durableUrl: normalizeStudioTileDataUri(raw) || raw };
+    if (raw.length <= 2_500_000) {
+      const normalized = raw.startsWith("data:image/jpeg")
+        ? normalizeStudioTileDataUri(raw)
+        : null;
+      return { durableUrl: normalized || raw };
     }
   }
 
