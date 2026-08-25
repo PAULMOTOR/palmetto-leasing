@@ -9,9 +9,16 @@ async function handle(request: Request) {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "content-type",
       },
+    });
+  }
+  if (request.method === "GET") {
+    return Response.json({
+      ok: true,
+      recipe: "1k-b64",
+      sha: process.env.VERCEL_GIT_COMMIT_SHA || "local",
     });
   }
   let body: { token?: string; vehicleId?: string } = {};
@@ -29,7 +36,11 @@ async function handle(request: Request) {
   }
   try {
     const result = await generateVehicleThumbById(vehicleId);
-    return Response.json(result);
+    return Response.json({
+      ...result,
+      recipe: "1k-b64",
+      sha: process.env.VERCEL_GIT_COMMIT_SHA || "local",
+    });
   } catch (err) {
     return Response.json(
       { ok: false, hasApiKey: true, error: err instanceof Error ? err.message : String(err) },
@@ -41,6 +52,7 @@ async function handle(request: Request) {
 export const Route = createFileRoute("/api/admin/rerender")({
   server: {
     handlers: {
+      GET: async ({ request }) => handle(request),
       POST: async ({ request }) => handle(request),
       OPTIONS: async ({ request }) => handle(request),
     },
