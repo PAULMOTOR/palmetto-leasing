@@ -237,7 +237,12 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   const stored = parsePhotos(r.photo_urls);
   let photos = stored;
   if (r.dealer_listing_url?.startsWith("http")) {
-    const live = await fetchListingGallery(r.dealer_listing_url, { limit: 24 });
+    const live = await Promise.race([
+      fetchListingGallery(r.dealer_listing_url, { limit: 12 }),
+      new Promise<{ photos: string[] }>((resolve) =>
+        setTimeout(() => resolve({ photos: [] }), 6_000),
+      ),
+    ]);
     if (live.photos.length) photos = [...live.photos, ...stored];
   }
   const ordered = listingPhotosInDealerOrder(photos, 16);

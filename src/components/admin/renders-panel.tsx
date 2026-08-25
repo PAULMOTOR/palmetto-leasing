@@ -1,7 +1,7 @@
 import { Loader2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { listAdminRenders, rerenderVehicleThumb, type AdminRenderRow } from "@/lib/admin/renders";
+import { listAdminRenders, type AdminRenderRow } from "@/lib/admin/renders";
 import { Button } from "@/components/ui/button";
 import { formatCad, formatNumber } from "@/lib/utils";
 
@@ -46,23 +46,34 @@ export function RendersPanel({
   async function onRerender(row: AdminRenderRow) {
     setBusyId(row.id);
     try {
-      const res = await rerenderVehicleThumb({ data: { token, vehicleId: row.id } });
-      if (!res.hasApiKey) {
+      const res = await fetch("/api/admin/rerender", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, vehicleId: row.id }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        hasApiKey?: boolean;
+        error?: string;
+        source?: string;
+        updatedAt?: string;
+      };
+      if (!data.hasApiKey) {
         toast.error("XAI_API_KEY missing on Vercel");
         return;
       }
-      if (!res.ok) {
-        toast.error(res.error || "Re-render failed");
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || `Re-render failed (${res.status})`);
         return;
       }
-      const v = res.updatedAt || String(Date.now());
+      const v = data.updatedAt || String(Date.now());
       setRows((prev) =>
         (prev || []).map((r) =>
           r.id === row.id
             ? {
                 ...r,
                 hasStudio: true,
-                inferred: res.source === "inferred",
+                inferred: data.source === "inferred",
                 updatedAt: v,
                 tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(v)}`,
               }
@@ -71,7 +82,7 @@ export function RendersPanel({
       );
       toast.success("Tile replaced", { description: row.title });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Re-render failed");
+      toast.error(err instanceof Error ? err.message : "Re-render timed out");
     } finally {
       setBusyId(null);
     }

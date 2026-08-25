@@ -1,26 +1,20 @@
 /**
- * Dual-image only: Image 0 = on-disk studio template, Image 1 = this VIN.
- * Never send dealer photos without the template (that produced 3/4 heroes).
- * Never fall back to text-to-image (that produced random cars).
+ * One Imagine edit: listing photo first, greyscale camera plate second.
+ * Public URLs so xAI fetches — data URIs made the Vercel function time out.
  */
-import fs from "node:fs";
-import path from "node:path";
 import {
   buildThumbEditPrompt,
   buildStyleLockAddendum,
   type ThumbSubject,
 } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
-import { selectImagineRefs } from "@/lib/leasing/gallery";
-import { STYLE_LOCK_DATA_URI } from "./style-lock-data";
+import { selectImagineRefs, upgradeImageUrl } from "@/lib/leasing/gallery";
 
 export type ImagineThumbResult = {
   ok: boolean;
-  /** Durable URL (data:image/... preferred). Never store raw xai-tmp URLs. */
   url?: string;
   b64?: string;
   mode: "edit" | "generate" | "skipped" | "error";
-  /** photographed = from this car's listing photos; inferred = guess / stock. */
   source?: "photographed" | "inferred";
   error?: string;
 };
@@ -33,32 +27,12 @@ type XaiImageResponse = {
 
 const EDIT_URL = "https://api.x.ai/v1/images/edits";
 const MODEL = "grok-imagine-image-quality";
-const STYLE_LOCK_PATH = "/vehicles/palmetto-style-lock.jpg";
-
-function loadStyleLockFromDisk(): string | null {
-  const files = [
-    path.join(process.cwd(), "src/lib/imagine/palmetto-style-lock.jpg"),
-    path.join(process.cwd(), "public/vehicles/palmetto-style-lock.jpg"),
-    path.join(process.cwd(), "dist/client/vehicles/palmetto-style-lock.jpg"),
-    path.join(process.cwd(), "vehicles/palmetto-style-lock.jpg"),
-  ];
-  for (const file of files) {
-    try {
-      if (!fs.existsSync(file)) continue;
-      const buf = fs.readFileSync(file);
-      if (buf.length > 2000) return `data:image/jpeg;base64,${buf.toString("base64")}`;
-    } catch {
-      /* next */
-    }
-  }
-  return null;
-}
+const STYLE_LOCK_URL = "https://www.palmettoleasing.com/vehicles/palmetto-style-lock.jpg";
 
 export async function generateVehicleThumbnail(opts: {
   car: ThumbSubject;
   referencePhotoUrls?: string[];
   publicOrigin?: string;
-  /** True when listing cover is AutoTrader stock / no real dealer photography yet. */
   listingPhotosArePlaceholder?: boolean;
 }): Promise<ImagineThumbResult> {
   const placeholder = Boolean(opts.listingPhotosArePlaceholder);
@@ -68,73 +42,51 @@ export async function generateVehicleThumbnail(opts: {
     return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
   }
 
-  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 4 });
-  const origin = "https://www.palmettoleasing.com";
-  const styleLockUrl = `${origin}${STYLE_LOCK_PATH}`;
+  const refs = selectImagineRefs(opts.referencePhotoUrls || [], { limit: 2 }).map(upgradeImageUrl);
+  if (!refs.length) {
+    return { ok: false, mode: "error", error: "No listing photos to render from" };
+  }
+
   const prompt = buildThumbEditPrompt(opts.car) + buildStyleLockAddendum();
+  const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
+  const lastErrors: string[] = [];
 
   try {
-    const styleUri =
-      STYLE_LOCK_DATA_URI ||
-      loadStyleLockFromDisk() ||
-      (await fetchImageAsDataUri(styleLockUrl));
-    if (!styleUri) {
-      return { ok: false, mode: "error", error: "Studio template missing" };
-    }
-
-    const lastErrors: string[] = [];
-    const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
-
     for (const ref of refs) {
-      const subjectUri = await fetchImageAsDataUri(ref);
-      if (!subjectUri) {
-        lastErrors.push(`download failed: ${ref.slice(0, 80)}`);
-        continue;
-      }
-
-      // Subject FIRST so Imagine uses the listing photo (image: [lock, car] was ignoring the car).
-      const dual = await callXaiJson(EDIT_URL, key, {
-        model: MODEL,
-        prompt,
-        aspect_ratio: "1:1",
-        resolution: "2k",
-        response_format: "b64_json",
-        images: [asImg(subjectUri), asImg(styleUri)],
-      });
-      const persisted = await finalize(dual);
-      if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
-      lastErrors.push(dual.error || "b64 edit empty");
-
-      const dualUrl = await callXaiJson(EDIT_URL, key, {
+      const dual = await callXaiJson({
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         resolution: "2k",
         response_format: "url",
-        images: [asImg(ref), asImg(styleLockUrl)],
-      });
-      const dualUrlP = await finalize(dualUrl);
-      if (dualUrlP) return { ok: true, url: dualUrlP, mode: "edit", source: editSource };
-      lastErrors.push(dualUrl.error || "url edit empty");
+        images: [asImg(ref), asImg(STYLE_LOCK_URL)],
+      }, key);
+      const persisted = await finalize(dual);
+      if (persisted) return { ok: true, url: persisted, mode: "edit", source: editSource };
+      lastErrors.push(dual.error || "url edit empty");
 
-      // Last resort: edit the listing photo alone (never the template alone).
-      const solo = await callXaiJson(EDIT_URL, key, {
+      const subjectUri = await fetchImageAsDataUri(ref);
+      if (!subjectUri) {
+        lastErrors.push(`download failed: ${ref.slice(0, 90)}`);
+        continue;
+      }
+      const dualB64 = await callXaiJson({
         model: MODEL,
         prompt,
         aspect_ratio: "1:1",
         resolution: "2k",
-        response_format: "b64_json",
-        image: asImg(subjectUri),
-      });
-      const soloP = await finalize(solo);
-      if (soloP) return { ok: true, url: soloP, mode: "edit", source: editSource };
-      lastErrors.push(solo.error || "solo edit empty");
+        response_format: "url",
+        images: [asImg(subjectUri), asImg(STYLE_LOCK_URL)],
+      }, key);
+      const persistedB = await finalize(dualB64);
+      if (persistedB) return { ok: true, url: persistedB, mode: "edit", source: editSource };
+      lastErrors.push(dualB64.error || "data-uri edit empty");
     }
 
     return {
       ok: false,
       mode: "error",
-      error: lastErrors[0] || (refs.length ? "Imagine edit failed" : "No listing photos to render from"),
+      error: lastErrors[0] || "Imagine edit failed",
     };
   } catch (err) {
     return {
@@ -158,11 +110,10 @@ async function finalize(result: {
 }
 
 async function callXaiJson(
-  url: string,
-  key: string,
   body: Record<string, unknown>,
+  key: string,
 ): Promise<{ ok: boolean; url?: string; b64?: string; error?: string }> {
-  const res = await fetch(url, {
+  const res = await fetch(EDIT_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
@@ -170,21 +121,18 @@ async function callXaiJson(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(70_000),
   });
 
   const text = await res.text();
   let json: XaiImageResponse | null = null;
-
   try {
     if (text) json = JSON.parse(text) as XaiImageResponse;
   } catch {
     const snippet = text.replace(/\s+/g, " ").slice(0, 240);
     return {
       ok: false,
-      error: res.ok
-        ? `Non-JSON response: ${snippet}`
-        : `HTTP ${res.status}: ${snippet || res.statusText}`,
+      error: res.ok ? `Non-JSON response: ${snippet}` : `HTTP ${res.status}: ${snippet || res.statusText}`,
     };
   }
 
@@ -209,7 +157,7 @@ async function callXaiJson(
 
 async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
   try {
-    const res = await fetch(imageUrl, {
+    const res = await fetch(upgradeImageUrl(imageUrl), {
       headers: {
         "user-agent":
           "Mozilla/5.0 (compatible; PalmettoLeasingBot/2.0; +https://palmettoleasing.com)",
@@ -222,7 +170,7 @@ async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
           }
         })(),
       },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(12_000),
       redirect: "follow",
     });
     if (!res.ok) return null;
