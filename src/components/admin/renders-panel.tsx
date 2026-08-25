@@ -5,6 +5,14 @@ import { listAdminRenders, type AdminRenderRow } from "@/lib/admin/renders";
 import { Button } from "@/components/ui/button";
 import { formatCad, formatNumber } from "@/lib/utils";
 
+function friendlyRerenderError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  if (/aborted|abort|timeout|failed to fetch|network/i.test(msg)) {
+    return "Server cut the request off. Wait for this deploy, then try once — 2K tiles take ~30s.";
+  }
+  return msg || "Re-render failed";
+}
+
 export function RendersPanel({
   token,
   imagined,
@@ -82,7 +90,7 @@ export function RendersPanel({
       );
       toast.success("Tile replaced", { description: row.title });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Re-render timed out");
+      toast.error(friendlyRerenderError(err));
     } finally {
       setBusyId(null);
     }

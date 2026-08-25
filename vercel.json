@@ -4,6 +4,11 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "regions": ["iad1"],
+  "functions": {
+    "api/index.js": { "maxDuration": 120 },
+    "api/index.mjs": { "maxDuration": 120 },
+    "src/routes/api/**/*.ts": { "maxDuration": 120 }
+  },
   "crons": [
     {
       "path": "/api/cron/crawl",

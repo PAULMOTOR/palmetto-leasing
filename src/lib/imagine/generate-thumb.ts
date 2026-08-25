@@ -113,6 +113,7 @@ async function callXaiJson(
   body: Record<string, unknown>,
   key: string,
 ): Promise<{ ok: boolean; url?: string; b64?: string; error?: string }> {
+  try {
   const res = await fetch(EDIT_URL, {
     method: "POST",
     headers: {
@@ -121,7 +122,7 @@ async function callXaiJson(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(70_000),
+    signal: AbortSignal.timeout(100_000),
   });
 
   const text = await res.text();
@@ -153,6 +154,14 @@ async function callXaiJson(
   const b64 = json?.data?.[0]?.b64_json;
   if (urlOut || b64) return { ok: true, url: urlOut, b64 };
   return { ok: false, error: "Empty Imagine response (no url/b64)" };
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    const msg = err instanceof Error ? err.message : String(err);
+    if (name === "AbortError" || name === "TimeoutError" || /aborted/i.test(msg)) {
+      return { ok: false, error: "Imagine timed out — try again" };
+    }
+    return { ok: false, error: msg };
+  }
 }
 
 async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
