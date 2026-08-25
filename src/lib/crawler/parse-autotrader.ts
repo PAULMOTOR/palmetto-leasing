@@ -150,7 +150,7 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
         source: "autotrader",
         photosPlaceholder: placeholder ? "1" : "0",
       },
-      thumbnail: photos[0] || "/vehicles/top-porsche-911.jpg",
+      thumbnail: photos[0] || "",
       photos,
       listing_path: listingUrl,
     });

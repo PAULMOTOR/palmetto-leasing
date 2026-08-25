@@ -41,26 +41,28 @@ export async function generateVehicleThumbnail(opts: {
   const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
 
   try {
+    const subjects: string[] = [];
     for (const ref of refs) {
-      const subject = await fetchImageAsDataUri(ref);
-      if (!subject) continue;
-
-      const dual = await callXai({
-        model: MODEL,
-        prompt,
-        aspect_ratio: "1:1",
-        response_format: "b64_json",
-        images: [asImg(subject), asImg(STYLE_LOCK_URL)],
-      }, key);
-      if (!dual.ok) return { ok: false, mode: "error", error: dual.error || "Imagine failed" };
-
-      const persisted = await persistImagineResult({ b64: dual.b64, url: dual.url });
-      if ("durableUrl" in persisted) {
-        return { ok: true, url: persisted.durableUrl, mode: "edit", source: editSource };
-      }
-      return { ok: false, mode: "error", error: persisted.error };
+      const uri = await fetchImageAsDataUri(ref);
+      if (uri) subjects.push(uri);
+      if (subjects.length >= 2) break;
     }
-    return { ok: false, mode: "error", error: "Could not download a listing photo" };
+    if (!subjects.length) return { ok: false, mode: "error", error: "Could not download a listing photo" };
+
+    const dual = await callXai({
+      model: MODEL,
+      prompt,
+      aspect_ratio: "1:1",
+      response_format: "b64_json",
+      images: [...subjects.map(asImg), asImg(STYLE_LOCK_URL)],
+    }, key);
+    if (!dual.ok) return { ok: false, mode: "error", error: dual.error || "Imagine failed" };
+
+    const persisted = await persistImagineResult({ b64: dual.b64, url: dual.url });
+    if ("durableUrl" in persisted) {
+      return { ok: true, url: persisted.durableUrl, mode: "edit", source: editSource };
+    }
+    return { ok: false, mode: "error", error: persisted.error };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, mode: "error", error: /aborted|load failed/i.test(msg) ? "Imagine timed out" : msg };

@@ -99,7 +99,7 @@ export async function fetchSigmaVehicles(dealerId: string): Promise<{
         doors: "—",
         source: "sigma-api",
       },
-      thumbnail: photos[0] || "/vehicles/top-porsche-911.jpg",
+      thumbnail: photos[0] || "",
       photos,
       listing_path: sigmaListingUrl(v.slug),
     });

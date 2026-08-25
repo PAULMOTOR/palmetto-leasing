@@ -9,6 +9,9 @@ const INTERIOR_RE =
 const REAR_RE =
   /(?:^|[\/_-])(rear|back|behind|aft|tail|stern|engine.?cover|louver|decklid|boot|trunk)(?:[\/_.-]|$)|3[-_]?4|three[-_]?quarter|rear[-_]?qtr|side[-_]?rear/i;
 
+const FRONT_RE =
+  /(?:^|[\/_-])(front|grille|fascia|headlight|nose|forward)(?:[\/_.-]|$)|front[-_]?3|front[-_]?qtr|3[-_]?4[-_]?front/i;
+
 const SKIP_RE =
   /logo|icon|sprite|pixel|1x1|favicon|badge\.svg|placeholder|data:image\/svg|spacer|blank|loading|avatar|profile|banner.?ad|feedback-dan|\/feedback\/|as24-home|\/assets\/as24|promo|advert|testimonial|reviewer|host-with|microphone|podcast|carfax|wechat|favicon/i;
 
@@ -164,6 +167,12 @@ export function isInteriorPhoto(url: string, alt = ""): boolean {
   return INTERIOR_RE.test(s);
 }
 
+export function isFrontOrFrontThreeQuarter(url: string, alt = ""): boolean {
+  const s = `${url} ${alt}`;
+  if (isInteriorPhoto(url, alt)) return false;
+  return FRONT_RE.test(s);
+}
+
 export function isRearOrThreeQuarterPhoto(url: string, alt = ""): boolean {
   return REAR_RE.test(`${url} ${alt}`) && !isInteriorPhoto(url, alt);
 }
@@ -201,32 +210,48 @@ export function listingPhotosInDealerOrder(photos: string[], limit = 12): string
 export function listingMainShot(photos: string[]): string | undefined {
   return listingPhotosInDealerOrder(photos, 1)[0];
 }
-export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
-  const limit = opts?.limit ?? 4;
-  const ordered = listingPhotosInDealerOrder(photos, 24);
-  if (!ordered.length) return [];
 
-  const interiors = ordered.filter((u) => isInteriorPhoto(u));
+/**
+ * Identity pair for Imagine: a front or front-3/4 PLUS a rear 3/4 / later
+ * walkaround. AutoTrader filenames rarely say "rear", so we also take a shot
+ * further along the dealer gallery (index 4 / 3 / 2) — that's where livery
+ * and stripes usually live.
+ */
+export function selectImagineRefs(photos: string[], opts?: { limit?: number }): string[] {
+  const limit = Math.max(2, opts?.limit ?? 2);
+  const ordered = listingPhotosInDealerOrder(photos, 24);
   const exteriors = ordered.filter((u) => !isInteriorPhoto(u));
+  if (!exteriors.length) return [];
+
+  const namedFront = exteriors.filter((u) => isFrontOrFrontThreeQuarter(u));
+  const namedRear = exteriors.filter(
+    (u) => /rear|back|aft|tail|stern|decklid|boot|trunk|louver|side[-_]?rear/i.test(u) && !isInteriorPhoto(u),
+  );
+
+  const front =
+    namedFront[0] ||
+    exteriors.find((u) => !namedRear.includes(u)) ||
+    exteriors[0]!;
+
+  let rear: string | undefined = namedRear.find((u) => u !== front);
+  if (!rear) {
+    for (const i of [4, 3, 2, exteriors.length - 1, 1]) {
+      const u = exteriors[i];
+      if (u && u !== front) {
+        rear = u;
+        break;
+      }
+    }
+  }
 
   const out: string[] = [];
-  const hero = exteriors[0];
-  if (hero) out.push(hero);
-
-  const namedRear = exteriors.filter((u) => isRearOrThreeQuarterPhoto(u) && u !== hero);
-  const walkaroundRear = exteriors.length > 1 ? exteriors[exteriors.length - 1] : undefined;
-  const rear = namedRear[0] || (walkaroundRear && walkaroundRear !== hero ? walkaroundRear : undefined);
-  if (rear && !out.includes(rear)) out.push(rear);
-
-  if (interiors.length && out.length < limit) {
-    const cabin = interiors[0];
-    if (cabin && !out.includes(cabin)) out.push(cabin);
-  }
+  if (front) out.push(front);
+  if (rear && rear !== front) out.push(rear);
   for (const u of exteriors) {
     if (out.length >= limit) break;
     if (!out.includes(u)) out.push(u);
   }
-  return out.slice(0, limit);
+  return out.slice(0, Math.min(limit, 3));
 }
 
 /**

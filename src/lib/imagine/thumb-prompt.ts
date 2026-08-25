@@ -32,7 +32,9 @@ export function buildThumbEditPrompt(car: ThumbSubject): string {
 
   return (
     `Catalog still of this exact ${label}. ${paintInstruction(car)} Cabin: ${cabin}. ` +
-    `First photo = this VIN (copy paint, stripes, body). Second photo = greyscale camera plate — camera only, no paint. ` +
+    `Photo 1 = this VIN front or front 3/4 (paint, grille, hood stripe). ` +
+    `Photo 2 = this VIN rear or rear 3/4 (stripe, wing, rear glass). Copy livery from whichever shot shows it. ` +
+    `Last photo = greyscale camera plate — camera only, no paint. ` +
     `High boom, long telephoto, nose at the BOTTOM, whole car ~70% of the square. Wheels straight. Headlights OFF. ` +
     `Seamless studio floor, soft shadow, high-gloss paint, crisp speculars. Square, no text.`
   );

@@ -322,7 +322,7 @@ export function rawToSeedVehicles(dealerId: string, raw: RawListing[]): SeedVehi
       .slice(0, 64);
 
     const photos = r.images.length ? r.images : [];
-    const thumbnail = photos[0] || "/vehicles/top-porsche-911.jpg";
+    const thumbnail = photos[0] || "";
 
     let listing_path = r.url || "/";
     try {

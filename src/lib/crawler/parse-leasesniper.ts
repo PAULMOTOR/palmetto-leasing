@@ -297,7 +297,7 @@ export async function fetchLeaseSniperVehicles(dealerId: string): Promise<{
           doors: "—",
           source: "leasesniper",
         },
-        thumbnail: photos[0] || "/vehicles/top-porsche-911.jpg",
+        thumbnail: photos[0] || "",
         photos,
         listing_path: c.url,
       });

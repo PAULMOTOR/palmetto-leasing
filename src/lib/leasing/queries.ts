@@ -25,6 +25,16 @@ import {
   isEphemeralImagineUrl,
 } from "@/lib/imagine/persist-image";
 import { normalizeDealerListingUrl } from "./seed";
+import { isPlaceholderListing, listingHasActualDealerPhotos } from "@/lib/imagine/thumb-source";
+
+function rowHasDealerPhotos(
+  row: { photo_urls?: string; specs_json?: string },
+): boolean {
+  return listingHasActualDealerPhotos(parsePhotos(row.photo_urls || ""), {
+    placeholder: isPlaceholderListing(row.specs_json),
+    source: parseSpecs(row.specs_json || "{}").source,
+  });
+}
 
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
@@ -128,10 +138,12 @@ export const listVehicles = createServerFn({ method: "GET" })
         where v.status = 'active' and d.active = true and v.price_cents >= 15000000
         order by v.price_cents desc
       `;
-      list = await Promise.all(rows.map((r) => toCard(r, quoteSettings)));
+      list = await Promise.all(
+        rows.filter(rowHasDealerPhotos).map((r) => toCard(r, quoteSettings)),
+      );
     } catch (err) {
       console.warn("[listVehicles] DB unavailable, static catalog:", err);
-      list = listCatalogVehicles(quoteSettings);
+      list = listCatalogVehicles(quoteSettings).filter(rowHasDealerPhotos);
     }
 
     list = dedupeCards(list);
@@ -196,7 +208,7 @@ export const getVehicleBySlug = createServerFn({ method: "GET" })
         where v.slug = ${data.slug}
         limit 1
       `;
-      if (rows[0]) return toCard(rows[0]);
+      if (rows[0] && rowHasDealerPhotos(rows[0])) return toCard(rows[0]);
     } catch {
       /* fall through */
     }

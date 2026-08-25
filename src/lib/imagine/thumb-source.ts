@@ -3,7 +3,7 @@
  * inferred (text-to-image / AutoTrader stock placeholder). Only inferred
  * tiles may be replaced automatically when real dealer photography appears.
  */
-import { imageIdentityKey, selectImagineRefs } from "@/lib/leasing/gallery";
+import { imageIdentityKey, listingPhotosInDealerOrder, isInteriorPhoto } from "@/lib/leasing/gallery";
 import { parseSpecs, type VehicleSpecs } from "@/lib/leasing/types";
 
 export type ThumbSource = "photographed" | "inferred" | "dealer";
@@ -23,14 +23,14 @@ export function listingHasActualDealerPhotos(
   opts?: { placeholder?: boolean; source?: string },
 ): boolean {
   if (opts?.placeholder) return false;
-  const refs = selectImagineRefs(photos || [], { limit: 8 });
-  if (!refs.length) return false;
-  const unique = new Set(refs.map(imageIdentityKey)).size;
+  const exteriors = listingPhotosInDealerOrder(photos || [], 8).filter((u) => !isInteriorPhoto(u));
+  if (!exteriors.length) return false;
+  const unique = new Set(exteriors.map(imageIdentityKey)).size;
   // AutoTrader often ships one representative stock hero until the dealer
   // uploads the car — that is not actual photography.
   const fromAt =
     (opts?.source || "").toLowerCase() === "autotrader" ||
-    refs.some((u) => /autotrader\.ca|autoscout24\.net/i.test(u));
+    exteriors.some((u) => /autotrader\.ca|autoscout24\.net/i.test(u));
   if (fromAt && unique <= 1) return false;
   return true;
 }

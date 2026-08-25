@@ -147,7 +147,7 @@ export function parseNextInventory(html: string, pageUrl: string, dealerId: stri
         doors: veh.doors != null ? String(veh.doors) : "—",
         source: "next-data",
       },
-      thumbnail: photos[0] || "/vehicles/top-porsche-911.jpg",
+      thumbnail: photos[0] || "",
       photos,
       listing_path: listing,
     });
