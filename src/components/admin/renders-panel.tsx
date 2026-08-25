@@ -7,10 +7,33 @@ import { formatCad, formatNumber } from "@/lib/utils";
 
 function friendlyRerenderError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err || "");
-  if (/aborted|abort|timeout|failed to fetch|network/i.test(msg)) {
-    return "Server cut the request off. Wait for this deploy, then try once — 2K tiles take ~30s.";
+  if (/aborted|abort|timeout|failed to fetch|load failed|network/i.test(msg)) {
+    return "Connection dropped while Imagine was working. Click Re-render once more.";
   }
   return msg || "Re-render failed";
+}
+
+async function pollTile(token: string, vehicleId: string, startedMs: number) {
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const st = await fetch(
+      `/api/admin/rerender?token=${encodeURIComponent(token)}&vehicleId=${encodeURIComponent(vehicleId)}`,
+    );
+    const data = (await st.json()) as {
+      ok?: boolean;
+      hasStudio?: boolean;
+      source?: string;
+      updatedAt?: string;
+      error?: string;
+    };
+    if (!data.ok) continue;
+    const updated = data.updatedAt ? Date.parse(data.updatedAt) : 0;
+    if (data.hasStudio && updated >= startedMs - 2000 && data.source !== "rendering") {
+      return data;
+    }
+  }
+  return null;
 }
 
 export function RendersPanel({
@@ -53,6 +76,7 @@ export function RendersPanel({
 
   async function onRerender(row: AdminRenderRow) {
     setBusyId(row.id);
+    const startedMs = Date.now();
     try {
       const res = await fetch("/api/admin/rerender", {
         method: "POST",
@@ -65,23 +89,32 @@ export function RendersPanel({
         error?: string;
         source?: string;
         updatedAt?: string;
+        pending?: boolean;
       };
-      if (!data.hasApiKey) {
+      if (data.hasApiKey === false) {
         toast.error("XAI_API_KEY missing on Vercel");
         return;
       }
-      if (!res.ok || !data.ok) {
+      let done = data;
+      if (data.pending || (!data.ok && res.ok === false)) {
+        const polled = await pollTile(token, row.id, startedMs);
+        if (!polled) {
+          toast.error(data.error || "Re-render timed out");
+          return;
+        }
+        done = polled;
+      } else if (!res.ok || !data.ok) {
         toast.error(data.error || `Re-render failed (${res.status})`);
         return;
       }
-      const v = data.updatedAt || String(Date.now());
+      const v = done.updatedAt || String(Date.now());
       setRows((prev) =>
         (prev || []).map((r) =>
           r.id === row.id
             ? {
                 ...r,
                 hasStudio: true,
-                inferred: data.source === "inferred",
+                inferred: done.source === "inferred",
                 updatedAt: v,
                 tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(v)}`,
               }
@@ -90,6 +123,25 @@ export function RendersPanel({
       );
       toast.success("Tile replaced", { description: row.title });
     } catch (err) {
+      const polled = await pollTile(token, row.id, startedMs);
+      if (polled) {
+        const v = polled.updatedAt || String(Date.now());
+        setRows((prev) =>
+          (prev || []).map((r) =>
+            r.id === row.id
+              ? {
+                  ...r,
+                  hasStudio: true,
+                  inferred: polled.source === "inferred",
+                  updatedAt: v,
+                  tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(v)}`,
+                }
+              : r,
+          ),
+        );
+        toast.success("Tile replaced", { description: row.title });
+        return;
+      }
       toast.error(friendlyRerenderError(err));
     } finally {
       setBusyId(null);
