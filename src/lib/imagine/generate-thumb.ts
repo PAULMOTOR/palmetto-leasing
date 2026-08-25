@@ -30,24 +30,39 @@ export async function generateVehicleThumbnail(opts: {
   referencePhotoUrls?: string[];
   publicOrigin?: string;
   listingPhotosArePlaceholder?: boolean;
+  identityDataUris?: { front: string; rear: string; interior: string };
 }): Promise<ImagineThumbResult> {
   const editSource = opts.listingPhotosArePlaceholder ? "inferred" : "photographed";
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
 
-  const views = selectIdentityViews(opts.referencePhotoUrls || []);
-  const frontUrl = views.front ? upgradeImageUrl(views.front) : "";
-  if (!frontUrl) return { ok: false, mode: "error", error: "No listing photos to render from" };
-
-  const prompt = buildThumbEditPrompt(opts.car);
+  const fromUploads = Boolean(opts.identityDataUris?.front);
+  const prompt = buildThumbEditPrompt(opts.car, { fromUploads });
   const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
 
   try {
-    const [front, rear, interior] = await Promise.all([
-      fetchImageAsDataUri(frontUrl),
-      views.rear ? fetchImageAsDataUri(upgradeImageUrl(views.rear)) : Promise.resolve(null),
-      views.interior ? fetchImageAsDataUri(upgradeImageUrl(views.interior)) : Promise.resolve(null),
-    ]);
+    let front: string | null = null;
+    let rear: string | null = null;
+    let interior: string | null = null;
+
+    if (opts.identityDataUris?.front) {
+      front = opts.identityDataUris.front;
+      rear = opts.identityDataUris.rear || null;
+      interior = opts.identityDataUris.interior || null;
+    } else {
+      const views = selectIdentityViews(opts.referencePhotoUrls || []);
+      const frontUrl = views.front ? upgradeImageUrl(views.front) : "";
+      if (!frontUrl) return { ok: false, mode: "error", error: "No listing photos to render from" };
+      const downloaded = await Promise.all([
+        fetchImageAsDataUri(frontUrl),
+        views.rear ? fetchImageAsDataUri(upgradeImageUrl(views.rear)) : Promise.resolve(null),
+        views.interior ? fetchImageAsDataUri(upgradeImageUrl(views.interior)) : Promise.resolve(null),
+      ]);
+      front = downloaded[0];
+      rear = downloaded[1];
+      interior = downloaded[2];
+    }
+
     if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };
 
     const sheet = buildIdentityContactSheet({ front, rear, interior }) || front;

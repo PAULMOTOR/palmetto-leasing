@@ -288,3 +288,78 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   `;
   return { ok: true, hasApiKey: true, updatedAt: now, source: "photographed" };
 }
+
+function isJpegDataUri(s: string): boolean {
+  return (
+    typeof s === "string" &&
+    s.length > 800 &&
+    s.length < 900_000 &&
+    /^data:image\/jpe?g;base64,/i.test(s)
+  );
+}
+
+export async function generateVehicleThumbFromUploads(
+  vehicleId: string,
+  uploads: { front: string; rear: string; interior: string },
+): Promise<{
+  ok: boolean;
+  hasApiKey: boolean;
+  error?: string;
+  updatedAt?: string;
+  source?: "photographed" | "inferred";
+}> {
+  const hasApiKey = Boolean(process.env.XAI_API_KEY?.trim());
+  if (!hasApiKey) {
+    return { ok: false, hasApiKey: false, error: "XAI_API_KEY is not set on this deployment" };
+  }
+  if (!isJpegDataUri(uploads.front) || !isJpegDataUri(uploads.rear) || !isJpegDataUri(uploads.interior)) {
+    return { ok: false, hasApiKey: true, error: "Need three JPEG uploads (front, rear, seats)" };
+  }
+
+  const sql = await getSql();
+  await ensurePortalSchema();
+  const rows = await sql<{
+    id: string;
+    year: number;
+    make: string;
+    model: string;
+    trim: string;
+    exterior_color: string;
+    interior_color: string;
+    body_style: string;
+  }>`
+    select id, year, make, model, trim, exterior_color, interior_color, body_style
+    from vehicles
+    where id = ${vehicleId.trim()} and status = 'active'
+    limit 1
+  `;
+  const r = rows[0];
+  if (!r) return { ok: false, hasApiKey: true, error: "Vehicle not found" };
+
+  const imag = await generateVehicleThumbnail({
+    car: {
+      year: Number(r.year),
+      make: r.make,
+      model: r.model,
+      trim: r.trim,
+      exteriorColor: r.exterior_color,
+      interiorColor: r.interior_color,
+      bodyStyle: r.body_style,
+    },
+    identityDataUris: uploads,
+    listingPhotosArePlaceholder: false,
+  });
+  if (!imag.ok || !imag.url || !isStudioThumbUrl(imag.url)) {
+    return { ok: false, hasApiKey: true, error: imag.error || "Imagine returned no studio image" };
+  }
+
+  const now = new Date().toISOString();
+  await sql`
+    update vehicles
+    set thumbnail_url = ${imag.url},
+        thumbnail_source = ${"photographed"},
+        updated_at = now()
+    where id = ${r.id}
+  `;
+  return { ok: true, hasApiKey: true, updatedAt: now, source: "photographed" };
+}

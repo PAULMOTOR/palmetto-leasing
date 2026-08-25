@@ -34,12 +34,15 @@ function cabinInstruction(car: ThumbSubject): string {
   return "CABIN: copy the bottom-right seat strip exactly. Black stays black, yellow trim stays yellow. Do not default to red seats.";
 }
 
-export function buildThumbEditPrompt(car: ThumbSubject): string {
+export function buildThumbEditPrompt(car: ThumbSubject, opts?: { fromUploads?: boolean }): string {
   const label = vehicleDisplayTitle(car);
+  const source = opts?.fromUploads
+    ? `Image 1 was built ONLY from three photos an operator uploaded for this VIN. LARGE TOP = front 3/4 (paint, this car). Bottom-left = rear 3/4 (slats vs glass, wing). Bottom-right = seats. Ignore listing color text if it disagrees with those photos.`
+    : `Image 1 is a contact sheet of THIS VIN (not the output). LARGE TOP = main dealer photo (paint, this car). Bottom-left = rear (slats vs glass, wing). Bottom-right = seats.`;
 
   return (
     `Catalog still of this exact ${label}. ${paintInstruction(car)} ${cabinInstruction(car)} ` +
-    `Image 1 is a contact sheet of THIS VIN (not the output). LARGE TOP = main dealer photo (paint, this car). Bottom-left = rear (slats vs glass, wing). Bottom-right = seats. ` +
+    `${source} ` +
     `Image 2 is a greyscale camera plate — camera and studio only, ignore its body color. ` +
     `ONE overhead car. Never a collage, never a 3/4 hero. ` +
     `High boom, long telephoto, nose at the BOTTOM, whole car ~70% of the square. Wheels straight. Headlights OFF. ` +

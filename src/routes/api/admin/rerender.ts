@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { generateVehicleThumbById } from "@/lib/imagine/batch-thumbs";
+import {
+  generateVehicleThumbById,
+  generateVehicleThumbFromUploads,
+} from "@/lib/imagine/batch-thumbs";
 
 export const maxDuration = 120;
 
@@ -21,9 +24,15 @@ async function handle(request: Request) {
       sha: process.env.VERCEL_GIT_COMMIT_SHA || "local",
     });
   }
-  let body: { token?: string; vehicleId?: string } = {};
+  let body: {
+    token?: string;
+    vehicleId?: string;
+    front?: string;
+    rear?: string;
+    interior?: string;
+  } = {};
   try {
-    body = (await request.json()) as { token?: string; vehicleId?: string };
+    body = (await request.json()) as typeof body;
   } catch {
     return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
@@ -34,11 +43,18 @@ async function handle(request: Request) {
   if (!vehicleId) {
     return Response.json({ ok: false, error: "Missing vehicle" }, { status: 400 });
   }
+  const hasUploads = Boolean(body.front && body.rear && body.interior);
   try {
-    const result = await generateVehicleThumbById(vehicleId);
+    const result = hasUploads
+      ? await generateVehicleThumbFromUploads(vehicleId, {
+          front: String(body.front),
+          rear: String(body.rear),
+          interior: String(body.interior),
+        })
+      : await generateVehicleThumbById(vehicleId);
     return Response.json({
       ...result,
-      recipe: "1k-b64",
+      recipe: hasUploads ? "uploads-1k" : "1k-b64",
       sha: process.env.VERCEL_GIT_COMMIT_SHA || "local",
     });
   } catch (err) {
