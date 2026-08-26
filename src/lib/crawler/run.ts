@@ -17,6 +17,7 @@ import {
 } from "@/lib/imagine/thumb-source";
 import { listingFingerprint } from "./parse-vehicles";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
+import { selectImagineRefs } from "@/lib/leasing/gallery";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { sweepDeadListings } from "./dead-listings";
 
@@ -325,12 +326,18 @@ async function runInventoryCrawlInner(opts?: {
       }).slice(0, MAX_IMAGINE_PER_CRAWL);
 
       for (const item of batch) {
-        const photos = parsePhotos(item.photo_urls);
+        const photos = [
+          ...parsePhotos(item.photo_urls),
+          ...(item.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(item.thumbnail_url)
+            ? [item.thumbnail_url]
+            : []),
+        ];
         const placeholder = isPlaceholderListing(item.specs_json);
         const actual = listingHasActualDealerPhotos(photos, {
           placeholder,
           source: parseSpecs(item.specs_json).source,
         });
+        if (!selectImagineRefs(photos, { limit: 1 }).length) continue;
         const imag = await generateVehicleThumbnail({
           car: {
             year: item.year,

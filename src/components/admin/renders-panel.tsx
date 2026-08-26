@@ -194,9 +194,14 @@ export function RendersPanel({
                     alt=""
                     className="h-full w-full object-cover object-center"
                   />
-                  {!r.hasStudio && (
+                  {!r.hasStudio && r.hasListingPhoto && (
                     <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
                       Dealer photo
+                    </span>
+                  )}
+                  {!r.hasStudio && !r.hasListingPhoto && (
+                    <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                      No photo
                     </span>
                   )}
                   {r.inferred && (

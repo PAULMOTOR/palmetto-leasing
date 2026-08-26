@@ -36,9 +36,9 @@ function isPromoOrChrome(url: string): boolean {
   }
   // AutoTrader static site assets (not listing photos)
   if (/autotrader\.ca\/assets\//i.test(u) && !/listing/i.test(u)) return true;
-  if (/autotrader\.ca\/images\//i.test(u) && !/listing|vehicle|inventory|dealer/i.test(u)) {
-    return true;
-  }
+  // AutoTrader dealer chrome (building / logo), not the car
+  if (/pictures\.autoscout24\.net\/dealer-info\//i.test(u)) return true;
+  if (/\/dealer-info\//i.test(u) && /autoscout24/i.test(u)) return true;
   // Social / tracking / app store badges
   if (/apple-touch|android-chrome|mstile|opengraph-default|share-default/i.test(u)) return true;
   // PNGs on marketing paths with alpha (ads) — ban non-listing pngs from AT

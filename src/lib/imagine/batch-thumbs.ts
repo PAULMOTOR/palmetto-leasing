@@ -231,9 +231,13 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   if (!r) return { ok: false, hasApiKey: true, error: "Vehicle not found" };
 
   const stored = parsePhotos(r.photo_urls);
-  let photos = stored;
-  // Only scrape the VDP if we have no usable listing photos (keeps re-render ~15–20s).
-  const haveListing = listingPhotosInDealerOrder(stored, 4).length > 0;
+  const thumbHttp =
+    r.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(r.thumbnail_url)
+      ? [r.thumbnail_url]
+      : [];
+  let photos = [...stored, ...thumbHttp];
+  // Scrape the VDP when we don't have a real walkaround (AT SRP is often 1 cover).
+  const haveListing = listingPhotosInDealerOrder(photos, 4).length >= 2;
   if (!haveListing && r.dealer_listing_url?.startsWith("http")) {
     const live = await Promise.race([
       fetchListingGallery(r.dealer_listing_url, { limit: 12 }),
@@ -241,7 +245,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
         setTimeout(() => resolve({ photos: [] }), 6_000),
       ),
     ]);
-    if (live.photos.length) photos = [...live.photos, ...stored];
+    if (live.photos.length) photos = [...live.photos, ...photos];
   }
   const ordered = listingPhotosInDealerOrder(photos, 16);
   if (selectImagineRefs(ordered, { limit: 1 }).length === 0) {
