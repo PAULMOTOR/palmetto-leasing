@@ -9,13 +9,17 @@ import {
   saveQuoteSettings,
 } from "./quote-config";
 import { DEFAULT_QUOTE_SETTINGS } from "./calc";
-import { activeDealers } from "./catalog";
-import { DEALERS } from "./seed";
 
 const ADMIN_PIN = () => process.env.ADMIN_PIN?.trim() || "palmetto";
-const DEALER_PIN = () => process.env.DEALER_PIN?.trim() || "dealer";
 
 export { loadQuoteSettings };
+
+export {
+  dealerPortalLogin,
+  getDealerPortal,
+  listActiveDealersForLogin,
+  requestImageFix,
+} from "@/lib/dealer/portal";
 
 export const getQuoteSettings = createServerFn({ method: "GET" }).handler(async () => {
   return loadQuoteSettingsAsync();
@@ -53,27 +57,6 @@ export const verifyAdminPin = createServerFn({ method: "POST" })
     return { ok: true as const, token: "admin-ok" as const };
   });
 
-export const dealerPortalLogin = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
-    z.object({ dealerId: z.string().min(1), pin: z.string().min(1).max(64) }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const d = DEALERS.find((x) => x.id === data.dealerId);
-    if (!d) return { ok: false as const };
-    if (data.pin !== DEALER_PIN() && data.pin !== ADMIN_PIN()) return { ok: false as const };
-    return {
-      ok: true as const,
-      token: `dealer:${d.id}`,
-      dealer: {
-        id: d.id,
-        name: d.name,
-        referralFeeBps: 150,
-        quoteRateOffsetBps: 0,
-        active: d.active,
-      },
-    };
-  });
-
 export const updateDealerPortalSettings = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
@@ -93,44 +76,6 @@ export const updateDealerPortalSettings = createServerFn({ method: "POST" })
       quoteRateOffsetBps: data.quoteRateOffsetBps,
     };
   });
-
-export const getDealerPortal = createServerFn({ method: "GET" })
-  .validator((input: unknown) => z.object({ token: z.string().min(1) }).parse(input))
-  .handler(async ({ data }) => {
-    if (!data.token.startsWith("dealer:")) throw new Error("Unauthorized");
-    const dealerId = data.token.slice("dealer:".length);
-    const d = DEALERS.find((x) => x.id === dealerId);
-    if (!d) throw new Error("Dealer not found");
-    return {
-      dealer: {
-        id: d.id,
-        name: d.name,
-        city: d.city,
-        province: d.province,
-        referralFeeBps: 150,
-        quoteRateOffsetBps: 0,
-        active: d.active,
-        inventoryUrl: d.inventory_url,
-      },
-      referrals: [] as {
-        id: number;
-        vehicle_label: string;
-        customer_name: string;
-        monthly_payment_cents: number;
-        status: string;
-        created_at: string;
-      }[],
-    };
-  });
-
-export const listActiveDealersForLogin = createServerFn({ method: "GET" }).handler(async () => {
-  return activeDealers().map((d) => ({
-    id: d.id,
-    name: d.name,
-    city: d.city,
-    province: d.province,
-  }));
-});
 
 export const clientLookup = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ email: z.string().email() }).parse(input))

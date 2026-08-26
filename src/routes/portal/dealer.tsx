@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   getDealerPortal,
+  requestImageFix,
   updateDealerPortalSettings,
 } from "@/lib/leasing/settings";
-import { formatCadExact } from "@/lib/utils";
+import { formatCad, formatCadExact, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,8 @@ function DealerPortalPage() {
   const [referralBps, setReferralBps] = useState(150);
   const [offsetBps, setOffsetBps] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const t = sessionStorage.getItem("palmetto_dealer_token");
@@ -69,6 +72,28 @@ function DealerPortalPage() {
     }
   }
 
+  async function onRequestFix(vehicleId: string, title: string) {
+    if (!token) return;
+    setBusyId(vehicleId);
+    try {
+      const res = await requestImageFix({
+        data: { token, vehicleId, note: notes[vehicleId] || "" },
+      });
+      if (res.throttled) {
+        toast.message("Already requested", { description: "Try again in a few minutes." });
+        return;
+      }
+      toast.success("Fix requested", {
+        description: `${title} — Palmetto was emailed.`,
+      });
+      setNotes((prev) => ({ ...prev, [vehicleId]: "" }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send request");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   function signOut() {
     sessionStorage.removeItem("palmetto_dealer_token");
     void nav({ to: "/login" });
@@ -82,10 +107,19 @@ function DealerPortalPage() {
     );
   }
 
-  const { dealer, referrals } = data;
+  const { dealer, referrals, vehicles = [] } = data as typeof data & {
+    vehicles?: {
+      id: string;
+      title: string;
+      priceCents: number;
+      mileage: number;
+      hasStudio: boolean;
+      tileUrl: string;
+    }[];
+  };
 
   return (
-    <div className="mx-auto max-w-[800px] px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[10px] tracking-[0.2em] text-fg-subtle uppercase">Dealer portal</p>
@@ -104,6 +138,59 @@ function DealerPortalPage() {
           </Button>
         </div>
       </div>
+
+      <section className="mb-8">
+        <h2 className="text-sm font-medium">Your Palmetto tiles</h2>
+        <p className="mt-1 max-w-2xl text-xs text-fg-muted">
+          These are the studio images shoppers see. If one is the wrong colour, angle, or car,
+          request an image fix — Palmetto will re-render it.
+        </p>
+        {vehicles.length === 0 ? (
+          <p className="mt-6 rounded-[var(--radius-xl)] border border-border bg-surface px-5 py-10 text-center text-sm text-fg-muted">
+            No live listings on Palmetto yet.
+          </p>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {vehicles.map((v) => (
+              <article
+                key={v.id}
+                className="overflow-hidden rounded-[var(--radius-xl)] border border-border bg-surface"
+              >
+                <div className="relative aspect-square bg-white">
+                  <img src={v.tileUrl} alt="" className="h-full w-full object-cover object-center" />
+                  {!v.hasStudio && (
+                    <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                      Dealer photo
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2 p-3">
+                  <h3 className="text-[13px] leading-snug text-fg">{v.title}</h3>
+                  <p className="text-[12px] tabular-nums text-fg-muted">
+                    {formatCad(v.priceCents)} · {formatNumber(v.mileage)} km
+                  </p>
+                  <textarea
+                    rows={2}
+                    value={notes[v.id] || ""}
+                    onChange={(e) => setNotes((prev) => ({ ...prev, [v.id]: e.target.value }))}
+                    placeholder="What’s wrong? (colour, slats, seats…)"
+                    className="w-full resize-none rounded-lg border border-border bg-canvas px-2 py-1.5 text-[11px] outline-none focus:border-accent"
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={busyId === v.id}
+                    onClick={() => void onRequestFix(v.id, v.title)}
+                  >
+                    {busyId === v.id ? <Loader2 className="animate-spin" /> : null}
+                    Request image fix
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <form
         onSubmit={onSave}

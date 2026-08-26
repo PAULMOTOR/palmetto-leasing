@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import {
   addDealer,
   deleteDealer,
@@ -9,6 +10,10 @@ import {
   updateDealer,
   type AdminDealer,
 } from "@/lib/admin/dealers";
+import {
+  getImageSupportEmail,
+  updateImageSupportEmail,
+} from "@/lib/admin/image-support";
 import {
   getQuoteSettings,
   updateQuoteSettings,
@@ -28,6 +33,16 @@ import { RendersPanel } from "@/components/admin/renders-panel";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
+  validateSearch: (search: Record<string, unknown>) =>
+    z
+      .object({
+        tab: z.enum(["inventory", "renders"]).optional(),
+        q: z.string().optional(),
+      })
+      .parse({
+        tab: search.tab === "renders" || search.tab === "inventory" ? search.tab : undefined,
+        q: typeof search.q === "string" ? search.q : undefined,
+      }),
   head: () => ({
     meta: [{ title: "Admin | Palmetto" }],
   }),
@@ -36,6 +51,7 @@ export const Route = createFileRoute("/admin")({
 const TOKEN_KEY = "palmetto_admin_token";
 
 function AdminPage() {
+  const { tab: tabQ, q: searchQ } = Route.useSearch();
   const [token, setToken] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [unlocking, setUnlocking] = useState(false);
@@ -44,8 +60,9 @@ function AdminPage() {
   const [settings, setSettings] = useState<QuoteSettings | null>(null);
   const [crawling, setCrawling] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [tab, setTab] = useState<"inventory" | "renders">("inventory");
+  const [tab, setTab] = useState<"inventory" | "renders">(tabQ === "renders" ? "renders" : "inventory");
   const [hasImagineKey, setHasImagineKey] = useState<boolean | null>(null);
+  const [imageEmail, setImageEmail] = useState("Jeremyp@paulmotorcompany.com");
   const [thumbStats, setThumbStats] = useState<{ imagined: number; missing: number } | null>(null);
   const [runs, setRuns] = useState<
     {
@@ -67,14 +84,18 @@ function AdminPage() {
   const refresh = useCallback(async (t: string) => {
     setLoading(true);
     try {
-      const [rows, qs, crawlRuns, stats] = await Promise.all([
+      const [rows, qs, crawlRuns, stats, image] = await Promise.all([
         listAdminDealers({ data: { token: t } }),
         getQuoteSettings(),
         getRecentCrawlRuns().catch(() => []),
         getInventoryStats().catch(() => null),
+        getImageSupportEmail({ data: { token: t } }).catch(() => ({
+          email: "Jeremyp@paulmotorcompany.com",
+        })),
       ]);
       setDealers(rows);
       setSettings(qs);
+      setImageEmail(image.email);
       if (stats) {
         setHasImagineKey(Boolean((stats as { hasImagineKey?: boolean }).hasImagineKey));
         setThumbStats({
@@ -264,6 +285,7 @@ function AdminPage() {
           token={token}
           imagined={thumbStats?.imagined}
           missing={thumbStats?.missing}
+          initialQuery={searchQ || ""}
         />
       ) : (
         <>
@@ -272,6 +294,13 @@ function AdminPage() {
           token={token}
           initial={settings}
           onSaved={(s) => setSettings(s)}
+        />
+      )}
+      {token && (
+        <ImageSupportEmailEditor
+          token={token}
+          initial={imageEmail}
+          onSaved={setImageEmail}
         />
       )}
 
@@ -319,6 +348,66 @@ function AdminPage() {
         </>
       )}
     </div>
+  );
+}
+
+function ImageSupportEmailEditor({
+  token,
+  initial,
+  onSaved,
+}: {
+  token: string;
+  initial: string;
+  onSaved: (email: string) => void;
+}) {
+  const [email, setEmail] = useState(initial);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEmail(initial);
+  }, [initial]);
+
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await updateImageSupportEmail({ data: { token, email } });
+      onSaved(res.email);
+      toast.success("Image support email saved", { description: res.email });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={onSave}
+      className="mb-6 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)]"
+    >
+      <h2 className="text-sm font-medium">Image / support email</h2>
+      <p className="mt-0.5 text-[11px] text-fg-subtle">
+        Dealer “Request image fix” emails go here. Assign a staff member anytime.
+      </p>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1">
+          <Label htmlFor="img-email">Email</Label>
+          <Input
+            id="img-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="mt-1"
+          />
+        </div>
+        <Button type="submit" disabled={saving}>
+          {saving ? <Loader2 className="animate-spin" /> : null}
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }
 

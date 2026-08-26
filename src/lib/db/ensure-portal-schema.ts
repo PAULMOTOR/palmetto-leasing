@@ -23,6 +23,19 @@ export function ensurePortalSchema(): Promise<void> {
       `alter table crm_leads add column if not exists contract_status text not null default 'none'`,
       `alter table crm_leads add column if not exists buyout_cents bigint`,
       `alter table vehicles add column if not exists thumbnail_source text not null default ''`,
+      `create table if not exists image_fix_requests (
+        id bigserial primary key,
+        dealership_id text not null,
+        vehicle_id text not null,
+        note text not null default '',
+        emailed_to text not null default '',
+        email_ok boolean not null default false,
+        email_error text not null default '',
+        created_at timestamptz not null default now()
+      )`,
+      `insert into app_meta (key, value, updated_at)
+        values ('image_support_email', 'Jeremyp@paulmotorcompany.com', now())
+        on conflict (key) do nothing`,
     ];
     for (const text of stmts) {
       try {

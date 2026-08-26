@@ -45,14 +45,16 @@ export function RendersPanel({
   token,
   imagined,
   missing,
+  initialQuery = "",
 }: {
   token: string;
   imagined?: number;
   missing?: number;
+  initialQuery?: string;
 }) {
   const [rows, setRows] = useState<AdminRenderRow[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [uploads, setUploads] = useState<Record<string, Triple>>({});
 
