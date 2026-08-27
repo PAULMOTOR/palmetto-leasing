@@ -11,6 +11,10 @@ import { formatCad, formatNumber } from "@/lib/utils";
 const DEALER_PIN = () => process.env.DEALER_PIN?.trim() || "dealer";
 const ADMIN_PIN = () => process.env.ADMIN_PIN?.trim() || "palmetto";
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">");
+}
+
 function dealerIdFromToken(token: string): string {
   if (!token.startsWith("dealer:")) throw new Error("Unauthorized");
   return token.slice("dealer:".length);
@@ -255,7 +259,7 @@ export const requestImageFix = createServerFn({ method: "POST" })
       </table>
       <p><a href="${adminUrl}">Open Palmetto admin → Renders (filtered)</a></p>
       <p><img src="${tileUrl}" alt="${title}" width="320" style="max-width:100%;border-radius:12px;border:1px solid #ddd"/></p>
-      ${note ? `<p><strong>Dealer note:</strong><br/>${note.replace(/</g, "<")}</p>` : ""}
+      ${note ? `<p><strong>Dealer note:</strong><br/>${escapeHtml(note)}</p>` : ""}
       <p style="color:#666;font-size:12px">Admin → Renders → search the title → Re-render or drop Front 3/4, Rear 3/4, Seats then Render from uploads.</p>
     `;
 
@@ -280,9 +284,7 @@ export const requestImageFix = createServerFn({ method: "POST" })
 
     if (!mailed.ok) {
       throw new Error(
-        mailed.error?.includes("RESEND_API_KEY")
-          ? "Request saved, but email is not configured on the server yet"
-          : `Request saved, email failed: ${mailed.error}`,
+        mailed.error || "Request saved, but the image-support email could not be sent",
       );
     }
     return { ok: true as const, emailed: true as const, throttled: false as const };

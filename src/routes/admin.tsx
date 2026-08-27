@@ -12,6 +12,7 @@ import {
 } from "@/lib/admin/dealers";
 import {
   getImageSupportEmail,
+  listImageFixRequests,
   updateImageSupportEmail,
 } from "@/lib/admin/image-support";
 import {
@@ -63,6 +64,11 @@ function AdminPage() {
   const [tab, setTab] = useState<"inventory" | "renders">(tabQ === "renders" ? "renders" : "inventory");
   const [hasImagineKey, setHasImagineKey] = useState<boolean | null>(null);
   const [imageEmail, setImageEmail] = useState("Jeremyp@paulmotorcompany.com");
+  const [mailReady, setMailReady] = useState(false);
+  const [smtpUser, setSmtpUser] = useState("");
+  const [fixReqs, setFixReqs] = useState<
+    Awaited<ReturnType<typeof listImageFixRequests>>
+  >([]);
   const [thumbStats, setThumbStats] = useState<{ imagined: number; missing: number } | null>(null);
   const [runs, setRuns] = useState<
     {
@@ -84,18 +90,25 @@ function AdminPage() {
   const refresh = useCallback(async (t: string) => {
     setLoading(true);
     try {
-      const [rows, qs, crawlRuns, stats, image] = await Promise.all([
+      const [rows, qs, crawlRuns, stats, image, reqs] = await Promise.all([
         listAdminDealers({ data: { token: t } }),
         getQuoteSettings(),
         getRecentCrawlRuns().catch(() => []),
         getInventoryStats().catch(() => null),
         getImageSupportEmail({ data: { token: t } }).catch(() => ({
           email: "Jeremyp@paulmotorcompany.com",
+          smtpUser: "",
+          smtpConfigured: false,
+          hasResend: false,
         })),
+        listImageFixRequests({ data: { token: t } }).catch(() => []),
       ]);
       setDealers(rows);
       setSettings(qs);
       setImageEmail(image.email);
+      setSmtpUser(image.smtpUser || "");
+      setMailReady(Boolean(image.smtpConfigured || image.hasResend));
+      setFixReqs(reqs);
       if (stats) {
         setHasImagineKey(Boolean((stats as { hasImagineKey?: boolean }).hasImagineKey));
         setThumbStats({
@@ -300,7 +313,12 @@ function AdminPage() {
         <ImageSupportEmailEditor
           token={token}
           initial={imageEmail}
-          onSaved={setImageEmail}
+          smtpUser={smtpUser}
+          mailReady={mailReady}
+          requests={fixReqs}
+          onSaved={async () => {
+            if (token) await refresh(token);
+          }}
         />
       )}
 
@@ -354,26 +372,48 @@ function AdminPage() {
 function ImageSupportEmailEditor({
   token,
   initial,
+  smtpUser: smtpUserIn,
+  mailReady,
+  requests,
   onSaved,
 }: {
   token: string;
   initial: string;
-  onSaved: (email: string) => void;
+  smtpUser: string;
+  mailReady: boolean;
+  requests: Awaited<ReturnType<typeof listImageFixRequests>>;
+  onSaved: () => void | Promise<void>;
 }) {
   const [email, setEmail] = useState(initial);
+  const [gmailUser, setGmailUser] = useState(smtpUserIn || initial);
+  const [appPass, setAppPass] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setEmail(initial);
-  }, [initial]);
+    if (smtpUserIn) setGmailUser(smtpUserIn);
+  }, [initial, smtpUserIn]);
 
-  async function onSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(sendTest: boolean) {
     setSaving(true);
     try {
-      const res = await updateImageSupportEmail({ data: { token, email } });
-      onSaved(res.email);
-      toast.success("Image support email saved", { description: res.email });
+      const res = await updateImageSupportEmail({
+        data: {
+          token,
+          email,
+          smtpUser: gmailUser,
+          smtpPass: appPass || undefined,
+          sendTest,
+        },
+      });
+      if (sendTest) {
+        if (res.test?.ok) toast.success("Test email sent", { description: email });
+        else toast.error(res.test?.error || "Test email failed");
+      } else {
+        toast.success("Mail settings saved", { description: email });
+      }
+      setAppPass("");
+      await onSaved();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -383,16 +423,31 @@ function ImageSupportEmailEditor({
 
   return (
     <form
-      onSubmit={onSave}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit(false);
+      }}
       className="mb-6 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)]"
     >
       <h2 className="text-sm font-medium">Image / support email</h2>
       <p className="mt-0.5 text-[11px] text-fg-subtle">
-        Dealer “Request image fix” emails go here. Assign a staff member anytime.
+        Dealer “Request image fix” goes here. Gmail sending uses an{" "}
+        <a
+          className="underline"
+          href="https://myaccount.google.com/apppasswords"
+          target="_blank"
+          rel="noreferrer"
+        >
+          App password
+        </a>{" "}
+        (2-Step Verification must be on).
       </p>
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1">
-          <Label htmlFor="img-email">Email</Label>
+      <p className={`mt-2 text-[11px] ${mailReady ? "text-success" : "text-fg-subtle"}`}>
+        {mailReady ? "Mailer ready" : "Mailer not configured — paste a Gmail app password below, then Send test"}
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="img-email">Notify email</Label>
           <Input
             id="img-email"
             type="email"
@@ -402,11 +457,57 @@ function ImageSupportEmailEditor({
             className="mt-1"
           />
         </div>
+        <div>
+          <Label htmlFor="gmail-user">Send from Gmail</Label>
+          <Input
+            id="gmail-user"
+            type="email"
+            value={gmailUser}
+            onChange={(e) => setGmailUser(e.target.value)}
+            placeholder="Jeremyp@paulmotorcompany.com"
+            className="mt-1"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="gmail-pass">Gmail app password</Label>
+          <Input
+            id="gmail-pass"
+            type="password"
+            value={appPass}
+            onChange={(e) => setAppPass(e.target.value)}
+            placeholder={mailReady ? "•••• already saved" : "xxxx xxxx xxxx xxxx"}
+            autoComplete="new-password"
+            className="mt-1"
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
         <Button type="submit" disabled={saving}>
           {saving ? <Loader2 className="animate-spin" /> : null}
           Save
         </Button>
+        <Button type="button" variant="secondary" disabled={saving} onClick={() => void submit(true)}>
+          Save & send test
+        </Button>
       </div>
+      {requests.length > 0 && (
+        <div className="mt-5 border-t border-border pt-4">
+          <h3 className="text-xs font-medium text-fg-muted">Recent image-fix requests</h3>
+          <ul className="mt-2 divide-y divide-border text-xs">
+            {requests.slice(0, 8).map((r) => (
+              <li key={r.id} className="flex flex-wrap justify-between gap-2 py-1.5">
+                <span>
+                  {r.dealer_name} · {r.title}
+                  {r.note ? ` — ${r.note}` : ""}
+                </span>
+                <span className={r.email_ok ? "text-success" : "text-fg-subtle"}>
+                  {r.email_ok ? "emailed" : r.email_error || "not emailed"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </form>
   );
 }
