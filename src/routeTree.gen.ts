@@ -18,6 +18,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaseSlugRouteImport } from './routes/lease/$slug'
 import { Route as PortalClientRouteImport } from './routes/portal/client'
 import { Route as PortalDealerRouteImport } from './routes/portal/dealer'
+import { Route as ApiAdminMailRouteImport } from './routes/api/admin/mail'
+import { Route as ApiAdminRerenderRouteImport } from './routes/api/admin/rerender'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronCrawlRouteImport } from './routes/api/cron/crawl'
 import { Route as ApiThumbIdRouteImport } from './routes/api/thumb.$id'
@@ -67,6 +69,16 @@ const PortalDealerRoute = PortalDealerRouteImport.update({
   path: '/portal/dealer',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminMailRoute = ApiAdminMailRouteImport.update({
+  id: '/api/admin/mail',
+  path: '/api/admin/mail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminRerenderRoute = ApiAdminRerenderRouteImport.update({
+  id: '/api/admin/rerender',
+  path: '/api/admin/rerender',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -93,6 +105,8 @@ export interface FileRoutesByFullPath {
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
+  '/api/admin/mail': typeof ApiAdminMailRoute
+  '/api/admin/rerender': typeof ApiAdminRerenderRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
@@ -107,6 +121,8 @@ export interface FileRoutesByTo {
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
+  '/api/admin/mail': typeof ApiAdminMailRoute
+  '/api/admin/rerender': typeof ApiAdminRerenderRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
@@ -122,6 +138,8 @@ export interface FileRoutesById {
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
+  '/api/admin/mail': typeof ApiAdminMailRoute
+  '/api/admin/rerender': typeof ApiAdminRerenderRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
@@ -138,6 +156,8 @@ export interface FileRouteTypes {
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
+    | '/api/admin/mail'
+    | '/api/admin/rerender'
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
@@ -152,6 +172,8 @@ export interface FileRouteTypes {
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
+    | '/api/admin/mail'
+    | '/api/admin/rerender'
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
@@ -166,6 +188,8 @@ export interface FileRouteTypes {
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
+    | '/api/admin/mail'
+    | '/api/admin/rerender'
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
@@ -181,6 +205,8 @@ export interface RootRouteChildren {
   LeaseSlugRoute: typeof LeaseSlugRoute
   PortalClientRoute: typeof PortalClientRoute
   PortalDealerRoute: typeof PortalDealerRoute
+  ApiAdminMailRoute: typeof ApiAdminMailRoute
+  ApiAdminRerenderRoute: typeof ApiAdminRerenderRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronCrawlRoute: typeof ApiCronCrawlRoute
   ApiThumbIdRoute: typeof ApiThumbIdRoute
@@ -251,6 +277,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalDealerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/mail': {
+      id: '/api/admin/mail'
+      path: '/api/admin/mail'
+      fullPath: '/api/admin/mail'
+      preLoaderRoute: typeof ApiAdminMailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/rerender': {
+      id: '/api/admin/rerender'
+      path: '/api/admin/rerender'
+      fullPath: '/api/admin/rerender'
+      preLoaderRoute: typeof ApiAdminRerenderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -285,6 +325,8 @@ const rootRouteChildren: RootRouteChildren = {
   LeaseSlugRoute: LeaseSlugRoute,
   PortalClientRoute: PortalClientRoute,
   PortalDealerRoute: PortalDealerRoute,
+  ApiAdminMailRoute: ApiAdminMailRoute,
+  ApiAdminRerenderRoute: ApiAdminRerenderRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronCrawlRoute: ApiCronCrawlRoute,
   ApiThumbIdRoute: ApiThumbIdRoute,
