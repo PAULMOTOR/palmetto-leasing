@@ -18,9 +18,9 @@ export function Header() {
         <button
           type="button"
           onClick={() => setLeaseOpen(true)}
-          className="absolute bottom-2.5 left-4 z-10 max-w-[7.2rem] text-left text-[10px] font-medium leading-tight tracking-[0.14em] text-fg-muted uppercase transition-colors hover:text-fg sm:bottom-3 sm:left-6 sm:max-w-none sm:text-[11px] sm:tracking-[0.18em]"
+          className="absolute bottom-2.5 left-4 z-10 text-left text-[10px] font-medium tracking-[0.18em] text-fg-muted uppercase transition-colors hover:text-fg sm:bottom-3 sm:left-6 sm:text-[11px]"
         >
-          Lease the smart way
+          Why lease
         </button>
 
         {/* Dead-center of content column = center of middle inventory card */}
@@ -158,56 +158,63 @@ function LeaseTheSmartWayDialog({ onClose }: { onClose: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
   }, [onClose]);
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-black/40 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="lease-smart-title"
       onClick={onClose}
     >
-      <div
-        className="relative max-h-[min(88vh,720px)] w-full max-w-lg overflow-y-auto rounded-[var(--radius-xl)] border border-border bg-surface p-7 shadow-[var(--shadow-card-hover)] sm:p-8"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-3 right-3 rounded-full p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
-          aria-label="Close"
+      <div className="flex min-h-full items-start justify-center sm:items-center">
+        <div
+          className="relative my-4 w-full max-w-lg rounded-[var(--radius-xl)] border border-border bg-surface p-6 shadow-[var(--shadow-card-hover)] sm:my-8 sm:p-8"
+          onClick={(e) => e.stopPropagation()}
         >
-          <X className="size-4" />
-        </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-3 right-3 rounded-full p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
 
-        <h2
-          id="lease-smart-title"
-          className="pr-8 text-base font-bold tracking-tight text-fg sm:text-lg"
-        >
-          Why leasing exotic and collector cars is a smart, strategic move
-        </h2>
+          <h2
+            id="lease-smart-title"
+            className="pr-8 text-base font-bold tracking-tight text-fg sm:text-lg"
+          >
+            Why leasing exotic and collector cars is a smart, strategic move
+          </h2>
 
-        <ul className="mt-5 space-y-4">
-          {SMART_LEASE_POINTS.map((p) => (
-            <li key={p.lead} className="flex gap-2.5 text-sm leading-relaxed text-fg-muted">
-              <span className="mt-[0.55em] size-1.5 shrink-0 rounded-full bg-fg" />
-              <p>
-                <span className="font-bold text-fg">{p.lead}</span> {p.rest}
-              </p>
-            </li>
-          ))}
-        </ul>
+          <ul className="mt-5 space-y-4">
+            {SMART_LEASE_POINTS.map((p) => (
+              <li key={p.lead} className="flex gap-2.5 text-sm leading-relaxed text-fg-muted">
+                <span className="mt-[0.55em] size-1.5 shrink-0 rounded-full bg-fg" />
+                <p>
+                  <span className="font-bold text-fg">{p.lead}</span> {p.rest}
+                </p>
+              </li>
+            ))}
+          </ul>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-full bg-fg text-sm font-medium text-primary-fg transition-opacity hover:opacity-90"
-        >
-          Browse inventory
-        </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-full bg-fg text-sm font-medium text-primary-fg transition-opacity hover:opacity-90"
+          >
+            Browse inventory
+          </button>
+        </div>
       </div>
     </div>
   );
