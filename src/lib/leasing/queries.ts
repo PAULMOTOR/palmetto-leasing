@@ -15,6 +15,7 @@ import { handoffLeaseToCrm } from "@/lib/crm/handoff";
 import { inventoryTileHandoffUrl, publicTileUrl, slimPhotoUrls } from "@/lib/leasing/thumb-url";
 import { ensureSeededInventory, runInventoryCrawl } from "@/lib/crawler/run";
 import { getSql, dbSource } from "@/lib/db";
+import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import type { Vehicle, VehicleCard } from "./types";
 import { parsePhotos, parseSpecs } from "./types";
 import { buildVehicleGalleryPool, listingPhotosInDealerOrder } from "./gallery";
@@ -405,6 +406,10 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
     };
     let vehicleLabel = "";
     let dealerName = "";
+    let dealerSlug = "";
+    let dealerEmail = "";
+    let dealerCity = "";
+    let dealerProvince = "";
     let priceCents = 0;
     let year = "";
     let make = "";
@@ -415,9 +420,18 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
     let image = "";
 
     try {
+      await ensurePortalSchema();
       const sql = await getSql();
-      const rows = await sql<Vehicle & { dealer_name: string }>`
-        select v.*, d.name as dealer_name
+      const rows = await sql<
+        Vehicle & {
+          dealer_name: string;
+          dealer_city: string;
+          dealer_province: string;
+          dealer_email: string;
+        }
+      >`
+        select v.*, d.name as dealer_name, d.city as dealer_city, d.province as dealer_province,
+               coalesce(d.contact_email, '') as dealer_email
         from vehicles v
         join dealerships d on d.id = v.dealership_id
         where v.id = ${data.vehicleId}
@@ -428,6 +442,10 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         priceCents = Number(v.price_cents);
         vehicleLabel = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
         dealerName = v.dealer_name;
+        dealerSlug = v.dealership_id;
+        dealerEmail = v.dealer_email || "";
+        dealerCity = v.dealer_city || "";
+        dealerProvince = v.dealer_province || "";
         year = String(v.year || "");
         make = v.make || "";
         model = v.model || "";
@@ -446,6 +464,9 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       priceCents = v.price_cents;
       vehicleLabel = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
       dealerName = v.dealer_name || "";
+      dealerSlug = v.dealership_id || "";
+      dealerCity = v.dealer_city || "";
+      dealerProvince = v.dealer_province || "";
       year = String(v.year || "");
       make = v.make || "";
       model = v.model || "";
@@ -461,6 +482,10 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
       vehicleId: data.vehicleId,
       vehicleLabel,
       dealerName,
+      dealerSlug,
+      dealerEmail,
+      dealerCity,
+      dealerProvince,
       quote,
       customerName: data.customerName,
       customerEmail: data.customerEmail,

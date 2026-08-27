@@ -92,8 +92,26 @@ Authorization: Bearer {CRM_HANDOFF_SECRET}
 Content-Type: application/json
 ```
 
-Body includes vehicle, quote math, customer fields, and `referenceId`.  
-This site never opens the CRM database.
+Body includes vehicle, quote math, customer fields, `referenceId`, and the **selling dealer slug**:
+
+```json
+{
+  "referenceId": "pml-…",
+  "dealer": {
+    "slug": "ferrari-of-alberta",
+    "name": "Ferrari of Alberta",
+    "email": "sales@ferrari-of-alberta.example",
+    "city": "Calgary",
+    "province": "AB"
+  }
+}
+```
+
+`dealer.slug` is required when Palmetto knows it (`dealerships.id`). Name-only is the fallback.
+
+Palmetto also `GET {CRM_HANDOFF_URL}?status` with the same Bearer token and expects `{ dealers: [{ slug, name, kind }] }` so the posted slug matches a CRM dealer. Status and dashboards stay in the CRM.
+
+Inventory Apply / Lease URLs keep `?dealer={slug}` (example `/?dealer=ferrari-of-alberta`).
 
 ---
 

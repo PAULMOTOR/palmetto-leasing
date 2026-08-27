@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronDown, Loader2, X } from "lucide-react";
+import { z } from "zod";
 import { VehicleCard } from "@/components/inventory/vehicle-card";
 import {
   bootstrapInventory,
@@ -20,6 +21,17 @@ import { cn } from "@/lib/utils";
 import { canonicalMake, uniqueCanonicalMakes } from "@/lib/leasing/makes";
 
 export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>) =>
+    z
+      .object({
+        dealer: z.string().optional(),
+      })
+      .parse({
+        dealer:
+          typeof search.dealer === "string" && /^[a-z0-9-]{2,64}$/i.test(search.dealer)
+            ? search.dealer.toLowerCase()
+            : undefined,
+      }),
   component: InventoryPage,
 });
 
@@ -29,6 +41,8 @@ const FILTER_IDLE_MS = 1200;
 const TOP_ALWAYS_VISIBLE_PX = 48;
 
 function InventoryPage() {
+  const navigate = Route.useNavigate();
+  const search = Route.useSearch();
   const [vehicles, setVehicles] = useState<VehicleCardType[]>([]);
   const [stats, setStats] = useState<{ total: number } | null>(null);
   const [quoteSettings, setQuoteSettings] = useState<QuoteSettings>(DEFAULT_QUOTE_SETTINGS);
@@ -39,7 +53,7 @@ function InventoryPage() {
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [monthly, setMonthly] = useState<MonthlyRangeId | "">("");
-  const [dealer, setDealer] = useState("");
+  const [dealer, setDealer] = useState(search.dealer || "");
 
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [filterPinned, setFilterPinned] = useState(false);
@@ -171,6 +185,13 @@ function InventoryPage() {
     return list;
   }, [dealerPool, year, make, model, monthly]);
 
+  const setDealerParam = (slug: string) => {
+    void navigate({
+      search: { dealer: slug || undefined },
+      replace: true,
+    });
+  };
+
   const hasFilters = Boolean(dealer || year || make || model || monthly);
   const heroThumbs = useMemo(
     () => filtered.slice(0, 3).map((v) => v.thumbnail_url).filter(Boolean),
@@ -182,6 +203,7 @@ function InventoryPage() {
     setMake("");
     setModel("");
     setMonthly("");
+    setDealerParam("");
   };
 
   return (
@@ -236,6 +258,7 @@ function InventoryPage() {
                   setYear("");
                   setMake("");
                   setModel("");
+                  setDealerParam(v);
                 }}
                 options={dealers}
               />
@@ -307,7 +330,13 @@ function InventoryPage() {
                 vehicle={v}
                 index={i}
                 expanded={expandedId === v.id}
-                onToggleLease={() => setExpandedId((id) => (id === v.id ? null : v.id))}
+                onToggleLease={() => {
+                  setExpandedId((id) => {
+                    const next = id === v.id ? null : v.id;
+                    setDealerParam(next ? v.dealership_id : dealer);
+                    return next;
+                  });
+                }}
                 quoteSettings={quoteSettings}
               />
             ))}

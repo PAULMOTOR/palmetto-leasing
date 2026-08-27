@@ -4,6 +4,7 @@
  * Palmetto never opens the CRM database.
  */
 import type { LeaseQuote } from "@/lib/leasing/calc";
+import { resolveDealerSlug } from "@/lib/crm/dealers";
 
 /** Canonical Apply payload (what CRM_HANDOFF_URL receives). */
 export type HandoffPayload = {
@@ -21,7 +22,13 @@ export type HandoffPayload = {
     image?: string;
     photoUrl?: string;
   };
-  dealer: { name: string };
+  dealer: {
+    slug?: string;
+    name: string;
+    email?: string;
+    city?: string;
+    province?: string;
+  };
   price: number;
   down: number;
   residual: number;
@@ -101,6 +108,10 @@ export async function handoffLeaseToCrm(input: {
   vehicleId: string;
   vehicleLabel: string;
   dealerName: string;
+  dealerSlug?: string | null;
+  dealerEmail?: string | null;
+  dealerCity?: string | null;
+  dealerProvince?: string | null;
   quote: LeaseQuote;
   customerName: string;
   customerEmail: string;
@@ -129,6 +140,18 @@ export async function handoffLeaseToCrm(input: {
   const phone = field(input.customerPhone);
   const creditConsent = app.consentCredit === true || app.creditConsent === true;
   const image = publicImageUrl(input.image);
+  const dealerSlug = await resolveDealerSlug({
+    localSlug: input.dealerSlug,
+    localName: input.dealerName,
+  });
+  const dealerName = field(input.dealerName);
+  const dealer = {
+    ...(dealerSlug ? { slug: dealerSlug } : {}),
+    name: dealerName,
+    email: field(input.dealerEmail),
+    city: field(input.dealerCity),
+    province: field(input.dealerProvince),
+  };
 
   const payload: HandoffPayload = {
     referenceId,
@@ -145,7 +168,7 @@ export async function handoffLeaseToCrm(input: {
       image,
       photoUrl: image,
     },
-    dealer: { name: input.dealerName },
+    dealer,
     price: dollarsSeen(input.quote.priceCents),
     down: dollarsSeen(input.quote.downPaymentCents),
     residual: dollarsSeen(input.quote.residualCents),
