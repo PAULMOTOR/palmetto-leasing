@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 
@@ -69,6 +70,11 @@ export function Header() {
   );
 }
 
+function DialogPortal({ children }: { children: React.ReactNode }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
+}
+
 function AboutPalmettoDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,8 +85,9 @@ function AboutPalmettoDialog({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
+    <DialogPortal>
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="about-palmetto-title"
@@ -135,6 +142,7 @@ function AboutPalmettoDialog({ onClose }: { onClose: () => void }) {
         </button>
       </div>
     </div>
+    </DialogPortal>
   );
 }
 
@@ -168,8 +176,9 @@ function LeaseTheSmartWayDialog({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
+    <DialogPortal>
     <div
-      className="fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-black/40 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-[2px]"
+      className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-black/40 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="lease-smart-title"
@@ -217,5 +226,6 @@ function LeaseTheSmartWayDialog({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+    </DialogPortal>
   );
 }
