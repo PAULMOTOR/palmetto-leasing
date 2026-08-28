@@ -19,9 +19,9 @@ const SKIP_RE =
 function isNonListingAsset(url: string): boolean {
   if (!url) return true;
   if (url.startsWith("data:image/")) return true;
-  // Our local seed files only — do NOT match dealer filenames like
-  // `…/Lease-Sniper-…-porsche-911-2026-….jpg` (that was blocking Re-render).
-  if (url.startsWith("/vehicles/") || /(?:^|\/)vehicles\//i.test(url)) return true;
+  // Our local seed files only — do NOT match dealer CDN paths like
+  // `https://….r2.dev/vehicles/<uuid>/exterior-….jpg` (Winding Road).
+  if (url.startsWith("/vehicles/")) return true;
   if (/imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(url)) return true;
   if (/palmetto-style-lock/i.test(url)) return true;
   return false;

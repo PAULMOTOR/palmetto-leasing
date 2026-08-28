@@ -22,8 +22,32 @@ import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { sweepDeadListings } from "./dead-listings";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
-const POOL_VERSION = "11-paul-motor-co";
+const POOL_VERSION = "12-oem-partners";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
+
+function roundRobinByDealer<T extends { dealership_id: string }>(rows: T[], limit: number): T[] {
+  if (rows.length <= limit) return rows;
+  const queues = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = queues.get(row.dealership_id) || [];
+    list.push(row);
+    queues.set(row.dealership_id, list);
+  }
+  const out: T[] = [];
+  const keys = [...queues.keys()];
+  while (out.length < limit) {
+    let added = 0;
+    for (const key of keys) {
+      if (out.length >= limit) break;
+      const next = queues.get(key)?.shift();
+      if (!next) continue;
+      out.push(next);
+      added += 1;
+    }
+    if (!added) break;
+  }
+  return out;
+}
 
 let seedChain: Promise<unknown> = Promise.resolve();
 function enqueueSeed<T>(fn: () => Promise<T>): Promise<T> {
@@ -283,6 +307,7 @@ async function runInventoryCrawlInner(opts?: {
     if (wantThumbs && process.env.XAI_API_KEY?.trim()) {
       const candidates = await sql<{
         id: string;
+        dealership_id: string;
         year: number;
         make: string;
         model: string;
@@ -295,7 +320,7 @@ async function runInventoryCrawlInner(opts?: {
         thumbnail_source: string;
         specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, interior_color, body_style,
+        select id, dealership_id, year, make, model, trim, exterior_color, interior_color, body_style,
                photo_urls, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source,
                specs_json
         from vehicles
@@ -309,9 +334,9 @@ async function runInventoryCrawlInner(opts?: {
         order by
           case when coalesce(thumbnail_source, '') = 'inferred' then 0 else 1 end,
           last_seen_at desc
-        limit ${MAX_IMAGINE_PER_CRAWL * 3}
+        limit ${MAX_IMAGINE_PER_CRAWL * 6}
       `;
-      const batch = candidates.filter((item) => {
+      const eligible = candidates.filter((item) => {
         const placeholder = isPlaceholderListing(item.specs_json);
         const photos = parsePhotos(item.photo_urls);
         const actual = listingHasActualDealerPhotos(photos, {
@@ -323,7 +348,8 @@ async function runInventoryCrawlInner(opts?: {
         if (inferred && studio) return actual;
         if (!studio) return true;
         return false;
-      }).slice(0, MAX_IMAGINE_PER_CRAWL);
+      });
+      const batch = roundRobinByDealer(eligible, MAX_IMAGINE_PER_CRAWL);
 
       for (const item of batch) {
         const photos = [

@@ -216,6 +216,15 @@ function normalizeInventoryUrl(url: string): string {
     if (host === "gtamotorcars.com" && path === "/") return "https://www.gtamotorcars.com/inventory/";
     if (host === "farazautosalesltd.ca" && path === "/") return "https://www.farazautosalesltd.ca/vehicles/used/";
     if (host === "vfcautogroup.ca" && path === "/") return "https://www.vfcautogroup.ca/used-cars";
+    if (host === "ferrariofontario.com") return "https://www.ferrariofontario.com/used/search.html";
+    if (host === "ferrarivancouver.com") return "https://www.ferrarivancouver.com/used/search.html";
+    if (host === "mclarentoronto.ca") return "https://www.mclarentoronto.ca/used/search.html";
+    if (host === "mclarenvancouver.com") return "https://www.mclarenvancouver.com/used/search.html";
+    if (host === "ferrariquebec.com") return "https://ferrariquebec.com/pre-owned-ferrari/";
+    if (host === "windingroad.ca") return "https://windingroad.ca/inventory";
+    if (host === "grandtouringautos.com") return "https://www.grandtouringautos.com/vehicles/pre-owned/";
+    if (host === "mclarenmontreal.com") return "https://www.mclarenmontreal.com/en/preowned-vehicles";
+    if (host === "groupelauzon.com") return "https://www.groupelauzon.com/en/used-inventory/porsche";
   } catch {
     /* keep as-is */
   }

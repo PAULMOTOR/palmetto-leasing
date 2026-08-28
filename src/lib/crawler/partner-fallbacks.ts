@@ -115,6 +115,33 @@ export function expandInventoryUrls(inventoryUrl: string, websiteUrl?: string): 
         extras.push("https://www.vinauto.ca/used-cars");
         extras.push("https://www.vinauto.ca/inventory");
       }
+      if (host === "ferrariofontario.com" && !/used\/search/.test(path)) {
+        extras.push("https://www.ferrariofontario.com/used/search.html");
+      }
+      if (host === "ferrarivancouver.com" && !/used\/search/.test(path)) {
+        extras.push("https://www.ferrarivancouver.com/used/search.html");
+      }
+      if (host === "mclarentoronto.ca" && !/used\/search/.test(path)) {
+        extras.push("https://www.mclarentoronto.ca/used/search.html");
+      }
+      if (host === "mclarenvancouver.com" && !/used\/search/.test(path)) {
+        extras.push("https://www.mclarenvancouver.com/used/search.html");
+      }
+      if (host === "ferrariquebec.com" || host === "www.ferrariquebec.com") {
+        extras.push("https://ferrariquebec.com/pre-owned-ferrari/");
+      }
+      if (host === "windingroad.ca" && !/inventory/.test(path)) {
+        extras.push("https://windingroad.ca/inventory");
+      }
+      if (host === "grandtouringautos.com" && !/pre-owned/.test(path)) {
+        extras.push("https://www.grandtouringautos.com/vehicles/pre-owned/");
+      }
+      if (host === "groupelauzon.com" && !/used-inventory/.test(path)) {
+        extras.push("https://www.groupelauzon.com/en/used-inventory/porsche");
+      }
+      if (host === "mclarenmontreal.com" && !/preowned/.test(path)) {
+        extras.push("https://www.mclarenmontreal.com/en/preowned-vehicles");
+      }
     } catch {
       /* keep original */
     }

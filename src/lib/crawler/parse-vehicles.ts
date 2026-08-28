@@ -27,19 +27,19 @@ export function parseVehiclesFromHtml(html: string, pageUrl: string): RawListing
     /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
   )) {
     try {
-      walkJsonLd(JSON.parse(block[1]!), out, pageUrl);
+      const raw = block[1]!.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
+      walkJsonLd(JSON.parse(raw), out, pageUrl);
     } catch {
       /* ignore */
     }
   }
 
-  let idx = 0;
-  while ((idx = html.indexOf('"@type":"Vehicle"', idx)) !== -1) {
+  const typeRe = /"@type"\s*:\s*"Vehicle"/gi;
+  let typeMatch: RegExpExecArray | null;
+  while ((typeMatch = typeRe.exec(html))) {
+    const idx = typeMatch.index;
     const start = html.lastIndexOf("{", idx);
-    if (start < 0) {
-      idx += 10;
-      continue;
-    }
+    if (start < 0) continue;
     const obj = extractBalancedJson(html, start);
     if (obj) {
       try {
@@ -48,7 +48,6 @@ export function parseVehiclesFromHtml(html: string, pageUrl: string): RawListing
         /* ignore */
       }
     }
-    idx += 10;
   }
 
   return dedupeRawListings(out);
@@ -66,8 +65,10 @@ export function listingFingerprint(r: {
   priceCents: number;
   mileage?: number;
 }): string {
-  if (r.vin && r.vin.length >= 8) return `VIN:${r.vin.toUpperCase()}`;
-  if (r.stock && r.stock.length >= 2) return `STK:${r.stock.toUpperCase()}`;
+  const vin = meaningfulId(r.vin, 8);
+  if (vin) return `VIN:${vin.toUpperCase()}`;
+  const stock = meaningfulId(r.stock, 2);
+  if (stock) return `STK:${stock.toUpperCase()}`;
   const fromUrl = extractIdFromUrl(r.url || "");
   if (fromUrl) return `URL:${fromUrl}`;
   return [
@@ -81,6 +82,14 @@ export function listingFingerprint(r: {
     .join("|")
     .toUpperCase()
     .replace(/\s+/g, "");
+}
+
+function meaningfulId(value: string | undefined, minLen: number): string | undefined {
+  if (!value) return undefined;
+  const t = value.trim();
+  if (t.length < minLen) return undefined;
+  if (/^(n\/a|na|none|unknown|null|undefined|-|—)$/i.test(t)) return undefined;
+  return t;
 }
 
 export function dedupeRawListings(out: RawListing[]): RawListing[] {
@@ -98,8 +107,8 @@ export function dedupeRawListings(out: RawListing[]): RawListing[] {
 
 function extractIdFromUrl(url: string): string | null {
   if (!url) return null;
-  // dealer.com style: ...-id13356253.html
-  const m1 = url.match(/-id(\d+)\.html/i);
+  // dealer.com / SM360: ...-id13356253.html or ...-id39059640
+  const m1 = url.match(/-id(\d+)(?:\.html)?\/?$/i) || url.match(/-id(\d+)/i);
   if (m1) return m1[1]!;
   // magnetis: /pre-owned/2024/make/model/2124
   const m2 = url.match(/\/(\d{3,})\/?$/);
@@ -149,8 +158,10 @@ function walkJsonLd(node: unknown, out: RawListing[], pageUrl: string, depth = 0
   const types = Array.isArray(type) ? type.map(String) : [String(type || "")];
   // Only Vehicle/Car — skip bare Offer/Product to reduce duplicate nodes
   const isVehicle = types.some((t) => /^(Vehicle|Car)$/i.test(t));
+  const isProduct = types.some((t) => /^Product$/i.test(t));
+  const nameLooksCar = /^(19|20)\d{2}\s+\S+/.test(String(o.name || o.mpn || ""));
 
-  if (isVehicle || o.vehicleIdentificationNumber) {
+  if (isVehicle || o.vehicleIdentificationNumber || (isProduct && nameLooksCar)) {
     const listing = toListing(o, pageUrl);
     if (listing) out.push(listing);
   }
@@ -170,7 +181,8 @@ function toListing(o: Record<string, unknown>, pageUrl: string): RawListing | nu
       : String(o.brand || o.manufacturer || "");
 
   const parsed = parseName(name, brand);
-  const year = Number(o.modelYear || o.vehicleModelDate || parsed.year) || new Date().getFullYear();
+  // Prefer the year in the listing title — D2C often ships modelYear as now.
+  const year = Number(parsed.year || o.modelYear || o.vehicleModelDate) || new Date().getFullYear();
   const make = (parsed.make || brand || "Unknown").trim();
   const model = (parsed.model || "Model").trim();
   const trim = parsed.trim;
@@ -178,7 +190,7 @@ function toListing(o: Record<string, unknown>, pageUrl: string): RawListing | nu
   const images = collectImages(o);
   const url = extractUrl(o, pageUrl);
   const vin = o.vehicleIdentificationNumber ? String(o.vehicleIdentificationNumber) : undefined;
-  const stock = o.sku ? String(o.sku) : o.productID != null ? String(o.productID) : undefined;
+  const stock = meaningfulId(o.sku ? String(o.sku) : o.productID != null ? String(o.productID) : undefined, 2);
   const mileage = extractMileage(o);
 
   return {
@@ -214,14 +226,15 @@ function extractPrice(o: Record<string, unknown>): number | null {
 
 function coerceMoney(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) {
-    return v > 1_000_000 ? Math.round(v) : Math.round(v * 100);
+    // JSON-LD Offer.price is dollars. ≥ $100k in cents is ≥ 10_000_000.
+    return v >= 10_000_000 ? Math.round(v) : Math.round(v * 100);
   }
   if (typeof v === "string") {
     const cleaned = v.replace(/[^0-9.]/g, "");
     if (!cleaned) return null;
     const n = Number(cleaned);
     if (!Number.isFinite(n)) return null;
-    return n > 1_000_000 ? Math.round(n) : Math.round(n * 100);
+    return n >= 10_000_000 ? Math.round(n) : Math.round(n * 100);
   }
   return null;
 }
@@ -285,7 +298,7 @@ function parseName(name: string, brand: string): {
     .replace(/\|\s*\*?Pre-?owned\*?.*/i, "")
     .replace(/[_-]/g, " ")
     .trim();
-  const ym = clean.match(/^(20[12]\d)\s+(.+)$/i);
+  const ym = clean.match(/^((?:19|20)\d{2})\s+(.+)$/i);
   let year: number | undefined;
   let rest = clean;
   if (ym) {

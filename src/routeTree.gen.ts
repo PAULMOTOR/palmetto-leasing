@@ -18,6 +18,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaseSlugRouteImport } from './routes/lease/$slug'
 import { Route as PortalClientRouteImport } from './routes/portal/client'
 import { Route as PortalDealerRouteImport } from './routes/portal/dealer'
+import { Route as ApiAdminCrawlRouteImport } from './routes/api/admin/crawl'
 import { Route as ApiAdminMailRouteImport } from './routes/api/admin/mail'
 import { Route as ApiAdminRerenderRouteImport } from './routes/api/admin/rerender'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -69,6 +70,11 @@ const PortalDealerRoute = PortalDealerRouteImport.update({
   path: '/portal/dealer',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminCrawlRoute = ApiAdminCrawlRouteImport.update({
+  id: '/api/admin/crawl',
+  path: '/api/admin/crawl',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminMailRoute = ApiAdminMailRouteImport.update({
   id: '/api/admin/mail',
   path: '/api/admin/mail',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
+  '/api/admin/crawl': typeof ApiAdminCrawlRoute
   '/api/admin/mail': typeof ApiAdminMailRoute
   '/api/admin/rerender': typeof ApiAdminRerenderRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
+  '/api/admin/crawl': typeof ApiAdminCrawlRoute
   '/api/admin/mail': typeof ApiAdminMailRoute
   '/api/admin/rerender': typeof ApiAdminRerenderRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
+  '/api/admin/crawl': typeof ApiAdminCrawlRoute
   '/api/admin/mail': typeof ApiAdminMailRoute
   '/api/admin/rerender': typeof ApiAdminRerenderRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
+    | '/api/admin/crawl'
     | '/api/admin/mail'
     | '/api/admin/rerender'
     | '/api/auth/$'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
+    | '/api/admin/crawl'
     | '/api/admin/mail'
     | '/api/admin/rerender'
     | '/api/auth/$'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
+    | '/api/admin/crawl'
     | '/api/admin/mail'
     | '/api/admin/rerender'
     | '/api/auth/$'
@@ -205,6 +217,7 @@ export interface RootRouteChildren {
   LeaseSlugRoute: typeof LeaseSlugRoute
   PortalClientRoute: typeof PortalClientRoute
   PortalDealerRoute: typeof PortalDealerRoute
+  ApiAdminCrawlRoute: typeof ApiAdminCrawlRoute
   ApiAdminMailRoute: typeof ApiAdminMailRoute
   ApiAdminRerenderRoute: typeof ApiAdminRerenderRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -277,6 +290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalDealerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/crawl': {
+      id: '/api/admin/crawl'
+      path: '/api/admin/crawl'
+      fullPath: '/api/admin/crawl'
+      preLoaderRoute: typeof ApiAdminCrawlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/mail': {
       id: '/api/admin/mail'
       path: '/api/admin/mail'
@@ -325,6 +345,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeaseSlugRoute: LeaseSlugRoute,
   PortalClientRoute: PortalClientRoute,
   PortalDealerRoute: PortalDealerRoute,
+  ApiAdminCrawlRoute: ApiAdminCrawlRoute,
   ApiAdminMailRoute: ApiAdminMailRoute,
   ApiAdminRerenderRoute: ApiAdminRerenderRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,

@@ -30,7 +30,11 @@ export function listingHasActualDealerPhotos(
   // uploads the car — that is not actual photography.
   const fromAt =
     (opts?.source || "").toLowerCase() === "autotrader" ||
-    exteriors.some((u) => /autotrader\.ca|autoscout24\.net/i.test(u));
+    exteriors.some(
+      (u) =>
+        /autotrader\.ca/i.test(u) ||
+        (/autoscout24\.net/i.test(u) && !/listing-images/i.test(u)),
+    );
   if (fromAt && unique <= 1) return false;
   return true;
 }

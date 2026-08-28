@@ -14,15 +14,18 @@ import { fetchSigmaVehicles } from "./parse-sigma";
 import { fetchLeaseSniperVehicles, isLeaseSniperUrl } from "./parse-leasesniper";
 import { fetchGclInventory, htmlCardsToVehicles } from "./parse-html-cards";
 import { parseNextInventory } from "./parse-next-inventory";
+import { fetchGrandTouringInventory } from "./parse-grand-touring";
+import { fetchWindingRoadInventory } from "./parse-winding-road";
+import { fetchMclarenMontrealInventory } from "./parse-mclaren-montreal";
+import { fetchSm360Inventory } from "./parse-sm360";
+import { fetchAanInventory } from "./parse-aan";
+import { fetchDealerPage } from "./http";
 import {
   expandInventoryUrls,
   isGclDealer,
   looksBlockedOrEmpty,
   resolveAutoTraderFallback,
 } from "./partner-fallbacks";
-
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 export type FetchResult = {
   dealerId: string;
@@ -91,6 +94,71 @@ export async function fetchDealerInventory(
   const candidateUrls = expandInventoryUrls(inventoryUrl, opts?.websiteUrl);
   let ownSiteBlocked = false;
 
+  if (/windingroad\.ca/i.test(inventoryUrl) || dealerId.includes("winding-road")) {
+    try {
+      const wr = await fetchWindingRoadInventory(dealerId);
+      live = mergeVehicles(live, wr.items);
+      notes.push(...wr.notes);
+      if (live.length >= 1) {
+        return { dealerId, source: "live", items: live, notes: [...notes, `LIVE Winding Road (${live.length})`] };
+      }
+    } catch (err) {
+      notes.push(`Winding Road: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (/grandtouringautos\.com/i.test(inventoryUrl) || dealerId.includes("grand-touring")) {
+    try {
+      const gta = await fetchGrandTouringInventory(dealerId);
+      live = mergeVehicles(live, gta.items);
+      notes.push(...gta.notes);
+      if (live.length >= 1) {
+        return { dealerId, source: "live", items: live, notes: [...notes, `LIVE Grand Touring (${live.length})`] };
+      }
+    } catch (err) {
+      notes.push(`Grand Touring: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (/mclarenmontreal\.com/i.test(inventoryUrl) || dealerId.includes("mclaren-montreal")) {
+    try {
+      const mm = await fetchMclarenMontrealInventory(dealerId);
+      live = mergeVehicles(live, mm.items);
+      notes.push(...mm.notes);
+      if (live.length >= 1) {
+        return { dealerId, source: "live", items: live, notes: [...notes, `LIVE McLaren Montreal (${live.length})`] };
+      }
+    } catch (err) {
+      notes.push(`McLaren Montreal: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (/ferrariquebec\.com/i.test(inventoryUrl) || dealerId.includes("ferrari-quebec")) {
+    try {
+      const aan = await fetchAanInventory(dealerId, "https://ferrariquebec.com", "5178");
+      live = mergeVehicles(live, aan.items);
+      notes.push(...aan.notes);
+      if (live.length >= 1) {
+        return { dealerId, source: "live", items: live, notes: [...notes, `LIVE Ferrari Québec (${live.length})`] };
+      }
+    } catch (err) {
+      notes.push(`Ferrari Québec: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (/groupelauzon\.com/i.test(inventoryUrl) || dealerId.includes("groupe-lauzon")) {
+    try {
+      const sm = await fetchSm360Inventory(dealerId, inventoryUrl);
+      live = mergeVehicles(live, sm.items);
+      notes.push(...sm.notes);
+      if (live.length >= 1) {
+        return { dealerId, source: "live", items: live, notes: [...notes, `LIVE Lauzon (${live.length})`] };
+      }
+    } catch (err) {
+      notes.push(`Lauzon: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // GCL server-rendered cards + fragment pagination
   if (isGclDealer(dealerId, inventoryUrl) || candidateUrls.some((u) => /gclcars\.ca/i.test(u))) {
     try {
@@ -115,7 +183,7 @@ export async function fetchDealerInventory(
     }
 
     try {
-      const page = await fetchPage(url);
+      const page = await fetchDealerPage(url);
       httpStatus = page.status;
       if (looksBlockedOrEmpty(page.text, page.status)) {
         ownSiteBlocked = true;
@@ -209,20 +277,6 @@ function mergeVehicles(...batches: SeedVehicle[][]): SeedVehicle[] {
     }
   }
   return out;
-}
-
-async function fetchPage(url: string): Promise<{ status: number; url: string; text: string }> {
-  const res = await fetch(url, {
-    headers: {
-      "user-agent": USER_AGENT,
-      accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
-      "accept-language": "en-CA,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(30_000),
-    redirect: "follow",
-  });
-  const text = await res.text();
-  return { status: res.status, url: res.url || url, text };
 }
 
 function hostLabel(url: string): string {
