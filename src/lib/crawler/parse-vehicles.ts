@@ -14,6 +14,7 @@ export type RawListing = {
   vin?: string;
   stock?: string;
   exterior?: string;
+  interior?: string;
   body?: string;
   description?: string;
   url?: string;
@@ -355,7 +356,7 @@ export function rawToSeedVehicles(dealerId: string, raw: RawListing[]): SeedVehi
       trim: r.trim,
       body_style: r.body || guessBody(r.model),
       exterior_color: r.exterior || "",
-      interior_color: "",
+      interior_color: r.interior || "",
       mileage: r.mileage ?? 0,
       price_cents: r.priceCents,
       vin: r.vin || "",

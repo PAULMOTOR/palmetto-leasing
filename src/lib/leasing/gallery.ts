@@ -50,6 +50,7 @@ function isPromoOrChrome(url: string): boolean {
   }
   if (isGclChrome(u)) return true;
   if (isLeaseSniperChrome(u)) return true;
+  if (isGtaChrome(u)) return true;
   return false;
 }
 
@@ -70,6 +71,19 @@ function isGclChrome(url: string): boolean {
   // Any other GCL site chrome (header, cards, icons)
   if (/\.png(\?|$)/i.test(u)) return true;
   return true;
+}
+
+/**
+ * Grand Touring VDPs lead with brand logos on gta-prod S3, then the real
+ * shoot on files.dlsaccelerator.com/…/carimages/. Related-inventory tiles
+ * for OTHER brands also live on that S3 bucket — never listing photos.
+ */
+export function isGtaChrome(url: string): boolean {
+  const u = url.toLowerCase();
+  if (/gta-prod\.s3([.-][a-z0-9-]+)?\.amazonaws\.com/i.test(u)) return true;
+  if (/grandtouringautos\.com\/static\//i.test(u)) return true;
+  if (/gta_logo|certifiedpreowned|spin-icon|texture-menu/i.test(u)) return true;
+  return false;
 }
 
 /**

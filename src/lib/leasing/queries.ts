@@ -324,11 +324,15 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
 
     let live: string[] = [];
     let source = "local";
+    let exterior = "";
+    let interior = "";
     if (data.listingUrl?.startsWith("http")) {
       const scraped = await fetchListingGallery(data.listingUrl, { limit: 36 });
       if (scraped.photos.length) {
         live = scraped.photos;
         source = scraped.source;
+        exterior = scraped.exterior || "";
+        interior = scraped.interior || "";
       } else if (/^http-(404|410|451)$/.test(scraped.source) && data.vehicleId) {
         try {
           const { deleteVehicleIfListingDead } = await import("@/lib/crawler/dead-listings");
@@ -350,6 +354,8 @@ export const getVehicleGallery = createServerFn({ method: "GET" })
         await sql`
           update vehicles
           set photo_urls = ${JSON.stringify(merged)},
+              exterior_color = case when ${exterior} <> '' then ${exterior} else exterior_color end,
+              interior_color = case when ${interior} <> '' then ${interior} else interior_color end,
               updated_at = now()
           where id = ${data.vehicleId}
         `;

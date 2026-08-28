@@ -15,6 +15,63 @@ type GtaRow = {
   get_full_name?: string;
 };
 
+export type GtaVdp = {
+  photos: string[];
+  exterior: string;
+  interior: string;
+};
+
+function decodeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/"/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * GTA VDPs put brand logos (gta-prod S3) in the first <img> slots, then the
+ * real shoot in `.freshImages` / `#lightboxCarousel` on dlsaccelerator.
+ */
+export function parseGrandTouringVdp(html: string): GtaVdp {
+  const exterior = decodeHtml(
+    html.match(/<div class="key">EXTERIOR<\/div>\s*<div class="value">([^<]+)/i)?.[1] || "",
+  );
+  const interior = decodeHtml(
+    html.match(/<div class="key">INTERIOR<\/div>\s*<div class="value">([^<]+)/i)?.[1] || "",
+  );
+
+  const start = html.search(/id=["']lightboxCarousel["']|class=["'][^"']*freshImages/i);
+  const slice = start >= 0 ? html.slice(start, start + 90_000) : html;
+  const photos: string[] = [];
+  const seen = new Set<string>();
+  for (const m of slice.matchAll(
+    /https?:\/\/files\.dlsaccelerator\.com\/webasp\/uploads\/carimages\/[^"'?\s]+/gi,
+  )) {
+    const u = m[0]!.replace(/&/g, "&").split("?")[0]!;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    photos.push(u);
+  }
+  return { photos, exterior, interior };
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  }
+  const n = Math.min(Math.max(1, limit), items.length || 1);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
+}
+
 export async function fetchGrandTouringInventory(
   dealerId: string,
 ): Promise<{ items: SeedVehicle[]; notes: string[] }> {
@@ -64,6 +121,7 @@ export async function fetchGrandTouringInventory(
     const stock = String(r.stock_number || "").trim();
     const km = Number(String(r.current_kms_formatted || "0").replace(/[^0-9]/g, "")) || 0;
     const img = String(r.get_first_picture || "");
+    const images = img && !/gta-prod\.s3/i.test(img) ? [img] : [];
     raw.push({
       year,
       make,
@@ -76,13 +134,42 @@ export async function fetchGrandTouringInventory(
       url: stock
         ? `https://www.grandtouringautos.com/vehicle/${encodeURIComponent(stock)}/`
         : "https://www.grandtouringautos.com/vehicles/pre-owned/",
-      images: img ? [img] : [],
+      images,
     });
   }
+
+  let colored = 0;
+  let withShoot = 0;
+  await mapLimit(raw, 5, async (item) => {
+    if (!item.url || !item.stock) return;
+    try {
+      const vdp = await fetchDealerPage(item.url, {
+        referer: "https://www.grandtouringautos.com/vehicles/pre-owned/",
+      });
+      if (vdp.status >= 400) return;
+      const parsed = parseGrandTouringVdp(vdp.text);
+      if (parsed.exterior) {
+        item.exterior = parsed.exterior;
+        colored += 1;
+      }
+      if (parsed.interior) item.interior = parsed.interior;
+      if (parsed.photos.length) {
+        const lead = item.images[0];
+        const rest = parsed.photos.filter((p) => p !== lead);
+        item.images = (lead ? [lead, ...rest] : parsed.photos).slice(0, 16);
+        withShoot += 1;
+      }
+    } catch {
+      /* keep list-api photo */
+    }
+  });
+
   const items = rawToSeedVehicles(dealerId, raw).map((v) => ({
     ...v,
     specs: { ...v.specs, source: "grand-touring-api" },
   }));
-  notes.push(`GTA API ${rows.length} rows → ${items.length} ≥$150k`);
+  notes.push(
+    `GTA API ${rows.length} rows → ${items.length} ≥$150k · ${withShoot} galleries · ${colored} paint codes`,
+  );
   return { items, notes };
 }

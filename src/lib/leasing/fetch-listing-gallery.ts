@@ -13,11 +13,18 @@ import {
 import { fetchLeaseSniperListingPhotos, isLeaseSniperUrl } from "@/lib/crawler/parse-leasesniper";
 import { extractGclProductPhotos } from "@/lib/crawler/parse-html-cards";
 import { fetchDealerPage } from "@/lib/crawler/http";
+import { parseGrandTouringVdp } from "@/lib/crawler/parse-grand-touring";
 
 export async function fetchListingGallery(
   listingUrl: string,
   opts?: { limit?: number },
-): Promise<{ photos: string[]; interiors: number; source: string }> {
+): Promise<{
+  photos: string[];
+  interiors: number;
+  source: string;
+  exterior?: string;
+  interior?: string;
+}> {
   const limit = opts?.limit ?? 12;
   if (!listingUrl || !listingUrl.startsWith("http")) {
     return { photos: [], interiors: 0, source: "invalid-url" };
@@ -39,6 +46,18 @@ export async function fetchListingGallery(
     const page = await fetchDealerPage(listingUrl);
     if (page.status >= 400) return { photos: [], interiors: 0, source: `http-${page.status}` };
     const html = page.text;
+    if (/grandtouringautos\.com/i.test(listingUrl)) {
+      const gta = parseGrandTouringVdp(html);
+      if (gta.photos.length) {
+        return {
+          photos: gta.photos.slice(0, limit),
+          interiors: 0,
+          source: "gta-vdp",
+          exterior: gta.exterior || undefined,
+          interior: gta.interior || undefined,
+        };
+      }
+    }
     if (/gclcars\.ca/i.test(listingUrl)) {
       const gcl = extractGclProductPhotos(html);
       if (gcl.length) {
