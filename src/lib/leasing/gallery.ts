@@ -12,6 +12,9 @@ const REAR_RE =
 const FRONT_RE =
   /(?:^|[\/_-])(front|grille|fascia|headlight|nose|forward)(?:[\/_.-]|$)|front[-_]?3|front[-_]?qtr|3[-_]?4[-_]?front/i;
 
+const DETAIL_RE =
+  /(?:wheel|rim|caliper|vin.?plate|engine.?bay|undercarriage|badge|emblem|exhaust.?tip|odometer|stitching)(?:[\/_.-]|$)/i;
+
 const SKIP_RE =
   /logo|icon|sprite|pixel|1x1|favicon|badge\.svg|placeholder|data:image\/svg|spacer|blank|loading|avatar|profile|banner.?ad|feedback-dan|\/feedback\/|as24-home|\/assets\/as24|promo|advert|testimonial|reviewer|host-with|microphone|podcast|carfax|wechat|favicon/i;
 
@@ -218,15 +221,18 @@ export type IdentityViews = {
 };
 
 /**
- * Always keep the dealer main shot. Pair it with a later rear/3/4 and a cabin
- * shot when we can tell them apart. Callers stitch these into one sheet so
- * Imagine never sees three separate cars.
+ * Always keep the dealer main shot. Pair it with a later rear/3/4 when we can
+ * tell them apart. Catalog tiles use the front photo + camera plate only.
  */
 export function selectIdentityViews(photos: string[]): IdentityViews {
   const ordered = listingPhotosInDealerOrder(photos, 24);
-  const exteriors = ordered.filter((u) => !isInteriorPhoto(u));
+  const exteriors = ordered.filter((u) => !isInteriorPhoto(u) && !DETAIL_RE.test(u));
   const namedInteriors = ordered.filter((u) => isInteriorPhoto(u));
-  if (!exteriors.length) return {};
+  if (!exteriors.length) {
+    const any = ordered.filter((u) => !isInteriorPhoto(u));
+    if (!any.length) return {};
+    return { front: any[0] };
+  }
 
   const front = exteriors[0];
   const namedRear = exteriors.filter(

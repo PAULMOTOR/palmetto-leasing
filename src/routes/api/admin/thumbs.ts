@@ -9,9 +9,9 @@ async function handle(request: Request) {
     return new Response(null, { status: 204 });
   }
   if (request.method === "GET") {
-    return Response.json({ ok: true, thumbs: "/api/admin/thumbs" });
+    return Response.json({ ok: true, thumbs: "/api/admin/thumbs", batch: 3 });
   }
-  let body: { token?: string; limit?: number } = {};
+  let body: { token?: string; limit?: number; dealer?: string; force?: boolean; match?: string } = {};
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -20,9 +20,16 @@ async function handle(request: Request) {
   if (body.token !== "admin-ok") {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
-  const limit = Math.min(Math.max(Number(body.limit) || 5, 1), 8);
+  const limit = Math.min(Math.max(Number(body.limit) || 3, 1), 4);
+  const dealer = typeof body.dealer === "string" ? body.dealer.trim().toLowerCase() : "";
+  const match = typeof body.match === "string" ? body.match.trim() : "";
   try {
-    const result = await generateMissingImagineThumbs({ limit });
+    const result = await generateMissingImagineThumbs({
+      limit,
+      dealer: dealer || undefined,
+      force: Boolean(body.force),
+      match: match || undefined,
+    });
     return Response.json({ ok: true, ...result });
   } catch (err) {
     return Response.json(

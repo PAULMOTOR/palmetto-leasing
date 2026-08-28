@@ -21,6 +21,7 @@ import { Route as PortalDealerRouteImport } from './routes/portal/dealer'
 import { Route as ApiAdminCrawlRouteImport } from './routes/api/admin/crawl'
 import { Route as ApiAdminMailRouteImport } from './routes/api/admin/mail'
 import { Route as ApiAdminRerenderRouteImport } from './routes/api/admin/rerender'
+import { Route as ApiAdminThumbsRouteImport } from './routes/api/admin/thumbs'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronCrawlRouteImport } from './routes/api/cron/crawl'
 import { Route as ApiThumbIdRouteImport } from './routes/api/thumb.$id'
@@ -85,6 +86,11 @@ const ApiAdminRerenderRoute = ApiAdminRerenderRouteImport.update({
   path: '/api/admin/rerender',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminThumbsRoute = ApiAdminThumbsRouteImport.update({
+  id: '/api/admin/thumbs',
+  path: '/api/admin/thumbs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/crawl': typeof ApiAdminCrawlRoute
   '/api/admin/mail': typeof ApiAdminMailRoute
   '/api/admin/rerender': typeof ApiAdminRerenderRoute
+  '/api/admin/thumbs': typeof ApiAdminThumbsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/api/admin/crawl': typeof ApiAdminCrawlRoute
   '/api/admin/mail': typeof ApiAdminMailRoute
   '/api/admin/rerender': typeof ApiAdminRerenderRoute
+  '/api/admin/thumbs': typeof ApiAdminThumbsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/api/admin/crawl': typeof ApiAdminCrawlRoute
   '/api/admin/mail': typeof ApiAdminMailRoute
   '/api/admin/rerender': typeof ApiAdminRerenderRoute
+  '/api/admin/thumbs': typeof ApiAdminThumbsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/api/admin/crawl'
     | '/api/admin/mail'
     | '/api/admin/rerender'
+    | '/api/admin/thumbs'
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/api/admin/crawl'
     | '/api/admin/mail'
     | '/api/admin/rerender'
+    | '/api/admin/thumbs'
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/api/admin/crawl'
     | '/api/admin/mail'
     | '/api/admin/rerender'
+    | '/api/admin/thumbs'
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
@@ -220,6 +232,7 @@ export interface RootRouteChildren {
   ApiAdminCrawlRoute: typeof ApiAdminCrawlRoute
   ApiAdminMailRoute: typeof ApiAdminMailRoute
   ApiAdminRerenderRoute: typeof ApiAdminRerenderRoute
+  ApiAdminThumbsRoute: typeof ApiAdminThumbsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronCrawlRoute: typeof ApiCronCrawlRoute
   ApiThumbIdRoute: typeof ApiThumbIdRoute
@@ -311,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminRerenderRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/thumbs': {
+      id: '/api/admin/thumbs'
+      path: '/api/admin/thumbs'
+      fullPath: '/api/admin/thumbs'
+      preLoaderRoute: typeof ApiAdminThumbsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -348,6 +368,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminCrawlRoute: ApiAdminCrawlRoute,
   ApiAdminMailRoute: ApiAdminMailRoute,
   ApiAdminRerenderRoute: ApiAdminRerenderRoute,
+  ApiAdminThumbsRoute: ApiAdminThumbsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronCrawlRoute: ApiCronCrawlRoute,
   ApiThumbIdRoute: ApiThumbIdRoute,

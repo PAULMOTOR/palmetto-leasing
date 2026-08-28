@@ -535,18 +535,20 @@ export const triggerImagineThumbs = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
       .object({
-        limit: z.number().int().min(1).max(60).optional(),
+        limit: z.number().int().min(1).max(4).optional(),
         force: z.boolean().optional(),
         match: z.string().min(2).max(80).optional(),
+        dealer: z.string().min(2).max(64).optional(),
       })
       .optional()
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
     return generateMissingImagineThumbs({
-      limit: data?.limit ?? 40,
+      limit: data?.limit ?? 3,
       force: data?.force ?? false,
       match: data?.match,
+      dealer: data?.dealer,
     });
   });
 

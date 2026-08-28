@@ -57,6 +57,8 @@ export function RendersPanel({
   const [q, setQ] = useState(initialQuery);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [uploads, setUploads] = useState<Record<string, Triple>>({});
+  const [dealerId, setDealerId] = useState("");
+  const [batching, setBatching] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,13 +76,26 @@ export function RendersPanel({
     void load();
   }, [load]);
 
+  const dealers = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; queue: number }>();
+    for (const r of rows || []) {
+      const cur = map.get(r.dealershipId) || { id: r.dealershipId, name: r.dealerName, queue: 0 };
+      if ((r.hasListingPhoto && !r.hasStudio) || r.stale) cur.queue += 1;
+      map.set(r.dealershipId, cur);
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return rows || [];
-    return (rows || []).filter((r) =>
-      `${r.title} ${r.dealerName} ${r.make} ${r.model}`.toLowerCase().includes(s),
-    );
-  }, [rows, q]);
+    return (rows || []).filter((r) => {
+      if (dealerId && r.dealershipId !== dealerId) return false;
+      if (!s) return true;
+      return `${r.title} ${r.dealerName} ${r.make} ${r.model}`.toLowerCase().includes(s);
+    });
+  }, [rows, q, dealerId]);
+
+  const queue = dealers.find((d) => d.id === dealerId)?.queue ?? 0;
 
   function applyResult(row: AdminRenderRow, data: { source?: string; updatedAt?: string }) {
     const v = data.updatedAt || String(Date.now());
@@ -91,12 +106,54 @@ export function RendersPanel({
               ...r,
               hasStudio: true,
               inferred: data.source === "inferred",
+              stale: false,
+              promptRev: r.promptRev,
               updatedAt: v,
               tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(v)}`,
             }
           : r,
       ),
     );
+  }
+
+  async function postDealerBatch() {
+    if (!dealerId) {
+      toast.error("Pick a dealer first");
+      return;
+    }
+    setBatching(true);
+    try {
+      const res = await fetch("/api/admin/thumbs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, dealer: dealerId, force: true, limit: 3 }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        succeeded?: number;
+        rejected?: number;
+        remaining?: number;
+        errors?: string[];
+        error?: string;
+      };
+      if (!res.ok || data.ok === false) {
+        toast.error(data.error || `Batch failed (${res.status})`);
+        return;
+      }
+      const ok = Number(data.succeeded || 0);
+      const bad = Number(data.rejected || 0);
+      toast.success(
+        `${ok} new tile${ok === 1 ? "" : "s"} · ${data.remaining ?? 0} left at this dealer`,
+        { description: bad ? `${bad} held back by QA` : dealers.find((d) => d.id === dealerId)?.name },
+      );
+      if (data.errors?.length) toast.message(data.errors[0]);
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Batch failed";
+      toast.error(/load failed|aborted|fetch/i.test(msg) ? "Timed out — try this dealer again" : msg);
+    } finally {
+      setBatching(false);
+    }
   }
 
   async function postRerender(row: AdminRenderRow, extra?: Triple) {
@@ -157,18 +214,42 @@ export function RendersPanel({
         <div>
           <h2 className="text-sm font-medium">Studio tiles</h2>
           <p className="mt-0.5 max-w-xl text-[12px] text-fg-subtle">
-            Re-render uses the dealer gallery. For a stubborn car, drop a front 3/4, rear 3/4, and
-            seat shot — then Render from uploads. That path looks only at those three photos.
+            One dealer at a time, three cars per pass — about a minute. The new recipe uses one
+            dealer photo plus the camera plate (no collage), then QA rejects inverted or wrong-body
+            tiles. Per-car re-render still uses the dealer gallery; stubborn cars take a front 3/4,
+            rear 3/4, and seat shot.
             {imagined != null ? ` ${imagined} studio · ${missing ?? 0} still dealer photos.` : null}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={dealerId}
+            onChange={(e) => setDealerId(e.target.value)}
+            className="h-9 min-w-[12rem] rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
+            aria-label="Dealer"
+          >
+            <option value="">All dealers</option>
+            {dealers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+                {d.queue ? ` · ${d.queue}` : ""}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            disabled={batching || !dealerId || queue === 0}
+            onClick={() => void postDealerBatch()}
+          >
+            {batching ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            {dealerId ? `Next 3 · ${queue} left` : "Next 3"}
+          </Button>
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search make, model, dealer"
-            className="h-9 w-full min-w-[12rem] rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent sm:w-64"
+            placeholder="Search make, model"
+            className="h-9 w-full min-w-[10rem] rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent sm:w-48"
           />
           <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
             {loading ? <Loader2 className="animate-spin" /> : null}
@@ -211,6 +292,11 @@ export function RendersPanel({
                       Inferred
                     </span>
                   )}
+                  {r.stale && r.hasStudio && (
+                    <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                      Needs redo
+                    </span>
+                  )}
                 </div>
                 <div className="space-y-2 p-3">
                   <p className="text-[9px] tracking-[0.18em] text-fg-subtle uppercase">
@@ -223,7 +309,7 @@ export function RendersPanel({
                   <Button
                     size="sm"
                     className="w-full"
-                    disabled={busy}
+                    disabled={busy || batching}
                     onClick={() => void postRerender(r)}
                   >
                     {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
@@ -263,7 +349,7 @@ export function RendersPanel({
                       size="sm"
                       variant="secondary"
                       className="w-full"
-                      disabled={busy}
+                      disabled={busy || batching}
                       onClick={() =>
                         void postRerender(r, {
                           front: u.front,

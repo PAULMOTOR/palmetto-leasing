@@ -1,18 +1,23 @@
 /**
- * Last week's working path: 1K jpeg, one Imagine call, ~15s, ~150KB.
+ * Dual-image studio tile: dealer exterior (this VIN) + greyscale camera plate.
+ * Contact-sheet collages were inverting cars and bleeding cabin color onto paint.
  */
-import { buildThumbEditPrompt, type ThumbSubject } from "./thumb-prompt";
+import { buildThumbEditPrompt, STUDIO_PROMPT_REV, type ThumbSubject } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
 import { selectIdentityViews, upgradeImageUrl } from "@/lib/leasing/gallery";
-import { buildIdentityContactSheet } from "./contact-sheet";
+import { reviewStudioTile } from "./tile-qa";
+
+export { STUDIO_PROMPT_REV };
 
 export type ImagineThumbResult = {
   ok: boolean;
   url?: string;
   b64?: string;
-  mode: "edit" | "generate" | "skipped" | "error";
+  mode: "edit" | "generate" | "skipped" | "error" | "rejected";
   source?: "photographed" | "inferred";
   error?: string;
+  qa?: string;
+  rev?: string;
 };
 
 type XaiImageResponse = {
@@ -37,50 +42,74 @@ export async function generateVehicleThumbnail(opts: {
   if (!key) return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
 
   const fromUploads = Boolean(opts.identityDataUris?.front);
-  const prompt = buildThumbEditPrompt(opts.car, { fromUploads });
   const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
 
   try {
     let front: string | null = null;
     let rear: string | null = null;
-    let interior: string | null = null;
 
     if (opts.identityDataUris?.front) {
       front = opts.identityDataUris.front;
       rear = opts.identityDataUris.rear || null;
-      interior = opts.identityDataUris.interior || null;
     } else {
       const views = selectIdentityViews(opts.referencePhotoUrls || []);
       const frontUrl = views.front ? upgradeImageUrl(views.front) : "";
       if (!frontUrl) return { ok: false, mode: "error", error: "No listing photos to render from" };
-      const downloaded = await Promise.all([
-        fetchImageAsDataUri(frontUrl),
-        views.rear ? fetchImageAsDataUri(upgradeImageUrl(views.rear)) : Promise.resolve(null),
-        views.interior ? fetchImageAsDataUri(upgradeImageUrl(views.interior)) : Promise.resolve(null),
-      ]);
-      front = downloaded[0];
-      rear = downloaded[1];
-      interior = downloaded[2];
+      front = await fetchImageAsDataUri(frontUrl);
+      if (!front && views.rear) {
+        front = await fetchImageAsDataUri(upgradeImageUrl(views.rear));
+      }
+      rear = views.rear ? await fetchImageAsDataUri(upgradeImageUrl(views.rear)) : null;
+      if (rear && front && rear === front) rear = null;
     }
 
     if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };
 
-    const sheet = buildIdentityContactSheet({ front, rear, interior }) || front;
+    const hasRear = Boolean(rear && rear !== front);
+    const prompt = buildThumbEditPrompt(opts.car, { fromUploads, hasRear });
+    const images = [asImg(front), asImg(STYLE_LOCK_URL)];
+    if (hasRear && rear) images.push(asImg(rear));
 
-    const dual = await callXai({
-      model: MODEL,
-      prompt,
-      aspect_ratio: "1:1",
-      response_format: "b64_json",
-      images: [asImg(sheet), asImg(STYLE_LOCK_URL)],
-    }, key);
+    const dual = await callXai(
+      {
+        model: MODEL,
+        prompt,
+        aspect_ratio: "1:1",
+        response_format: "b64_json",
+        images,
+      },
+      key,
+    );
     if (!dual.ok) return { ok: false, mode: "error", error: dual.error || "Imagine failed" };
 
     const persisted = await persistImagineResult({ b64: dual.b64, url: dual.url });
-    if ("durableUrl" in persisted) {
-      return { ok: true, url: persisted.durableUrl, mode: "edit", source: editSource };
+    if (!("durableUrl" in persisted)) {
+      return { ok: false, mode: "error", error: persisted.error };
     }
-    return { ok: false, mode: "error", error: persisted.error };
+
+    const qa = await reviewStudioTile({
+      tileDataUri: persisted.durableUrl,
+      car: opts.car,
+      apiKey: key,
+    });
+    if (!qa.ok) {
+      return {
+        ok: false,
+        mode: "rejected",
+        error: `QA: ${qa.reason}`,
+        qa: qa.reason,
+        rev: STUDIO_PROMPT_REV,
+      };
+    }
+
+    return {
+      ok: true,
+      url: persisted.durableUrl,
+      mode: "edit",
+      source: editSource,
+      qa: qa.reason,
+      rev: STUDIO_PROMPT_REV,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, mode: "error", error: /aborted|load failed/i.test(msg) ? "Imagine timed out" : msg };

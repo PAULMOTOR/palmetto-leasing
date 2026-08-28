@@ -10,6 +10,7 @@ import {
 } from "@/lib/leasing/seed";
 import { fetchDealerInventory } from "./fetch-dealer";
 import { generateVehicleThumbnail } from "@/lib/imagine/generate-thumb";
+import { STUDIO_PROMPT_REV } from "@/lib/imagine/thumb-prompt";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "@/lib/imagine/persist-image";
 import {
   isPlaceholderListing,
@@ -23,7 +24,7 @@ import { sweepDeadListings } from "./dead-listings";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
 const POOL_VERSION = "12-oem-partners";
-const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 5);
+const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 3);
 
 function roundRobinByDealer<T extends { dealership_id: string }>(rows: T[], limit: number): T[] {
   if (rows.length <= limit) return rows;
@@ -379,14 +380,33 @@ async function runInventoryCrawlInner(opts?: {
         });
         if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
           const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
+          const specs: Record<string, string | undefined> = {
+            ...parseSpecs(item.specs_json),
+            imagineRev: STUDIO_PROMPT_REV,
+            imagineQa: "pass",
+          };
+          delete specs.imagineQaFails;
           await sql`
             update vehicles
             set thumbnail_url = ${imag.url},
                 thumbnail_source = ${source},
+                specs_json = ${JSON.stringify(specs)},
                 updated_at = now()
             where id = ${item.id}
           `;
           imagined += 1;
+        } else if (imag.mode === "rejected") {
+          const fails = Number(parseSpecs(item.specs_json).imagineQaFails || 0) + 1;
+          const specs = {
+            ...parseSpecs(item.specs_json),
+            imagineQa: "fail",
+            imagineQaFails: String(fails),
+          };
+          await sql`
+            update vehicles set specs_json = ${JSON.stringify(specs)}, updated_at = now()
+            where id = ${item.id}
+          `;
+          notes.push(`Imagine QA ${item.id}: ${imag.error || "rejected"}`);
         } else if (imag.error) {
           notes.push(`Imagine ${item.id}: ${imag.error}`);
         }

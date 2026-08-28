@@ -13,95 +13,102 @@ import {
   listingHasActualDealerPhotos,
 } from "@/lib/imagine/thumb-source";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
+import { STUDIO_PROMPT_REV } from "./thumb-prompt";
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
   force?: boolean;
   /** Case-insensitive substring against year/make/model/trim. */
   match?: string;
+  /** Exact dealership id. Required when force-re-rendering existing tiles. */
+  dealer?: string;
 }): Promise<{
   attempted: number;
   succeeded: number;
   skipped: number;
+  rejected: number;
   remaining: number;
   errors: string[];
   hasApiKey: boolean;
+  dealer?: string;
+  rev: string;
 }> {
+  const empty = {
+    attempted: 0,
+    succeeded: 0,
+    skipped: 0,
+    rejected: 0,
+    remaining: 0,
+    errors: [] as string[],
+    hasApiKey: false,
+    rev: STUDIO_PROMPT_REV,
+  };
   const hasApiKey = Boolean(process.env.XAI_API_KEY?.trim());
   if (!hasApiKey) {
-    return {
-      attempted: 0,
-      succeeded: 0,
-      skipped: 0,
-      remaining: 0,
-      errors: ["XAI_API_KEY is not set on this deployment"],
-      hasApiKey: false,
-    };
+    return { ...empty, errors: ["XAI_API_KEY is not set on this deployment"] };
   }
 
   const force = Boolean(opts?.force);
   const match = opts?.match?.trim() || "";
-  const limit = Math.min(opts?.limit ?? 5, 8);
+  const dealer = (opts?.dealer || "").trim().toLowerCase();
+  if (dealer && !/^[a-z0-9-]{2,64}$/i.test(dealer)) {
+    return { ...empty, hasApiKey: true, errors: ["Invalid dealer"] };
+  }
+  if (force && !dealer && !match) {
+    return {
+      ...empty,
+      hasApiKey: true,
+      errors: ["Pick a dealer — refusing to re-render the whole catalog"],
+    };
+  }
+  const limit = Math.min(opts?.limit ?? 3, 4);
 
   const sql = await getSql();
   await ensurePortalSchema();
   const like = match ? `%${match}%` : "";
-  const rows = match
-    ? await sql<{
-        id: string;
-        year: number;
-        make: string;
-        model: string;
-        trim: string;
-        exterior_color: string;
-        interior_color: string;
-        body_style: string;
-        thumbnail_url: string;
-        photo_urls: string;
-        dealership_id: string;
-        dealer_listing_url: string;
-        thumbnail_source: string;
-        specs_json: string;
-      }>`
-        select id, year, make, model, trim, exterior_color, interior_color, body_style,
-               thumbnail_url, photo_urls, price_cents, dealership_id,
-               coalesce(dealer_listing_url, '') as dealer_listing_url,
-               coalesce(thumbnail_source, '') as thumbnail_source, specs_json
-        from vehicles
-        where status = 'active'
-          and (
-            make ilike ${like}
-            or model ilike ${like}
-            or coalesce(trim, '') ilike ${like}
-            or (cast(year as text) || ' ' || make || ' ' || model || ' ' || coalesce(trim, '')) ilike ${like}
-          )
-        order by price_cents desc
-        limit 80
-      `
-    : await sql<{
-        id: string;
-        year: number;
-        make: string;
-        model: string;
-        trim: string;
-        exterior_color: string;
-        interior_color: string;
-        body_style: string;
-        thumbnail_url: string;
-        photo_urls: string;
-        dealership_id: string;
-        dealer_listing_url: string;
-        thumbnail_source: string;
-        specs_json: string;
-      }>`
-        select id, year, make, model, trim, exterior_color, interior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
-               coalesce(dealer_listing_url, '') as dealer_listing_url,
-               coalesce(thumbnail_source, '') as thumbnail_source, specs_json
-        from vehicles
-        where status = 'active'
-        order by price_cents desc
-        limit 800
-      `;
+  const rowType = {} as {
+    id: string;
+    year: number;
+    make: string;
+    model: string;
+    trim: string;
+    exterior_color: string;
+    interior_color: string;
+    body_style: string;
+    thumbnail_url: string;
+    photo_urls: string;
+    dealership_id: string;
+    dealer_listing_url: string;
+    thumbnail_source: string;
+    specs_json: string;
+  };
+  void rowType;
+  const clauses = ["status = 'active'"];
+  const params: unknown[] = [];
+  if (dealer) {
+    params.push(dealer);
+    clauses.push(`dealership_id = $${params.length}`);
+  }
+  if (like) {
+    params.push(like);
+    const p = `$${params.length}`;
+    clauses.push(
+      `(make ilike ${p} or model ilike ${p} or coalesce(trim, '') ilike ${p} or (cast(year as text) || ' ' || make || ' ' || model || ' ' || coalesce(trim, '')) ilike ${p})`,
+    );
+  }
+  const cap = dealer || match ? 80 : 800;
+  params.push(cap);
+  const rows = await sql.query<typeof rowType>(
+    `select id, year, make, model, trim, exterior_color, interior_color, body_style,
+            thumbnail_url, photo_urls, price_cents, dealership_id,
+            coalesce(dealer_listing_url, '') as dealer_listing_url,
+            coalesce(thumbnail_source, '') as thumbnail_source, specs_json
+     from vehicles
+     where ${clauses.join(" and ")}
+     order by price_cents desc
+     limit $${params.length}`,
+    params,
+  );
 
   const withRefs = rows.filter((r) => {
     const photos = parsePhotos(r.photo_urls);
@@ -111,17 +118,23 @@ export async function generateMissingImagineThumbs(opts?: {
     );
   });
 
-  // Studio tile = persisted data URI. Dealer HTTP photos are fallbacks, not finished tiles.
-  // `match` always re-renders (prompt fixes).
+  // Missing tiles always render. Stale studio tiles (wrong rev) only when a
+  // dealer or match is in hand — never a catalog-wide rewrite.
   const needsRender = withRefs.filter((r) => {
-    if (parseSpecs(r.specs_json || "{}").imagineSkip === "1") return false;
-    if (force || match) return true;
-    if (!isStudioThumbUrl(r.thumbnail_url)) return true;
+    const specs = parseSpecs(r.specs_json || "{}");
+    if (specs.imagineSkip === "1") return false;
+    const fails = Number(specs.imagineQaFails || 0);
+    if (fails >= 3) return false;
+    const studio = isStudioThumbUrl(r.thumbnail_url);
+    const current = specs.imagineRev === STUDIO_PROMPT_REV;
+    if (studio && current && specs.imagineQa !== "fail") return false;
+    if (!studio) return true;
+    if (force || match || dealer) return true;
     if (r.thumbnail_source !== "inferred") return false;
     const placeholder = isPlaceholderListing(r.specs_json);
     return listingHasActualDealerPhotos(parsePhotos(r.photo_urls), {
       placeholder,
-      source: parseSpecs(r.specs_json).source,
+      source: specs.source,
     });
   });
 
@@ -151,6 +164,7 @@ export async function generateMissingImagineThumbs(opts?: {
 
   let succeeded = 0;
   let skipped = 0;
+  let rejected = 0;
   const errors: string[] = [];
 
   for (const r of need) {
@@ -188,20 +202,34 @@ export async function generateMissingImagineThumbs(opts?: {
 
       if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
         const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
+        const specs = stampImagineSpecs(r.specs_json, { imagineRev: STUDIO_PROMPT_REV, imagineQa: "pass" });
         await sql`
           update vehicles
           set thumbnail_url = ${imag.url},
               thumbnail_source = ${source},
+              specs_json = ${specs},
               updated_at = now()
           where id = ${r.id}
         `;
         succeeded += 1;
+      } else if (imag.mode === "rejected") {
+        rejected += 1;
+        const prev = Number(parseSpecs(r.specs_json).imagineQaFails || 0) + 1;
+        const specs = stampImagineSpecs(r.specs_json, {
+          imagineQa: "fail",
+          imagineQaFails: String(prev),
+        });
+        await sql`
+          update vehicles set specs_json = ${specs}, updated_at = now()
+          where id = ${r.id}
+        `;
+        errors.push(`${r.make} ${r.model}: ${imag.error || "QA rejected"}`);
       } else {
         errors.push(`${r.make} ${r.model}: ${imag.error || "no studio image"}`);
         if (/download a listing photo/i.test(imag.error || "")) {
-          const specs = { ...parseSpecs(r.specs_json), imagineSkip: "1" };
+          const specs = stampImagineSpecs(r.specs_json, { imagineSkip: "1" });
           await sql`
-            update vehicles set specs_json = ${JSON.stringify(specs)}, updated_at = now()
+            update vehicles set specs_json = ${specs}, updated_at = now()
             where id = ${r.id}
           `;
         }
@@ -219,9 +247,12 @@ export async function generateMissingImagineThumbs(opts?: {
     attempted: need.length,
     succeeded,
     skipped,
+    rejected,
     remaining,
     errors: errors.slice(0, 12),
     hasApiKey: true,
+    dealer: dealer || undefined,
+    rev: STUDIO_PROMPT_REV,
   };
 }
 
@@ -318,10 +349,12 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   }
 
   const now = new Date().toISOString();
+  const specs = stampImagineSpecs(r.specs_json, { imagineRev: STUDIO_PROMPT_REV, imagineQa: "pass" });
   await sql`
     update vehicles
     set thumbnail_url = ${imag.url},
         thumbnail_source = ${"photographed"},
+        specs_json = ${specs},
         updated_at = now()
     where id = ${r.id}
   `;
@@ -366,8 +399,9 @@ export async function generateVehicleThumbFromUploads(
     exterior_color: string;
     interior_color: string;
     body_style: string;
+    specs_json: string;
   }>`
-    select id, year, make, model, trim, exterior_color, interior_color, body_style
+    select id, year, make, model, trim, exterior_color, interior_color, body_style, specs_json
     from vehicles
     where id = ${vehicleId.trim()} and status = 'active'
     limit 1
@@ -393,12 +427,26 @@ export async function generateVehicleThumbFromUploads(
   }
 
   const now = new Date().toISOString();
+  const specs = stampImagineSpecs(r.specs_json, { imagineRev: STUDIO_PROMPT_REV, imagineQa: "pass" });
   await sql`
     update vehicles
     set thumbnail_url = ${imag.url},
         thumbnail_source = ${"photographed"},
+        specs_json = ${specs},
         updated_at = now()
     where id = ${r.id}
   `;
   return { ok: true, hasApiKey: true, updatedAt: now, source: "photographed" };
+}
+
+function stampImagineSpecs(
+  raw: string | null | undefined,
+  patch: Record<string, string>,
+): string {
+  const next = { ...parseSpecs(raw || "{}") };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v) next[k] = v;
+  }
+  if (patch.imagineQa === "pass") delete next.imagineQaFails;
+  return JSON.stringify(next);
 }
