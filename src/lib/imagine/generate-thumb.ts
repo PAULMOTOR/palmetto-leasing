@@ -46,11 +46,9 @@ export async function generateVehicleThumbnail(opts: {
 
   try {
     let front: string | null = null;
-    let rear: string | null = null;
 
     if (opts.identityDataUris?.front) {
       front = opts.identityDataUris.front;
-      rear = opts.identityDataUris.rear || null;
     } else {
       const views = selectIdentityViews(opts.referencePhotoUrls || []);
       const frontUrl = views.front ? upgradeImageUrl(views.front) : "";
@@ -59,16 +57,17 @@ export async function generateVehicleThumbnail(opts: {
       if (!front && views.rear) {
         front = await fetchImageAsDataUri(upgradeImageUrl(views.rear));
       }
-      rear = views.rear ? await fetchImageAsDataUri(upgradeImageUrl(views.rear)) : null;
-      if (rear && front && rear === front) rear = null;
     }
 
     if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };
 
-    const hasRear = Boolean(rear && rear !== front);
-    const prompt = buildThumbEditPrompt(opts.car, { fromUploads, hasRear });
+    const hasRear = Boolean(opts.identityDataUris?.rear);
+    const prompt = buildThumbEditPrompt(opts.car, {
+      fromUploads,
+      hasRear,
+    });
     const images = [asImg(front), asImg(STYLE_LOCK_URL)];
-    if (hasRear && rear) images.push(asImg(rear));
+    if (hasRear && opts.identityDataUris?.rear) images.push(asImg(opts.identityDataUris.rear));
 
     const dual = await callXai(
       {

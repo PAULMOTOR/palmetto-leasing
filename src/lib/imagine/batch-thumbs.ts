@@ -138,7 +138,14 @@ export async function generateMissingImagineThumbs(opts?: {
     });
   });
 
-  const need = needsRender.slice(0, limit);
+  const need = needsRender
+    .slice()
+    .sort((a, b) => {
+      const fa = Number(parseSpecs(a.specs_json).imagineQaFails || 0);
+      const fb = Number(parseSpecs(b.specs_json).imagineQaFails || 0);
+      return fa - fb;
+    })
+    .slice(0, limit);
 
   await Promise.all(
     need.map(async (r) => {
