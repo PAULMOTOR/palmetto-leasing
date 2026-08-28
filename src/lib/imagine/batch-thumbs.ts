@@ -127,7 +127,8 @@ export async function generateMissingImagineThumbs(opts?: {
     if (fails >= 3) return false;
     const studio = isStudioThumbUrl(r.thumbnail_url);
     const current = specs.imagineRev === STUDIO_PROMPT_REV;
-    if (studio && current && specs.imagineQa !== "fail") return false;
+    // force = redo this dealer even if the tile already passed the current recipe
+    if (!force && studio && current && specs.imagineQa !== "fail") return false;
     if (!studio) return true;
     if (force || match || dealer) return true;
     if (r.thumbnail_source !== "inferred") return false;

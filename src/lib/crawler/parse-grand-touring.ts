@@ -23,12 +23,35 @@ export type GtaVdp = {
 
 function decodeHtml(raw: string): string {
   return raw
-    .replace(/&/g, "&")
+    .replace(/&amp;/g, "&")
     .replace(/&nbsp;/g, " ")
-    .replace(/"/g, '"')
+    .replace(/&quot;/g, '"')
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** This VIN's shoot lives in `.freshImages` / `#lightboxCarousel`. Cut before Similar Vehicles. */
+function gtaGalleryHtml(html: string): string {
+  const similar = html.search(/similar vehicles/i);
+  const hardEnd = similar > 0 ? similar : html.length;
+  const start = html.search(/id=["']lightboxCarousel["']|class=["'][^"']*freshImages/i);
+  if (start < 0) return "";
+  return html.slice(start, Math.min(hardEnd, start + 80_000));
+}
+
+function carimageUrls(html: string): string[] {
+  const photos: string[] = [];
+  const seen = new Set<string>();
+  for (const m of html.matchAll(
+    /https?:\/\/files\.dlsaccelerator\.com\/webasp\/uploads\/carimages\/[^"'?\s]+/gi,
+  )) {
+    const u = m[0]!.replace(/&amp;/g, "&").split("?")[0]!;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    photos.push(u);
+  }
+  return photos;
 }
 
 /**
@@ -42,20 +65,7 @@ export function parseGrandTouringVdp(html: string): GtaVdp {
   const interior = decodeHtml(
     html.match(/<div class="key">INTERIOR<\/div>\s*<div class="value">([^<]+)/i)?.[1] || "",
   );
-
-  const start = html.search(/id=["']lightboxCarousel["']|class=["'][^"']*freshImages/i);
-  const slice = start >= 0 ? html.slice(start, start + 90_000) : html;
-  const photos: string[] = [];
-  const seen = new Set<string>();
-  for (const m of slice.matchAll(
-    /https?:\/\/files\.dlsaccelerator\.com\/webasp\/uploads\/carimages\/[^"'?\s]+/gi,
-  )) {
-    const u = m[0]!.replace(/&/g, "&").split("?")[0]!;
-    if (seen.has(u)) continue;
-    seen.add(u);
-    photos.push(u);
-  }
-  return { photos, exterior, interior };
+  return { photos: carimageUrls(gtaGalleryHtml(html)), exterior, interior };
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
