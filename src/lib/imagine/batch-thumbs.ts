@@ -41,7 +41,7 @@ export async function generateMissingImagineThumbs(opts?: {
 
   const force = Boolean(opts?.force);
   const match = opts?.match?.trim() || "";
-  const limit = Math.min(opts?.limit ?? (match ? 8 : force ? 12 : 40), match ? 15 : force ? 25 : 60);
+  const limit = Math.min(opts?.limit ?? 5, 8);
 
   const sql = await getSql();
   await ensurePortalSchema();
@@ -59,10 +59,13 @@ export async function generateMissingImagineThumbs(opts?: {
         thumbnail_url: string;
         photo_urls: string;
         dealership_id: string;
+        dealer_listing_url: string;
         thumbnail_source: string;
         specs_json: string;
       }>`
-        select id, year, make, model, trim, exterior_color, interior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
+        select id, year, make, model, trim, exterior_color, interior_color, body_style,
+               thumbnail_url, photo_urls, price_cents, dealership_id,
+               coalesce(dealer_listing_url, '') as dealer_listing_url,
                coalesce(thumbnail_source, '') as thumbnail_source, specs_json
         from vehicles
         where status = 'active'
@@ -87,10 +90,12 @@ export async function generateMissingImagineThumbs(opts?: {
         thumbnail_url: string;
         photo_urls: string;
         dealership_id: string;
+        dealer_listing_url: string;
         thumbnail_source: string;
         specs_json: string;
       }>`
         select id, year, make, model, trim, exterior_color, interior_color, body_style, thumbnail_url, photo_urls, price_cents, dealership_id,
+               coalesce(dealer_listing_url, '') as dealer_listing_url,
                coalesce(thumbnail_source, '') as thumbnail_source, specs_json
         from vehicles
         where status = 'active'
@@ -120,6 +125,28 @@ export async function generateMissingImagineThumbs(opts?: {
   });
 
   const need = needsRender.slice(0, limit);
+
+  await Promise.all(
+    need.map(async (r) => {
+      const photos = parsePhotos(r.photo_urls);
+      if (listingPhotosInDealerOrder(photos, 8).length >= 3) return;
+      if (!r.dealer_listing_url?.startsWith("http")) return;
+      const live = await Promise.race([
+        fetchListingGallery(r.dealer_listing_url, { limit: 12 }),
+        new Promise<{ photos: string[] }>((resolve) =>
+          setTimeout(() => resolve({ photos: [] }), 7_000),
+        ),
+      ]);
+      if (!live.photos.length) return;
+      const merged = listingPhotosInDealerOrder([...live.photos, ...photos], 16);
+      r.photo_urls = JSON.stringify(merged);
+      await sql`
+        update vehicles
+        set photo_urls = ${r.photo_urls}, updated_at = now()
+        where id = ${r.id}
+      `;
+    }),
+  );
 
   let succeeded = 0;
   let skipped = 0;

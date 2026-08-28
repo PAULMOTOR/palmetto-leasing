@@ -23,7 +23,7 @@ import { sweepDeadListings } from "./dead-listings";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
 const POOL_VERSION = "12-oem-partners";
-const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 20);
+const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 5);
 
 function roundRobinByDealer<T extends { dealership_id: string }>(rows: T[], limit: number): T[] {
   if (rows.length <= limit) return rows;

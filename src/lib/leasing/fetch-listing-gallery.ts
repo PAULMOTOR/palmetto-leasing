@@ -12,6 +12,7 @@ import {
 } from "./gallery";
 import { fetchLeaseSniperListingPhotos, isLeaseSniperUrl } from "@/lib/crawler/parse-leasesniper";
 import { extractGclProductPhotos } from "@/lib/crawler/parse-html-cards";
+import { fetchDealerPage } from "@/lib/crawler/http";
 
 export async function fetchListingGallery(
   listingUrl: string,
@@ -35,18 +36,9 @@ export async function fetchListingGallery(
       }
     }
 
-    const res = await fetch(listingUrl, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; PalmettoLeasingBot/2.1; +https://palmettoleasing.com)",
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-language": "en-CA,en;q=0.9",
-      },
-      signal: AbortSignal.timeout(14_000),
-      redirect: "follow",
-    });
-    if (!res.ok) return { photos: [], interiors: 0, source: `http-${res.status}` };
-    const html = await res.text();
+    const page = await fetchDealerPage(listingUrl);
+    if (page.status >= 400) return { photos: [], interiors: 0, source: `http-${page.status}` };
+    const html = page.text;
     if (/gclcars\.ca/i.test(listingUrl)) {
       const gcl = extractGclProductPhotos(html);
       if (gcl.length) {
