@@ -36,8 +36,8 @@ function gtaGalleryHtml(html: string): string {
   const similar = html.search(/similar vehicles/i);
   const hardEnd = similar > 0 ? similar : html.length;
   const start = html.search(/id=["']lightboxCarousel["']|class=["'][^"']*freshImages/i);
-  if (start < 0) return "";
-  return html.slice(start, Math.min(hardEnd, start + 80_000));
+  const from = start >= 0 ? start : 0;
+  return html.slice(from, Math.min(hardEnd, from + 80_000));
 }
 
 function carimageUrls(html: string): string[] {

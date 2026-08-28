@@ -40,7 +40,8 @@ function parseGrandTouringVdp(html) {
   const similar = html.search(/similar vehicles/i);
   const hardEnd = similar > 0 ? similar : html.length;
   const start = html.search(/id=["']lightboxCarousel["']|class=["'][^"']*freshImages/i);
-  const slice = start >= 0 ? html.slice(start, Math.min(hardEnd, start + 80_000)) : "";
+  const from = start >= 0 ? start : 0;
+  const slice = html.slice(from, Math.min(hardEnd, from + 80_000));
   const photos = [];
   const seen = new Set();
   for (const m of slice.matchAll(
