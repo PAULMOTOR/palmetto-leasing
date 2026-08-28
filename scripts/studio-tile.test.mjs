@@ -37,7 +37,6 @@ test("fit constants enlarge toys and only shrink clippers", () => {
     data[i + 2] = 240;
     data[i + 3] = 255;
   }
-  // dark car filling ~90% of the square
   for (let y = 3; y < 61; y++) {
     for (let x = 3; x < 61; x++) {
       const i = (y * side + x) * 4;
@@ -48,4 +47,14 @@ test("fit constants enlarge toys and only shrink clippers", () => {
   }
   const encoded = jpeg.encode({ data, width: side, height: side }, 90);
   assert.ok(encoded.data.length > 100);
+});
+
+test("studio source skips cabin shots", () => {
+  const gen = readFileSync(new URL("../src/lib/imagine/generate-thumb.ts", import.meta.url), "utf8");
+  const cabin = readFileSync(new URL("../src/lib/imagine/cabin-detect.ts", import.meta.url), "utf8");
+  assert.match(gen, /firstExteriorDataUri/);
+  assert.match(gen, /looksLikeCabinDataUri/);
+  assert.match(cabin, /headliner/);
+  assert.match(cabin, /top < 42/);
+  assert.match(promptSrc, /never a Urus SUV/);
 });

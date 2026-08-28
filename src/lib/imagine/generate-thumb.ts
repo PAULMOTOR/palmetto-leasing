@@ -4,8 +4,9 @@
  */
 import { buildThumbEditPrompt, STUDIO_PROMPT_REV, type ThumbSubject } from "./thumb-prompt";
 import { persistImagineResult } from "./persist-image";
-import { selectIdentityViews, upgradeImageUrl } from "@/lib/leasing/gallery";
+import { listingPhotosInDealerOrder, upgradeImageUrl } from "@/lib/leasing/gallery";
 import { reviewStudioTile } from "./tile-qa";
+import { looksLikeCabinDataUri } from "./cabin-detect";
 
 export { STUDIO_PROMPT_REV };
 
@@ -50,13 +51,9 @@ export async function generateVehicleThumbnail(opts: {
     if (opts.identityDataUris?.front) {
       front = opts.identityDataUris.front;
     } else {
-      const views = selectIdentityViews(opts.referencePhotoUrls || []);
-      const frontUrl = views.front ? upgradeImageUrl(views.front) : "";
-      if (!frontUrl) return { ok: false, mode: "error", error: "No listing photos to render from" };
-      front = await fetchImageAsDataUri(frontUrl);
-      if (!front && views.rear) {
-        front = await fetchImageAsDataUri(upgradeImageUrl(views.rear));
-      }
+      const ordered = listingPhotosInDealerOrder(opts.referencePhotoUrls || [], 16);
+      if (!ordered.length) return { ok: false, mode: "error", error: "No listing photos to render from" };
+      front = await firstExteriorDataUri(ordered);
     }
 
     if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };
@@ -150,6 +147,17 @@ async function callXai(
   const b64 = json?.data?.[0]?.b64_json;
   if (url || b64) return { ok: true, url, b64 };
   return { ok: false, error: "Empty Imagine response" };
+}
+
+async function firstExteriorDataUri(urls: string[]): Promise<string | null> {
+  let fallback: string | null = null;
+  for (const raw of urls.slice(0, 8)) {
+    const data = await fetchImageAsDataUri(upgradeImageUrl(raw));
+    if (!data) continue;
+    if (!fallback) fallback = data;
+    if (!looksLikeCabinDataUri(data)) return data;
+  }
+  return fallback;
 }
 
 async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {

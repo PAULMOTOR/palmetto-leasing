@@ -29,6 +29,14 @@ function paintInstruction(car: ThumbSubject): string {
   );
 }
 
+function bodyInstruction(car: ThumbSubject): string {
+  const blob = `${car.make} ${car.model} ${car.trim || ""}`.toLowerCase();
+  if (/revuelto|aventador|huracan|temerario|gallardo|murcielago|countach|sian/.test(blob)) {
+    return ` LOW mid-engine supercar — Y headlights, hexagonal engine cover — never a Urus SUV.`;
+  }
+  return "";
+}
+
 function eraInstruction(car: ThumbSubject): string {
   const y = Number(car.year);
   if (Number.isFinite(y) && y > 1900 && y < 1990) {
@@ -50,7 +58,7 @@ export function buildThumbEditPrompt(
     : "";
 
   return (
-    `Overhead catalog still of this exact ${label}. ${paintInstruction(car)}${eraInstruction(car)} ` +
+    `Overhead catalog still of this exact ${label}. ${paintInstruction(car)}${eraInstruction(car)}${bodyInstruction(car)} ` +
     `${source} Image 2 is a greyscale camera plate — copy its camera (high boom, long telephoto, square seamless studio) AND how large the car sits in the frame, never its grey paint. ` +
     `ONE car, right-side up: wheels on the floor, roof toward the camera, nose pointing to the BOTTOM edge of the square, matching Image 2. Never invert, never a 3/4 hero, never a collage. ` +
     `Fill about three-quarters of the square — modest floor on all four sides, bumpers/mirrors/spoiler fully visible. Not a tiny toy in the middle, not clipped at the edges. Wheels straight, headlights off. Square, no text.` +
