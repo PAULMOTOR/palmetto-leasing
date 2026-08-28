@@ -1,15 +1,17 @@
 /**
- * Crop a white letterbox / inset frame if Imagine adds one, then shrink the car
- * if it still fills the square. Does not recolor the floor.
+ * Crop a white letterbox / inset frame if Imagine adds one, then fit the car
+ * to ~three-quarters of the square (shrink clippers, enlarge toys).
  */
 import jpeg from "jpeg-js";
 
 type Raster = { width: number; height: number; data: Uint8Array };
 
-/** Occupancy above this (bbox / side) gets scaled down. */
-export const FIT_TRIGGER = 0.72;
-/** Target occupancy after a shrink — matches the Palmetto camera plate. */
-export const FIT_TARGET = 0.56;
+/** Occupancy above this (bbox / side) gets scaled down — only true clippers. */
+export const FIT_TRIGGER = 0.84;
+/** Occupancy below this gets zoomed in — the half-frame toys. */
+export const FIT_MIN = 0.64;
+/** Target occupancy after a fit — matches the Palmetto camera plate. */
+export const FIT_TARGET = 0.74;
 
 export function normalizeStudioTileDataUri(dataUri: string): string | null {
   if (!dataUri.startsWith("data:image/jpeg") && !dataUri.startsWith("data:image/jpg")) {
@@ -163,17 +165,24 @@ export function carOccupancy(src: Raster): number {
 }
 
 /**
- * If the car fills the tile, scale the whole frame down onto more studio floor
- * so bumpers stop clipping. No-op when occupancy is already in range.
+ * Shrink clippers; zoom toys. No-op when occupancy is already in range.
  */
 export function fitCarInStudio(src: Raster): Raster {
   const w = src.width;
   const h = src.height;
   if (w < 64 || h < 64) return src;
   const occupancy = carOccupancy(src);
-  if (occupancy < 0.2 || occupancy <= FIT_TRIGGER) return src;
-  const scale = Math.min(0.92, FIT_TARGET / occupancy);
-  if (scale >= 0.97) return src;
+  if (occupancy < 0.28) return src;
+  if (occupancy >= FIT_MIN && occupancy <= FIT_TRIGGER) return src;
+  const scale = Math.min(1.35, Math.max(0.62, FIT_TARGET / occupancy));
+  if (scale >= 0.97 && scale <= 1.04) return src;
+  if (scale < 1) return shrinkOntoFloor(src, scale);
+  return zoomCrop(src, scale);
+}
+
+function shrinkOntoFloor(src: Raster, scale: number): Raster {
+  const w = src.width;
+  const h = src.height;
   const floor = cornerFloor(src);
   const nw = Math.max(32, Math.round(w * scale));
   const nh = Math.max(32, Math.round(h * scale));
@@ -192,6 +201,30 @@ export function fitCarInStudio(src: Raster): Raster {
       const sx = Math.min(w - 1, Math.floor((x / nw) * w));
       const si = (sy * w + sx) * 4;
       const di = ((oy + y) * w + (ox + x)) * 4;
+      out[di] = src.data[si]!;
+      out[di + 1] = src.data[si + 1]!;
+      out[di + 2] = src.data[si + 2]!;
+      out[di + 3] = 255;
+    }
+  }
+  return { width: w, height: h, data: out };
+}
+
+function zoomCrop(src: Raster, scale: number): Raster {
+  const w = src.width;
+  const h = src.height;
+  const crop = 1 / scale;
+  const cw = w * crop;
+  const ch = h * crop;
+  const ox = (w - cw) / 2;
+  const oy = (h - ch) / 2;
+  const out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(h - 1, Math.max(0, Math.floor(oy + (y / h) * ch)));
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(w - 1, Math.max(0, Math.floor(ox + (x / w) * cw)));
+      const si = (sy * w + sx) * 4;
+      const di = (y * w + x) * 4;
       out[di] = src.data[si]!;
       out[di + 1] = src.data[si + 1]!;
       out[di + 2] = src.data[si + 2]!;

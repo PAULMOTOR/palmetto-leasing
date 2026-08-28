@@ -1,5 +1,5 @@
 /**
- * Studio tile recipe — prompt must keep cars upright, half-frame, paint from the photo.
+ * Studio tile recipe — prompt must keep cars upright, three-quarters frame, paint from the photo.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -9,13 +9,14 @@ import jpeg from "jpeg-js";
 const promptSrc = readFileSync(new URL("../src/lib/imagine/thumb-prompt.ts", import.meta.url), "utf8");
 const fitSrc = readFileSync(new URL("../src/lib/imagine/normalize-tile.ts", import.meta.url), "utf8");
 
-test("prompt rev is 13 and not a collage", () => {
-  assert.match(promptSrc, /STUDIO_PROMPT_REV = "13"/);
+test("prompt rev is 14 and not a collage or half-frame toy", () => {
+  assert.match(promptSrc, /STUDIO_PROMPT_REV = "14"/);
   assert.match(promptSrc, /Never invert/);
-  assert.match(promptSrc, /half the square/);
+  assert.match(promptSrc, /three-quarters of the square/);
   assert.match(promptSrc, /BOTTOM edge/);
+  assert.match(promptSrc, /Not a tiny toy/);
   assert.doesNotMatch(promptSrc, /contact sheet/i);
-  assert.doesNotMatch(promptSrc, /~70%/);
+  assert.doesNotMatch(promptSrc, /about half the square/);
 });
 
 test("classics are not rewritten as current Ferraris", () => {
@@ -23,9 +24,11 @@ test("classics are not rewritten as current Ferraris", () => {
   assert.match(promptSrc, /296\/Roma\/SF90/);
 });
 
-test("fit shrinks an oversized car on a light floor", () => {
-  assert.match(fitSrc, /FIT_TRIGGER = 0\.72/);
-  assert.match(fitSrc, /FIT_TARGET = 0\.56/);
+test("fit constants enlarge toys and only shrink clippers", () => {
+  assert.match(fitSrc, /FIT_TRIGGER = 0\.84/);
+  assert.match(fitSrc, /FIT_TARGET = 0\.74/);
+  assert.match(fitSrc, /FIT_MIN = 0\.64/);
+  assert.match(fitSrc, /zoomCrop/);
   const side = 64;
   const data = new Uint8Array(side * side * 4);
   for (let i = 0; i < data.length; i += 4) {

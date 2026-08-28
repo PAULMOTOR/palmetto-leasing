@@ -1,12 +1,12 @@
 /**
- * Dual-image recipe (rev 13): dealer photo = this VIN; greyscale plate = camera.
- * A 3-up collage was flipping cars, filling the frame, and bleeding seat color
- * onto paint. Interior is not sent. Scale target is ~half the square.
+ * Dual-image recipe (rev 14): dealer photo = this VIN; greyscale plate = camera + scale.
+ * Rev 13 shrank cars to half-frame and they looked like toys.
+ * Interior is not sent. Scale target is ~three-quarters of the square.
  */
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
 /** Bump when the recipe changes so dealer batches can skip already-good tiles. */
-export const STUDIO_PROMPT_REV = "13";
+export const STUDIO_PROMPT_REV = "14";
 
 export type ThumbSubject = {
   year: number;
@@ -51,9 +51,9 @@ export function buildThumbEditPrompt(
 
   return (
     `Overhead catalog still of this exact ${label}. ${paintInstruction(car)}${eraInstruction(car)} ` +
-    `${source} Image 2 is a greyscale camera plate — copy only its camera (high boom, long telephoto, square seamless studio), never its grey paint. ` +
+    `${source} Image 2 is a greyscale camera plate — copy its camera (high boom, long telephoto, square seamless studio) AND how large the car sits in the frame, never its grey paint. ` +
     `ONE car, right-side up: wheels on the floor, roof toward the camera, nose pointing to the BOTTOM edge of the square, matching Image 2. Never invert, never a 3/4 hero, never a collage. ` +
-    `Center the car with generous floor on all four sides so the whole car is about half the square; bumpers, mirrors, and spoiler fully visible. Wheels straight, headlights off. Square, no text.` +
+    `Fill about three-quarters of the square — modest floor on all four sides, bumpers/mirrors/spoiler fully visible. Not a tiny toy in the middle, not clipped at the edges. Wheels straight, headlights off. Square, no text.` +
     rear
   );
 }
