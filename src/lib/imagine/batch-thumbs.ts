@@ -114,6 +114,7 @@ export async function generateMissingImagineThumbs(opts?: {
   // Studio tile = persisted data URI. Dealer HTTP photos are fallbacks, not finished tiles.
   // `match` always re-renders (prompt fixes).
   const needsRender = withRefs.filter((r) => {
+    if (parseSpecs(r.specs_json || "{}").imagineSkip === "1") return false;
     if (force || match) return true;
     if (!isStudioThumbUrl(r.thumbnail_url)) return true;
     if (r.thumbnail_source !== "inferred") return false;
@@ -197,6 +198,13 @@ export async function generateMissingImagineThumbs(opts?: {
         succeeded += 1;
       } else {
         errors.push(`${r.make} ${r.model}: ${imag.error || "no studio image"}`);
+        if (/download a listing photo/i.test(imag.error || "")) {
+          const specs = { ...parseSpecs(r.specs_json), imagineSkip: "1" };
+          await sql`
+            update vehicles set specs_json = ${JSON.stringify(specs)}, updated_at = now()
+            where id = ${r.id}
+          `;
+        }
       }
     } catch (err) {
       errors.push(
