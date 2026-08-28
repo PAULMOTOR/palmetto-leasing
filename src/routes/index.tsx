@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { z } from "zod";
 import { VehicleCard } from "@/components/inventory/vehicle-card";
 import {
@@ -39,6 +39,8 @@ export const Route = createFileRoute("/")({
 const FILTER_IDLE_MS = 1200;
 /** Stay fully visible while near the top of the page. */
 const TOP_ALWAYS_VISIBLE_PX = 48;
+/** Cards per page. Full catalog stays in memory so filters still run over every car. */
+const PAGE_SIZE = 24;
 
 function InventoryPage() {
   const navigate = Route.useNavigate();
@@ -48,6 +50,8 @@ function InventoryPage() {
   const [quoteSettings, setQuoteSettings] = useState<QuoteSettings>(DEFAULT_QUOTE_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const [year, setYear] = useState("");
   const [make, setMake] = useState("");
@@ -185,6 +189,31 @@ function InventoryPage() {
     return list;
   }, [dealerPool, year, make, model, monthly]);
 
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const paged = useMemo(
+    () => filtered.slice(pageStart, pageStart + PAGE_SIZE),
+    [filtered, pageStart],
+  );
+  const rangeFrom = filtered.length === 0 ? 0 : pageStart + 1;
+  const rangeTo = Math.min(pageStart + PAGE_SIZE, filtered.length);
+
+  useEffect(() => {
+    setPage(1);
+    setExpandedId(null);
+  }, [dealer, year, make, model, monthly]);
+
+  const goToPage = (next: number) => {
+    const clamped = Math.min(Math.max(1, next), pageCount);
+    if (clamped === currentPage) return;
+    setPage(clamped);
+    setExpandedId(null);
+    requestAnimationFrame(() => {
+      gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   const setDealerParam = (slug: string) => {
     void navigate({
       search: { dealer: slug || undefined },
@@ -194,8 +223,8 @@ function InventoryPage() {
 
   const hasFilters = Boolean(dealer || year || make || model || monthly);
   const heroThumbs = useMemo(
-    () => filtered.slice(0, 3).map((v) => v.thumbnail_url).filter(Boolean),
-    [filtered],
+    () => paged.slice(0, 3).map((v) => v.thumbnail_url).filter(Boolean),
+    [paged],
   );
   const clearFilters = () => {
     setDealer("");
@@ -246,6 +275,12 @@ function InventoryPage() {
                 : `${filtered.length} Available Vehicle${filtered.length === 1 ? "" : "s"}`}
               {hasFilters && stats && filtered.length !== stats.total ? (
                 <span className="text-fg-subtle"> · of {stats.total}</span>
+              ) : null}
+              {!loading && filtered.length > PAGE_SIZE ? (
+                <span className="text-fg-subtle">
+                  {" "}
+                  · {rangeFrom}–{rangeTo}
+                </span>
               ) : null}
             </p>
 
@@ -323,27 +358,141 @@ function InventoryPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
-            {filtered.map((v, i) => (
-              <VehicleCard
-                key={v.id}
-                vehicle={v}
-                index={i}
-                expanded={expandedId === v.id}
-                onToggleLease={() => {
-                  setExpandedId((id) => {
-                    const next = id === v.id ? null : v.id;
-                    setDealerParam(next ? v.dealership_id : dealer);
-                    return next;
-                  });
-                }}
-                quoteSettings={quoteSettings}
+          <div
+            ref={gridRef}
+            id="inventory-grid"
+            className="scroll-mt-36 sm:scroll-mt-44"
+          >
+            <div
+              key={currentPage}
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3"
+            >
+              {paged.map((v, i) => (
+                <VehicleCard
+                  key={v.id}
+                  vehicle={v}
+                  index={i}
+                  expanded={expandedId === v.id}
+                  onToggleLease={() => {
+                    setExpandedId((id) => {
+                      const next = id === v.id ? null : v.id;
+                      setDealerParam(next ? v.dealership_id : dealer);
+                      return next;
+                    });
+                  }}
+                  quoteSettings={quoteSettings}
+                />
+              ))}
+            </div>
+            {pageCount > 1 ? (
+              <InventoryPager
+                page={currentPage}
+                pageCount={pageCount}
+                from={rangeFrom}
+                to={rangeTo}
+                total={filtered.length}
+                onPage={goToPage}
               />
-            ))}
+            ) : null}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function paginationItems(current: number, total: number): Array<number | "ellipsis"> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const items: Array<number | "ellipsis"> = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) items.push("ellipsis");
+  for (let p = start; p <= end; p++) items.push(p);
+  if (end < total - 1) items.push("ellipsis");
+  items.push(total);
+  return items;
+}
+
+function InventoryPager({
+  page,
+  pageCount,
+  from,
+  to,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  from: number;
+  to: number;
+  total: number;
+  onPage: (n: number) => void;
+}) {
+  const items = paginationItems(page, pageCount);
+  return (
+    <nav
+      className="mt-8 flex flex-col items-center gap-3 sm:mt-10"
+      aria-label="Inventory pages"
+    >
+      <p className="text-[13px] text-fg-muted">
+        {from}–{to} of {total}
+      </p>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          aria-label="Previous page"
+          className="inline-flex size-10 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+
+        <p className="min-w-[7.5rem] text-center text-[13px] text-fg sm:hidden">
+          Page {page} of {pageCount}
+        </p>
+
+        <div className="hidden items-center gap-0.5 sm:flex">
+          {items.map((item, i) =>
+            item === "ellipsis" ? (
+              <span
+                key={`e-${i}`}
+                className="inline-flex h-10 min-w-8 items-center justify-center px-1 text-[13px] text-fg-subtle"
+                aria-hidden
+              >
+                …
+              </span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                onClick={() => onPage(item)}
+                aria-label={`Page ${item}`}
+                aria-current={item === page ? "page" : undefined}
+                className={cn(
+                  "inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-[13px] transition-colors",
+                  item === page
+                    ? "bg-primary text-primary-fg"
+                    : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+                )}
+              >
+                {item}
+              </button>
+            ),
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={page >= pageCount}
+          aria-label="Next page"
+          className="inline-flex size-10 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+    </nav>
   );
 }
 
