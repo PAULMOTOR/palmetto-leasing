@@ -623,7 +623,7 @@ function InCardQuote({
           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
           <div>
             <p className="font-medium">Application #{leadId}</p>
-            <p className="mt-0.5 text-xs text-fg-muted">Track status anytime via Login → Client.</p>
+            <p className="mt-0.5 text-xs text-fg-muted">We will follow up by email shortly.</p>
           </div>
         </div>
       ) : step === "quote" ? (

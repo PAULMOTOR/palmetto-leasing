@@ -213,15 +213,44 @@ function AdminPage() {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-sm flex-col justify-center px-4 py-16">
         <form
+          method="post"
+          action="/admin"
           onSubmit={onUnlock}
+          autoComplete="on"
           className="rounded-[var(--radius-xl)] border border-border bg-surface p-6 shadow-[var(--shadow-card)]"
         >
           <img src="/palmetto-logo.png" alt="Palmetto" className="mx-auto h-12 w-auto object-contain" />
           <h1 className="mt-3 text-center text-lg font-medium">Admin</h1>
           <p className="mt-1 text-center text-xs text-fg-subtle">Inventory · quotes · dealers</p>
-          <div className="mt-6 space-y-2">
-            <Label htmlFor="pin">PIN</Label>
-            <Input id="pin" type="password" value={pin} onChange={(e) => setPin(e.target.value)} required />
+          <div className="mt-6 space-y-3">
+            <div>
+              <Label htmlFor="admin-username">Username</Label>
+              <Input
+                id="admin-username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                defaultValue="admin"
+                required
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="admin-password">Password</Label>
+              <Input
+                id="admin-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+                className="mt-1"
+              />
+            </div>
           </div>
           <Button type="submit" className="mt-4 w-full" disabled={unlocking}>
             {unlocking ? <Loader2 className="animate-spin" /> : "Unlock"}

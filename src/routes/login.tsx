@@ -1,12 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Building2, Shield, User, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
-  clientLookup,
   dealerPortalLogin,
   listActiveDealersForLogin,
   verifyAdminPin,
@@ -19,11 +18,10 @@ export const Route = createFileRoute("/login")({
   }),
 });
 
-type Role = "client" | "dealer" | "admin" | null;
+type Role = "dealer" | "admin";
 
 function LoginPage() {
-  const nav = useNavigate();
-  const [role, setRole] = useState<Role>(null);
+  const [role, setRole] = useState<Role>("dealer");
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-12">
@@ -33,7 +31,7 @@ function LoginPage() {
           className="absolute top-3 right-3 grid size-9 place-items-center rounded-full text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
           aria-label="Close"
         >
-          <X className="size-4" />
+          <span className="text-lg leading-none">×</span>
         </Link>
 
         <img
@@ -44,163 +42,80 @@ function LoginPage() {
           height={84}
         />
         <p className="mt-2 text-center text-[10px] tracking-[0.28em] text-fg uppercase">Palmetto</p>
+        <h1 className="mt-6 text-center text-lg font-medium tracking-tight">Login</h1>
 
-        {!role ? (
-          <>
-            <h1 className="mt-6 text-center text-lg font-medium tracking-tight">Login</h1>
-            <div className="mt-6 space-y-2">
-              <RoleButton
-                icon={<User className="size-4" />}
-                title="Client"
-                onClick={() => setRole("client")}
-              />
-              <RoleButton
-                icon={<Building2 className="size-4" />}
-                title="Dealer portal"
-                onClick={() => setRole("dealer")}
-              />
-              <RoleButton
-                icon={<Shield className="size-4" />}
-                title="Admin"
-                onClick={() => setRole("admin")}
-              />
-            </div>
-          </>
-        ) : role === "client" ? (
-          <ClientLogin
-            onBack={() => setRole(null)}
-            onOk={(email) => {
-              sessionStorage.setItem("palmetto_client_email", email);
-              void nav({ to: "/portal/client" });
-            }}
-          />
-        ) : role === "dealer" ? (
-          <DealerLogin
-            onBack={() => setRole(null)}
-            onOk={(token) => {
-              sessionStorage.setItem("palmetto_dealer_token", token);
-              void nav({ to: "/portal/dealer" });
-            }}
-          />
-        ) : (
-          <AdminLogin
-            onBack={() => setRole(null)}
-            onOk={(token) => {
-              sessionStorage.setItem("palmetto_admin_token", token);
-              void nav({ to: "/admin" });
-            }}
-          />
-        )}
+        <div className="mt-5 grid grid-cols-2 gap-1 rounded-full border border-border p-1">
+          <button
+            type="button"
+            onClick={() => setRole("dealer")}
+            className={cn(
+              "h-9 rounded-full text-sm font-medium transition-colors",
+              role === "dealer" ? "bg-fg text-primary-fg" : "text-fg-muted hover:text-fg",
+            )}
+          >
+            Dealer
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole("admin")}
+            className={cn(
+              "h-9 rounded-full text-sm font-medium transition-colors",
+              role === "admin" ? "bg-fg text-primary-fg" : "text-fg-muted hover:text-fg",
+            )}
+          >
+            Admin
+          </button>
+        </div>
+
+        {role === "dealer" ? <DealerLoginForm /> : <AdminLoginForm />}
       </div>
     </div>
   );
 }
 
-function RoleButton({
-  icon,
-  title,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-[var(--radius-lg)] border border-border bg-surface-2/50 px-4 py-3.5 text-left transition-[border-color,background-color,transform] duration-[var(--motion-quick)] hover:border-border-strong hover:bg-surface-2 active:scale-[0.99]"
-    >
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface text-fg">
-        {icon}
-      </span>
-      <span className="text-sm font-medium text-fg">{title}</span>
-    </button>
+function resolveDealerId(
+  raw: string,
+  dealers: { id: string; name: string }[],
+): string | null {
+  const t = raw.trim().toLowerCase();
+  if (!t) return null;
+  const exactId = dealers.find((d) => d.id.toLowerCase() === t);
+  if (exactId) return exactId.id;
+  const exactName = dealers.find((d) => d.name.toLowerCase() === t);
+  if (exactName) return exactName.id;
+  const fuzzy = dealers.filter(
+    (d) => d.name.toLowerCase().includes(t) || d.id.toLowerCase().includes(t),
   );
+  return fuzzy.length === 1 ? fuzzy[0]!.id : null;
 }
 
-function ClientLogin({
-  onBack,
-  onOk,
-}: {
-  onBack: () => void;
-  onOk: (email: string) => void;
-}) {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await clientLookup({ data: { email } });
-      if (res.applications.length === 0) {
-        toast.message("No applications found", {
-          description: "Apply from a vehicle card first, then return here.",
-        });
-      }
-      onOk(email.trim().toLowerCase());
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Lookup failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3">
-      <button type="button" onClick={onBack} className="text-xs text-fg-muted hover:text-fg">
-        ← All options
-      </button>
-      <h2 className="text-base font-medium">Client</h2>
-      <div>
-        <Label htmlFor="client-email">Email</Label>
-        <Input
-          id="client-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          placeholder="you@email.com"
-          className="mt-1"
-        />
-      </div>
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Looking up…" : "Continue"}
-      </Button>
-    </form>
-  );
-}
-
-function DealerLogin({
-  onBack,
-  onOk,
-}: {
-  onBack: () => void;
-  onOk: (token: string) => void;
-}) {
+function DealerLoginForm() {
+  const nav = useNavigate();
   const [dealers, setDealers] = useState<{ id: string; name: string; city: string }[]>([]);
-  const [dealerId, setDealerId] = useState("");
-  const [pin, setPin] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    listActiveDealersForLogin().then((rows) => {
-      setDealers(rows);
-      if (rows[0]) setDealerId(rows[0].id);
-    });
+    listActiveDealersForLogin().then(setDealers).catch(() => setDealers([]));
   }, []);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const dealerId = resolveDealerId(username, dealers);
+    if (!dealerId) {
+      toast.error("Unknown dealership");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await dealerPortalLogin({ data: { dealerId, pin } });
+      const res = await dealerPortalLogin({ data: { dealerId, pin: password } });
       if (!res.ok) {
-        toast.error("Invalid PIN");
+        toast.error("Invalid password");
         return;
       }
-      onOk(res.token);
+      sessionStorage.setItem("palmetto_dealer_token", res.token);
+      void nav({ to: "/portal/dealer" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -209,89 +124,105 @@ function DealerLogin({
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3">
-      <button type="button" onClick={onBack} className="text-xs text-fg-muted hover:text-fg">
-        ← All options
-      </button>
-      <h2 className="text-base font-medium">Dealer portal</h2>
+    <form method="post" action="/login" onSubmit={onSubmit} className="mt-6 space-y-3" autoComplete="on">
       <div>
-        <Label htmlFor="dealer">Dealership</Label>
-        <select
-          id="dealer"
-          value={dealerId}
-          onChange={(e) => setDealerId(e.target.value)}
-          className="mt-1 flex h-11 w-full rounded-full border border-border bg-surface px-4 text-sm"
+        <Label htmlFor="username">Username</Label>
+        <Input
+          id="username"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          list="palmetto-dealer-usernames"
           required
-        >
+          placeholder="Your dealership"
+          className="mt-1"
+        />
+        <datalist id="palmetto-dealer-usernames">
           {dealers.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
+            <option key={d.id} value={d.name} />
           ))}
-        </select>
+        </datalist>
       </div>
       <div>
-        <Label htmlFor="dealer-pin">PIN</Label>
+        <Label htmlFor="password">Password</Label>
         <Input
-          id="dealer-pin"
+          id="password"
+          name="password"
           type="password"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           required
           className="mt-1"
         />
       </div>
-      <Button type="submit" className="w-full" disabled={loading || !dealerId}>
-        {loading ? "Signing in…" : "Enter portal"}
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? "Signing in…" : "Enter dealer portal"}
       </Button>
     </form>
   );
 }
 
-function AdminLogin({
-  onBack,
-  onOk,
-}: {
-  onBack: () => void;
-  onOk: (token: string) => void;
-}) {
-  const [pin, setPin] = useState("");
+function AdminLoginForm() {
+  const nav = useNavigate();
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await verifyAdminPin({ data: { pin } });
+      const res = await verifyAdminPin({ data: { pin: password } });
       if (!res.ok) {
-        toast.error("Invalid PIN");
+        toast.error("Invalid password");
         return;
       }
-      onOk(res.token);
+      sessionStorage.setItem("palmetto_admin_token", res.token);
+      void nav({ to: "/admin" });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3">
-      <button type="button" onClick={onBack} className="text-xs text-fg-muted hover:text-fg">
-        ← All options
-      </button>
-      <h2 className="text-base font-medium">Admin</h2>
+    <form method="post" action="/login" onSubmit={onSubmit} className="mt-6 space-y-3" autoComplete="on">
       <div>
-        <Label htmlFor="admin-pin">PIN</Label>
+        <Label htmlFor="username">Username</Label>
         <Input
-          id="admin-pin"
+          id="username"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <Label htmlFor="password">Password</Label>
+        <Input
+          id="password"
+          name="password"
           type="password"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           required
           className="mt-1"
         />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Unlocking…" : "Unlock"}
+        {loading ? "Unlocking…" : "Unlock admin"}
       </Button>
     </form>
   );
