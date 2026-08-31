@@ -15,7 +15,7 @@ export function looksLikeCabinDataUri(dataUri: string): boolean {
   if (comma < 0) return false;
   try {
     const buf = Buffer.from(dataUri.slice(comma + 1), "base64");
-    const decoded = jpeg.decode(buf, { useTArray: true, maxMemoryUsageInMB: 32 });
+    const decoded = jpeg.decode(buf, { useTArray: true, maxMemoryUsageInMB: 96 });
     if (!decoded?.data || decoded.width < 32) return false;
     return looksLikeCabinRaster({
       width: decoded.width,
@@ -34,7 +34,8 @@ export function looksLikeCabinRaster(src: Raster): boolean {
   const mid = avgLum(src, Math.floor(h * 0.38), Math.floor(h * 0.58));
   const bot = avgLum(src, Math.floor(h * 0.72), h);
   if (top < 42) return true;
-  if (top > mid + 38 && bot > 95) return true;
+  // Windshield over pale seats — not a dark car body in front of a glass building.
+  if (top > mid + 38 && bot > 95 && mid > 80) return true;
   return false;
 }
 

@@ -386,6 +386,7 @@ async function runInventoryCrawlInner(opts?: {
             imagineQa: "pass",
           };
           delete specs.imagineQaFails;
+          delete specs.imagineSkip;
           await sql`
             update vehicles
             set thumbnail_url = ${imag.url},

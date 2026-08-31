@@ -160,33 +160,97 @@ async function firstExteriorDataUri(urls: string[]): Promise<string | null> {
   return fallback;
 }
 
-async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
-  const url = upgradeImageUrl(imageUrl);
+/**
+ * AutoScout / AutoTrader listing-images 404 from Node's TLS fingerprint
+ * (CloudFront "Error <uuid>"). Chrome impersonation (impit) downloads them.
+ */
+let chromeClient: Promise<import("impit").Impit | null> | null = null;
+
+function getChromeClient() {
+  if (!chromeClient) {
+    chromeClient = import("impit")
+      .then(({ Impit }) => new Impit({ browser: "chrome", timeout: 10_000 }))
+      .catch(() => null);
+  }
+  return chromeClient;
+}
+
+function listingPhotoHeaders(url: string): Record<string, string> {
   let referer = "https://www.palmettoleasing.com/";
   try {
     const host = new URL(url).hostname;
-    if (/autoscout24|autotrader/i.test(host)) referer = "https://www.autotrader.ca/";
+    if (/autoscout24|autotrader/i.test(host)) referer = "https://www.grandtouringautos.com/";
     if (/gclcars|dp-prod\.s3/i.test(host)) referer = "https://www.gclcars.ca/";
   } catch {
     /* keep */
   }
+  return {
+    "user-agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    accept: "image/jpeg,image/webp,image/*,*/*;q=0.8",
+    "accept-language": "en-CA,en;q=0.9",
+    referer,
+  };
+}
+
+function photoUrlCandidates(imageUrl: string): string[] {
+  const raw = imageUrl.trim();
+  const upgraded = upgradeImageUrl(raw);
+  return [...new Set([upgraded, raw].filter(Boolean))];
+}
+
+async function fetchImageAsDataUri(imageUrl: string): Promise<string | null> {
+  for (const url of photoUrlCandidates(imageUrl)) {
+    const buf = await downloadListingPhoto(url);
+    if (!buf) continue;
+    let ctype = "image/jpeg";
+    if (buf[0] === 0x89 && buf[1] === 0x50) ctype = "image/png";
+    return `data:${ctype};base64,${buf.toString("base64")}`;
+  }
+  return null;
+}
+
+async function downloadListingPhoto(url: string): Promise<Buffer | null> {
+  const headers = listingPhotoHeaders(url);
+  const autoscout = /pictures\.autoscout24\.net/i.test(url);
+  if (!autoscout) {
+    const plain = await nodeFetchBytes(url, headers);
+    if (plain) return plain;
+  }
+  return chromeFetchBytes(url, headers);
+}
+
+async function nodeFetchBytes(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Buffer | null> {
   try {
     const res = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        accept: "image/jpeg,image/webp,image/*,*/*;q=0.8",
-        referer,
-      },
+      headers,
       signal: AbortSignal.timeout(10_000),
       redirect: "follow",
     });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 800 || buf.length > 3_000_000) return null;
-    let ctype = (res.headers.get("content-type") || "image/jpeg").split(";")[0]!.trim();
-    if (!ctype.startsWith("image/")) ctype = "image/jpeg";
-    return `data:${ctype};base64,${buf.toString("base64")}`;
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
+async function chromeFetchBytes(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Buffer | null> {
+  try {
+    const client = await getChromeClient();
+    if (!client) return null;
+    const res = await client.fetch(url, { headers });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 800 || buf.length > 3_000_000) return null;
+    return buf;
   } catch {
     return null;
   }

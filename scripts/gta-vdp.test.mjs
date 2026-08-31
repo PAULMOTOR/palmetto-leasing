@@ -52,6 +52,16 @@ function parseGrandTouringVdp(html) {
     seen.add(u);
     photos.push(u);
   }
+  if (!photos.length) {
+    for (const m of slice.matchAll(
+      /https?:\/\/prod\.pictures\.autoscout24\.net\/listing-images\/[0-9a-f-]+_[0-9a-f-]+\.(?:jpe?g|webp)/gi,
+    )) {
+      const u = m[0].replace(/&amp;/g, "&").split("?")[0];
+      if (seen.has(u)) continue;
+      seen.add(u);
+      photos.push(u);
+    }
+  }
   return { photos, exterior, interior };
 }
 
@@ -92,6 +102,7 @@ test("VDP parser keeps carimages and paint, drops logos", () => {
   assert.match(parserSrc, /EXTERIOR/);
   assert.match(parserSrc, /similar vehicles/i);
   assert.match(parserSrc, /&amp;/);
+  assert.match(parserSrc, /autoscout24/);
   const parsed = parseGrandTouringVdp(FIXTURE);
   assert.equal(parsed.exterior, "Grey Carbon/ Agile Blue");
   assert.equal(parsed.interior, "Leather & Alcantara");
@@ -102,6 +113,34 @@ test("VDP parser keeps carimages and paint, drops logos", () => {
   ]);
   assert.equal(
     parsed.photos.some((u) => /gta-prod|brand-images|aston-martin|OTHERSTOCK/i.test(u)),
+    false,
+  );
+});
+
+test("AutoScout-only VDP keeps listing-images, not logos or related cars", () => {
+  const html = `
+<img src="https://gta-prod.s3.amazonaws.com/lamborghini/logo.png" />
+<div id="lightboxCarousel">
+  <img src="https://prod.pictures.autoscout24.net/listing-images/e08bed6a-8499-4db9-aafd-a952b07e219c_2aa7e8f5-62ee-49c1-b37d-87c052930cc8.jpg" />
+  <img src="https://prod.pictures.autoscout24.net/listing-images/e08bed6a-8499-4db9-aafd-a952b07e219c_883f5ca7-5319-4f84-bb56-379c6d6b2db6.jpg" />
+</div>
+<div class="key">EXTERIOR</div>
+<div class="value">Rosso Ad personam</div>
+<div class="key">INTERIOR</div>
+<div class="value">Black/Red</div>
+<h2>Similar Vehicles</h2>
+<img src="https://files.dlsaccelerator.com/webasp/uploads/carimages/OTHERSTOCK.jpg" />
+<img src="https://prod.pictures.autoscout24.net/listing-images/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee_ffffffff-1111-2222-3333-444444444444.jpg" />
+`;
+  const parsed = parseGrandTouringVdp(html);
+  assert.equal(parsed.exterior, "Rosso Ad personam");
+  assert.equal(parsed.interior, "Black/Red");
+  assert.deepEqual(parsed.photos, [
+    "https://prod.pictures.autoscout24.net/listing-images/e08bed6a-8499-4db9-aafd-a952b07e219c_2aa7e8f5-62ee-49c1-b37d-87c052930cc8.jpg",
+    "https://prod.pictures.autoscout24.net/listing-images/e08bed6a-8499-4db9-aafd-a952b07e219c_883f5ca7-5319-4f84-bb56-379c6d6b2db6.jpg",
+  ]);
+  assert.equal(
+    parsed.photos.some((u) => /gta-prod|OTHERSTOCK|aaaaaaaa-bbbb/i.test(u)),
     false,
   );
 });

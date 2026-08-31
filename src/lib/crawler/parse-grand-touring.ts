@@ -43,20 +43,32 @@ function gtaGalleryHtml(html: string): string {
 function carimageUrls(html: string): string[] {
   const photos: string[] = [];
   const seen = new Set<string>();
+  const push = (raw: string) => {
+    const u = raw.replace(/&amp;/g, "&").split("?")[0]!;
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    photos.push(u);
+  };
+  // Prefer GTA's own walkaround copies when they exist.
   for (const m of html.matchAll(
     /https?:\/\/files\.dlsaccelerator\.com\/webasp\/uploads\/carimages\/[^"'?\s]+/gi,
   )) {
-    const u = m[0]!.replace(/&amp;/g, "&").split("?")[0]!;
-    if (seen.has(u)) continue;
-    seen.add(u);
-    photos.push(u);
+    push(m[0]!);
+  }
+  if (photos.length) return photos;
+  // Some consignment VDPs only host the shoot on AutoScout (no carimages/).
+  for (const m of html.matchAll(
+    /https?:\/\/prod\.pictures\.autoscout24\.net\/listing-images\/[0-9a-f-]+_[0-9a-f-]+\.(?:jpe?g|webp)/gi,
+  )) {
+    push(m[0]!);
   }
   return photos;
 }
 
 /**
  * GTA VDPs put brand logos (gta-prod S3) in the first <img> slots, then the
- * real shoot in `.freshImages` / `#lightboxCarousel` on dlsaccelerator.
+ * real shoot in `.freshImages` / `#lightboxCarousel` — dlsaccelerator carimages
+ * when GTA copied the files, AutoScout listing-images when they did not.
  */
 export function parseGrandTouringVdp(html: string): GtaVdp {
   const exterior = decodeHtml(

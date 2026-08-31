@@ -50,7 +50,7 @@ export async function fetchListingGallery(
       const gta = parseGrandTouringVdp(html);
       if (gta.photos.length) {
         return {
-          photos: gta.photos.slice(0, limit),
+          photos: normalizeGalleryUrls(gta.photos).slice(0, limit),
           interiors: 0,
           source: "gta-vdp",
           exterior: gta.exterior || undefined,

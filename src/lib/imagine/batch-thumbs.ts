@@ -455,6 +455,9 @@ function stampImagineSpecs(
   for (const [k, v] of Object.entries(patch)) {
     if (v) next[k] = v;
   }
-  if (patch.imagineQa === "pass") delete next.imagineQaFails;
+  if (patch.imagineQa === "pass") {
+    delete next.imagineQaFails;
+    delete next.imagineSkip;
+  }
   return JSON.stringify(next);
 }

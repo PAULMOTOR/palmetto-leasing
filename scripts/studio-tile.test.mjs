@@ -56,5 +56,8 @@ test("studio source skips cabin shots", () => {
   assert.match(gen, /looksLikeCabinDataUri/);
   assert.match(cabin, /headliner/);
   assert.match(cabin, /top < 42/);
+  assert.match(cabin, /mid > 80/);
+  assert.match(gen, /impit/);
+  assert.match(gen, /autoscout24/);
   assert.match(promptSrc, /never a Urus SUV/);
 });
