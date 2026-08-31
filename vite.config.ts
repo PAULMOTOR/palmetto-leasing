@@ -139,7 +139,7 @@ export default defineConfig(({ command }) => ({
   resolve: { tsconfigPaths: true },
   ssr: {
     // Native Chrome-TLS client — must not be bundled into the Vercel lambda.
-    external: ["impit"],
+    external: ["impit", "impit-linux-x64-gnu", "impit-linux-x64-musl"],
   },
   plugins: [
     pgliteBootstrapPlugin(),
@@ -162,6 +162,13 @@ export default defineConfig(({ command }) => ({
                 maxDuration: 120,
                 memory: 1024,
               },
+            },
+            // Native .node binary — Rolldown cannot inline it as UTF-8.
+            rolldownConfig: {
+              external: [/^impit/],
+            },
+            rollupConfig: {
+              external: [/^impit/],
             },
           }),
         ]
