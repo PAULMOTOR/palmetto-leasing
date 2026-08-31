@@ -24,11 +24,14 @@ test("classics are not rewritten as current Ferraris", () => {
   assert.match(promptSrc, /296\/Roma\/SF90/);
 });
 
-test("fit constants enlarge toys and only shrink clippers", () => {
-  assert.match(fitSrc, /FIT_TRIGGER = 0\.84/);
+test("fit enlarges toys and does not letterbox a grey mat", () => {
+  assert.doesNotMatch(fitSrc, /FIT_TRIGGER/);
   assert.match(fitSrc, /FIT_TARGET = 0\.74/);
   assert.match(fitSrc, /FIT_MIN = 0\.64/);
   assert.match(fitSrc, /zoomCrop/);
+  assert.match(fitSrc, /sampleBilinear/);
+  assert.match(fitSrc, /Never letterbox/);
+  assert.doesNotMatch(fitSrc, /shrinkOntoFloor/);
   const side = 64;
   const data = new Uint8Array(side * side * 4);
   for (let i = 0; i < data.length; i += 4) {
@@ -48,6 +51,7 @@ test("fit constants enlarge toys and only shrink clippers", () => {
   const encoded = jpeg.encode({ data, width: side, height: side }, 90);
   assert.ok(encoded.data.length > 100);
 });
+
 
 test("studio source skips cabin shots", () => {
   const gen = readFileSync(new URL("../src/lib/imagine/generate-thumb.ts", import.meta.url), "utf8");

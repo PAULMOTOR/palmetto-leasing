@@ -1,16 +1,15 @@
 /**
- * Crop a white letterbox / inset frame if Imagine adds one, then fit the car
- * to ~three-quarters of the square (shrink clippers, enlarge toys).
+ * Crop a white letterbox / inset frame if Imagine adds one, then enlarge
+ * toys. Never letterbox a finished tile onto a grey mat — that resize is
+ * what made the Bugatti look framed and jagged.
  */
 import jpeg from "jpeg-js";
 
 type Raster = { width: number; height: number; data: Uint8Array };
 
-/** Occupancy above this (bbox / side) gets scaled down — only true clippers. */
-export const FIT_TRIGGER = 0.84;
 /** Occupancy below this gets zoomed in — the half-frame toys. */
 export const FIT_MIN = 0.64;
-/** Target occupancy after a fit — matches the Palmetto camera plate. */
+/** Target occupancy after a zoom — matches the Palmetto camera plate. */
 export const FIT_TARGET = 0.74;
 
 export function normalizeStudioTileDataUri(dataUri: string): string | null {
@@ -32,7 +31,7 @@ export function normalizeStudioTileDataUri(dataUri: string): string | null {
     raster = fitCarInStudio(raster);
     const encoded = jpeg.encode(
       { data: raster.data, width: raster.width, height: raster.height },
-      88,
+      92,
     );
     if (!encoded?.data?.length) return null;
     const out = `data:image/jpeg;base64,${Buffer.from(encoded.data).toString("base64")}`;
@@ -57,7 +56,7 @@ function chroma(data: Uint8Array, i: number): number {
 function cropUniformBorder(src: Raster): Raster {
   const { width: w, height: h, data } = src;
   const edge = lum(data, 0);
-  // Only crop a near-white frame (the 296 inset). Gray-to-edge tiles stay.
+  // Only crop a near-white frame (the 296 inset). Gray-to-edge studio stays.
   if (edge < 245) return src;
 
   const isFrame = (i: number) => lum(data, i) >= 248 && chroma(data, i) < 12;
@@ -165,7 +164,8 @@ export function carOccupancy(src: Raster): number {
 }
 
 /**
- * Shrink clippers; zoom toys. No-op when occupancy is already in range.
+ * Enlarge toys so they match the camera plate. Never shrink a clipper onto
+ * a grey mat — that letterbox is a visible frame and a jaggy resize.
  */
 export function fitCarInStudio(src: Raster): Raster {
   const w = src.width;
@@ -173,41 +173,10 @@ export function fitCarInStudio(src: Raster): Raster {
   if (w < 64 || h < 64) return src;
   const occupancy = carOccupancy(src);
   if (occupancy < 0.28) return src;
-  if (occupancy >= FIT_MIN && occupancy <= FIT_TRIGGER) return src;
-  const scale = Math.min(1.35, Math.max(0.62, FIT_TARGET / occupancy));
-  if (scale >= 0.97 && scale <= 1.04) return src;
-  if (scale < 1) return shrinkOntoFloor(src, scale);
+  if (occupancy >= FIT_MIN) return src;
+  const scale = Math.min(1.35, FIT_TARGET / occupancy);
+  if (scale <= 1.04) return src;
   return zoomCrop(src, scale);
-}
-
-function shrinkOntoFloor(src: Raster, scale: number): Raster {
-  const w = src.width;
-  const h = src.height;
-  const floor = cornerFloor(src);
-  const nw = Math.max(32, Math.round(w * scale));
-  const nh = Math.max(32, Math.round(h * scale));
-  const ox = Math.floor((w - nw) / 2);
-  const oy = Math.floor((h - nh) / 2);
-  const out = new Uint8Array(w * h * 4);
-  for (let i = 0; i < out.length; i += 4) {
-    out[i] = floor.r;
-    out[i + 1] = floor.g;
-    out[i + 2] = floor.b;
-    out[i + 3] = 255;
-  }
-  for (let y = 0; y < nh; y++) {
-    const sy = Math.min(h - 1, Math.floor((y / nh) * h));
-    for (let x = 0; x < nw; x++) {
-      const sx = Math.min(w - 1, Math.floor((x / nw) * w));
-      const si = (sy * w + sx) * 4;
-      const di = ((oy + y) * w + (ox + x)) * 4;
-      out[di] = src.data[si]!;
-      out[di + 1] = src.data[si + 1]!;
-      out[di + 2] = src.data[si + 2]!;
-      out[di + 3] = 255;
-    }
-  }
-  return { width: w, height: h, data: out };
 }
 
 function zoomCrop(src: Raster, scale: number): Raster {
@@ -220,16 +189,35 @@ function zoomCrop(src: Raster, scale: number): Raster {
   const oy = (h - ch) / 2;
   const out = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
-    const sy = Math.min(h - 1, Math.max(0, Math.floor(oy + (y / h) * ch)));
+    const fy = oy + ((y + 0.5) / h) * ch - 0.5;
     for (let x = 0; x < w; x++) {
-      const sx = Math.min(w - 1, Math.max(0, Math.floor(ox + (x / w) * cw)));
-      const si = (sy * w + sx) * 4;
-      const di = (y * w + x) * 4;
-      out[di] = src.data[si]!;
-      out[di + 1] = src.data[si + 1]!;
-      out[di + 2] = src.data[si + 2]!;
-      out[di + 3] = 255;
+      const fx = ox + ((x + 0.5) / w) * cw - 0.5;
+      sampleBilinear(src, fx, fy, out, (y * w + x) * 4);
     }
   }
   return { width: w, height: h, data: out };
+}
+
+function sampleBilinear(src: Raster, fx: number, fy: number, out: Uint8Array, di: number): void {
+  const w = src.width;
+  const h = src.height;
+  const x = Math.min(w - 1, Math.max(0, fx));
+  const y = Math.min(h - 1, Math.max(0, fy));
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(w - 1, x0 + 1);
+  const y1 = Math.min(h - 1, y0 + 1);
+  const tx = x - x0;
+  const ty = y - y0;
+  const i00 = (y0 * w + x0) * 4;
+  const i10 = (y0 * w + x1) * 4;
+  const i01 = (y1 * w + x0) * 4;
+  const i11 = (y1 * w + x1) * 4;
+  const d = src.data;
+  for (let c = 0; c < 3; c++) {
+    const v0 = d[i00 + c]! * (1 - tx) + d[i10 + c]! * tx;
+    const v1 = d[i01 + c]! * (1 - tx) + d[i11 + c]! * tx;
+    out[di + c] = Math.round(v0 * (1 - ty) + v1 * ty);
+  }
+  out[di + 3] = 255;
 }
