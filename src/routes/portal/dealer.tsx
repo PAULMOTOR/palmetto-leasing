@@ -130,6 +130,19 @@ function DealerPortalPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button asChild size="sm">
+            <Link
+              to="/desk/$slug"
+              params={{
+                slug:
+                  (typeof sessionStorage !== "undefined" &&
+                    sessionStorage.getItem("palmetto_dealer_slug")) ||
+                  dealer.id,
+              }}
+            >
+              Control Centre
+            </Link>
+          </Button>
           <Button asChild variant="ghost" size="sm">
             <Link to="/">Inventory</Link>
           </Button>

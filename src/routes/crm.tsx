@@ -20,9 +20,9 @@ function CrmRedirectPage() {
       />
       <h1 className="mt-6 text-lg font-medium">CRM lives elsewhere</h1>
       <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-        Lease applications from this marketing site hand off to the Paul Motor CRM project via{" "}
-        <code className="text-xs">CRM_HANDOFF_URL</code>. This site does not store CRM data or
-        connect to Neon.
+        Lease applications from this marketing site hand off to the Paul Motor CRM project. This
+        site does not store CRM files or write stages. Dealer staff watch their rooftop on the
+        Palmetto Control Centre after dealer login — never another dealer’s files.
       </p>
       <Link
         to="/"

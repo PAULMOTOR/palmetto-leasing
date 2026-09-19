@@ -141,6 +141,9 @@ export default defineConfig(({ command }) => ({
     // Native Chrome-TLS client — must not be bundled into the Vercel lambda.
     external: ["impit", "impit-linux-x64-gnu", "impit-linux-x64-musl"],
   },
+  optimizeDeps: {
+    exclude: ["impit", "impit-linux-x64-gnu", "impit-linux-x64-musl"],
+  },
   plugins: [
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.

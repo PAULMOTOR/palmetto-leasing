@@ -15,6 +15,7 @@ import { Route as CrmRouteImport } from './routes/crm'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DeskSlugRouteImport } from './routes/desk/$slug'
 import { Route as LeaseSlugRouteImport } from './routes/lease/$slug'
 import { Route as PortalClientRouteImport } from './routes/portal/client'
 import { Route as PortalDealerRouteImport } from './routes/portal/dealer'
@@ -25,6 +26,10 @@ import { Route as ApiAdminThumbsRouteImport } from './routes/api/admin/thumbs'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronCrawlRouteImport } from './routes/api/cron/crawl'
 import { Route as ApiThumbIdRouteImport } from './routes/api/thumb.$id'
+import { Route as DeskSlugIndexRouteImport } from './routes/desk/$slug/index'
+import { Route as DeskSlugDealsRouteImport } from './routes/desk/$slug/deals'
+import { Route as DeskSlugNewRouteImport } from './routes/desk/$slug/new'
+import { Route as DeskSlugDealsIdRouteImport } from './routes/desk/$slug/deals_.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -54,6 +59,11 @@ const InventoryRoute = InventoryRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeskSlugRoute = DeskSlugRouteImport.update({
+  id: '/desk/$slug',
+  path: '/desk/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeaseSlugRoute = LeaseSlugRouteImport.update({
@@ -106,6 +116,26 @@ const ApiThumbIdRoute = ApiThumbIdRouteImport.update({
   path: '/api/thumb/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeskSlugIndexRoute = DeskSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DeskSlugRoute,
+} as any)
+const DeskSlugDealsRoute = DeskSlugDealsRouteImport.update({
+  id: '/deals',
+  path: '/deals',
+  getParentRoute: () => DeskSlugRoute,
+} as any)
+const DeskSlugNewRoute = DeskSlugNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => DeskSlugRoute,
+} as any)
+const DeskSlugDealsIdRoute = DeskSlugDealsIdRouteImport.update({
+  id: '/deals_/$id',
+  path: '/deals/$id',
+  getParentRoute: () => DeskSlugRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -114,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/how-it-works': typeof HowItWorksRoute
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
+  '/desk/$slug': typeof DeskSlugRouteWithChildren
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
@@ -124,6 +155,10 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
+  '/desk/$slug/deals': typeof DeskSlugDealsRoute
+  '/desk/$slug/new': typeof DeskSlugNewRoute
+  '/desk/$slug/': typeof DeskSlugIndexRoute
+  '/desk/$slug/deals/$id': typeof DeskSlugDealsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -142,6 +177,10 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
+  '/desk/$slug/deals': typeof DeskSlugDealsRoute
+  '/desk/$slug/new': typeof DeskSlugNewRoute
+  '/desk/$slug': typeof DeskSlugIndexRoute
+  '/desk/$slug/deals/$id': typeof DeskSlugDealsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -151,6 +190,7 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
+  '/desk/$slug': typeof DeskSlugRouteWithChildren
   '/lease/$slug': typeof LeaseSlugRoute
   '/portal/client': typeof PortalClientRoute
   '/portal/dealer': typeof PortalDealerRoute
@@ -161,6 +201,10 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
+  '/desk/$slug/deals': typeof DeskSlugDealsRoute
+  '/desk/$slug/new': typeof DeskSlugNewRoute
+  '/desk/$slug/': typeof DeskSlugIndexRoute
+  '/desk/$slug/deals_/$id': typeof DeskSlugDealsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -171,6 +215,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/inventory'
     | '/login'
+    | '/desk/$slug'
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
@@ -181,6 +226,10 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
+    | '/desk/$slug/deals'
+    | '/desk/$slug/new'
+    | '/desk/$slug/'
+    | '/desk/$slug/deals/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -199,6 +248,10 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
+    | '/desk/$slug/deals'
+    | '/desk/$slug/new'
+    | '/desk/$slug'
+    | '/desk/$slug/deals/$id'
   id:
     | '__root__'
     | '/'
@@ -207,6 +260,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/inventory'
     | '/login'
+    | '/desk/$slug'
     | '/lease/$slug'
     | '/portal/client'
     | '/portal/dealer'
@@ -217,6 +271,10 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/crawl'
     | '/api/thumb/$id'
+    | '/desk/$slug/deals'
+    | '/desk/$slug/new'
+    | '/desk/$slug/'
+    | '/desk/$slug/deals_/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -226,6 +284,7 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   InventoryRoute: typeof InventoryRoute
   LoginRoute: typeof LoginRoute
+  DeskSlugRoute: typeof DeskSlugRouteWithChildren
   LeaseSlugRoute: typeof LeaseSlugRoute
   PortalClientRoute: typeof PortalClientRoute
   PortalDealerRoute: typeof PortalDealerRoute
@@ -280,6 +339,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desk/$slug': {
+      id: '/desk/$slug'
+      path: '/desk/$slug'
+      fullPath: '/desk/$slug'
+      preLoaderRoute: typeof DeskSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lease/$slug': {
@@ -352,8 +418,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiThumbIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desk/$slug/': {
+      id: '/desk/$slug/'
+      path: '/'
+      fullPath: '/desk/$slug/'
+      preLoaderRoute: typeof DeskSlugIndexRouteImport
+      parentRoute: typeof DeskSlugRoute
+    }
+    '/desk/$slug/deals': {
+      id: '/desk/$slug/deals'
+      path: '/deals'
+      fullPath: '/desk/$slug/deals'
+      preLoaderRoute: typeof DeskSlugDealsRouteImport
+      parentRoute: typeof DeskSlugRoute
+    }
+    '/desk/$slug/new': {
+      id: '/desk/$slug/new'
+      path: '/new'
+      fullPath: '/desk/$slug/new'
+      preLoaderRoute: typeof DeskSlugNewRouteImport
+      parentRoute: typeof DeskSlugRoute
+    }
+    '/desk/$slug/deals_/$id': {
+      id: '/desk/$slug/deals_/$id'
+      path: '/deals/$id'
+      fullPath: '/desk/$slug/deals/$id'
+      preLoaderRoute: typeof DeskSlugDealsIdRouteImport
+      parentRoute: typeof DeskSlugRoute
+    }
   }
 }
+
+interface DeskSlugRouteChildren {
+  DeskSlugDealsRoute: typeof DeskSlugDealsRoute
+  DeskSlugNewRoute: typeof DeskSlugNewRoute
+  DeskSlugIndexRoute: typeof DeskSlugIndexRoute
+  DeskSlugDealsIdRoute: typeof DeskSlugDealsIdRoute
+}
+
+const DeskSlugRouteChildren: DeskSlugRouteChildren = {
+  DeskSlugDealsRoute: DeskSlugDealsRoute,
+  DeskSlugNewRoute: DeskSlugNewRoute,
+  DeskSlugIndexRoute: DeskSlugIndexRoute,
+  DeskSlugDealsIdRoute: DeskSlugDealsIdRoute,
+}
+
+const DeskSlugRouteWithChildren = DeskSlugRoute._addFileChildren(
+  DeskSlugRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -362,6 +474,7 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   InventoryRoute: InventoryRoute,
   LoginRoute: LoginRoute,
+  DeskSlugRoute: DeskSlugRouteWithChildren,
   LeaseSlugRoute: LeaseSlugRoute,
   PortalClientRoute: PortalClientRoute,
   PortalDealerRoute: PortalDealerRoute,

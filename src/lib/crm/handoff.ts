@@ -199,10 +199,10 @@ export async function handoffLeaseToCrm(input: {
     application: input.application,
   };
 
-  const url = process.env.CRM_HANDOFF_URL?.trim();
+  const urlRaw = process.env.CRM_HANDOFF_URL?.trim();
   const secret = process.env.CRM_HANDOFF_SECRET?.trim();
 
-  if (!url) {
+  if (!urlRaw) {
     console.info("[crm-handoff] CRM_HANDOFF_URL not set — application accepted locally only", {
       referenceId,
       email: payload.email,
@@ -217,11 +217,20 @@ export async function handoffLeaseToCrm(input: {
   }
 
   try {
-    const res = await fetch(url, {
+    let target = urlRaw;
+    try {
+      const u = new URL(urlRaw);
+      if (dealerSlug) u.searchParams.set("dealer", dealerSlug);
+      target = u.toString();
+    } catch {
+      /* keep raw URL */
+    }
+    const res = await fetch(target, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         ...(secret ? { authorization: `Bearer ${secret}` } : {}),
+        ...(dealerSlug ? { "x-dealer-slug": dealerSlug } : {}),
         "x-palmetto-reference": referenceId,
       },
       body: JSON.stringify(payload),

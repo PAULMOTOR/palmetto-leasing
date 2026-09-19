@@ -7,6 +7,8 @@ import { palmettoOrigin } from "@/lib/leasing/thumb-url";
 import { sendMail } from "@/lib/mail/send";
 import { loadImageSupportEmail } from "@/lib/admin/image-support";
 import { formatCad, formatNumber } from "@/lib/utils";
+import { resolveDealerSlug } from "@/lib/crm/dealers";
+import { DEALERS } from "@/lib/leasing/seed";
 
 const DEALER_PIN = () => process.env.DEALER_PIN?.trim() || "dealer";
 const ADMIN_PIN = () => process.env.ADMIN_PIN?.trim() || "palmetto";
@@ -61,107 +63,162 @@ export const dealerPortalLogin = createServerFn({ method: "POST" })
     z.object({ dealerId: z.string().min(1), pin: z.string().min(1).max(64) }).parse(input),
   )
   .handler(async ({ data }) => {
-    await ensurePortalSchema();
-    const sql = await getSql();
-    const rows = await sql<{
-      id: string;
-      name: string;
-      city: string;
-      province: string;
-      active: boolean;
-      portal_pin: string | null;
-      referral_fee_bps: number;
-      quote_rate_offset_bps: number;
-    }>`
-      select id, name, city, province, active, portal_pin, referral_fee_bps, quote_rate_offset_bps
-      from dealerships where id = ${data.dealerId} limit 1
-    `;
-    const d = rows[0];
-    if (!d) return { ok: false as const };
-    const pin = (d.portal_pin || "").trim() || DEALER_PIN();
-    if (data.pin !== pin && data.pin !== ADMIN_PIN()) return { ok: false as const };
-    return {
-      ok: true as const,
-      token: `dealer:${d.id}`,
-      dealer: {
-        id: d.id,
-        name: d.name,
-        referralFeeBps: Number(d.referral_fee_bps || 150),
-        quoteRateOffsetBps: Number(d.quote_rate_offset_bps || 0),
-        active: Boolean(d.active),
-      },
+    const pinOk = (stored: string | null | undefined) => {
+      const pin = (stored || "").trim() || DEALER_PIN();
+      return data.pin === pin || data.pin === ADMIN_PIN();
     };
+
+    const signedIn = async (
+      id: string,
+      name: string,
+      extra?: { referralFeeBps?: number; quoteRateOffsetBps?: number; active?: boolean },
+    ) => {
+      const slug = (await resolveDealerSlug({ localSlug: id, localName: name })) || id;
+      return {
+        ok: true as const,
+        token: `dealer:${id}`,
+        slug,
+        dealer: {
+          id,
+          name,
+          referralFeeBps: extra?.referralFeeBps ?? 150,
+          quoteRateOffsetBps: extra?.quoteRateOffsetBps ?? 0,
+          active: extra?.active ?? true,
+        },
+      };
+    };
+
+    try {
+      await ensurePortalSchema();
+      const sql = await getSql();
+      const rows = await sql<{
+        id: string;
+        name: string;
+        city: string;
+        province: string;
+        active: boolean;
+        portal_pin: string | null;
+        referral_fee_bps: number;
+        quote_rate_offset_bps: number;
+      }>`
+        select id, name, city, province, active, portal_pin, referral_fee_bps, quote_rate_offset_bps
+        from dealerships where id = ${data.dealerId} limit 1
+      `;
+      const d = rows[0];
+      if (d) {
+        if (!pinOk(d.portal_pin)) return { ok: false as const };
+        return signedIn(d.id, d.name, {
+          referralFeeBps: Number(d.referral_fee_bps || 150),
+          quoteRateOffsetBps: Number(d.quote_rate_offset_bps || 0),
+          active: Boolean(d.active),
+        });
+      }
+    } catch {
+      /* seed fallback so preview login works without crawled dealerships */
+    }
+
+    const seed = DEALERS.find((x) => x.id === data.dealerId && x.active);
+    if (!seed || !pinOk(null)) return { ok: false as const };
+    return signedIn(seed.id, seed.name);
   });
 
 export const getDealerPortal = createServerFn({ method: "GET" })
   .validator((input: unknown) => z.object({ token: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     const dealerId = dealerIdFromToken(data.token);
-    await ensurePortalSchema();
-    const sql = await getSql();
-    const dealers = await sql<{
-      id: string;
-      name: string;
-      city: string;
-      province: string;
-      active: boolean;
-      inventory_url: string;
-      referral_fee_bps: number;
-      quote_rate_offset_bps: number;
-    }>`
-      select id, name, city, province, active, inventory_url, referral_fee_bps, quote_rate_offset_bps
-      from dealerships where id = ${dealerId} limit 1
-    `;
-    const d = dealers[0];
-    if (!d) throw new Error("Dealer not found");
+    try {
+      await ensurePortalSchema();
+      const sql = await getSql();
+      const dealers = await sql<{
+        id: string;
+        name: string;
+        city: string;
+        province: string;
+        active: boolean;
+        inventory_url: string;
+        referral_fee_bps: number;
+        quote_rate_offset_bps: number;
+      }>`
+        select id, name, city, province, active, inventory_url, referral_fee_bps, quote_rate_offset_bps
+        from dealerships where id = ${dealerId} limit 1
+      `;
+      const d = dealers[0];
+      if (d) {
+        const vehicles = await sql<{
+          id: string;
+          year: number;
+          make: string;
+          model: string;
+          trim: string;
+          price_cents: number;
+          mileage: number;
+          thumbnail_url: string;
+          dealer_listing_url: string;
+          vin: string;
+          updated_at: string;
+        }>`
+          select id, year, make, model, trim, price_cents, mileage, thumbnail_url,
+                 dealer_listing_url, coalesce(vin, '') as vin, updated_at::text as updated_at
+          from vehicles
+          where dealership_id = ${dealerId} and status = 'active'
+          order by price_cents desc
+        `;
 
-    const vehicles = await sql<{
-      id: string;
-      year: number;
-      make: string;
-      model: string;
-      trim: string;
-      price_cents: number;
-      mileage: number;
-      thumbnail_url: string;
-      dealer_listing_url: string;
-      vin: string;
-      updated_at: string;
-    }>`
-      select id, year, make, model, trim, price_cents, mileage, thumbnail_url,
-             dealer_listing_url, coalesce(vin, '') as vin, updated_at::text as updated_at
-      from vehicles
-      where dealership_id = ${dealerId} and status = 'active'
-      order by price_cents desc
-    `;
+        return {
+          dealer: {
+            id: d.id,
+            name: d.name,
+            city: d.city,
+            province: d.province,
+            referralFeeBps: Number(d.referral_fee_bps || 150),
+            quoteRateOffsetBps: Number(d.quote_rate_offset_bps || 0),
+            active: Boolean(d.active),
+            inventoryUrl: d.inventory_url,
+          },
+          vehicles: vehicles.map((v) => {
+            const updatedAt = v.updated_at || "";
+            return {
+              id: v.id,
+              title: vehicleDisplayTitle(v),
+              year: Number(v.year),
+              make: v.make,
+              model: v.model,
+              priceCents: Number(v.price_cents),
+              mileage: Number(v.mileage),
+              hasStudio: (v.thumbnail_url || "").startsWith("data:image/"),
+              tileUrl: `/api/thumb/${encodeURIComponent(v.id)}?v=${encodeURIComponent(updatedAt)}`,
+              listingUrl: v.dealer_listing_url || "",
+              vin: v.vin || "",
+            } satisfies DealerPortalVehicle;
+          }),
+          referrals: [] as {
+            id: number;
+            vehicle_label: string;
+            customer_name: string;
+            monthly_payment_cents: number;
+            status: string;
+            created_at: string;
+          }[],
+        };
+      }
+    } catch {
+      /* seed fallback */
+    }
 
+    const seed = DEALERS.find((x) => x.id === dealerId);
+    if (!seed) throw new Error("Dealer not found");
     return {
       dealer: {
-        id: d.id,
-        name: d.name,
-        city: d.city,
-        province: d.province,
-        referralFeeBps: Number(d.referral_fee_bps || 150),
-        quoteRateOffsetBps: Number(d.quote_rate_offset_bps || 0),
-        active: Boolean(d.active),
-        inventoryUrl: d.inventory_url,
+        id: seed.id,
+        name: seed.name,
+        city: seed.city,
+        province: seed.province,
+        referralFeeBps: 150,
+        quoteRateOffsetBps: 0,
+        active: seed.active,
+        inventoryUrl: seed.inventory_url,
       },
-      vehicles: vehicles.map((v) => {
-        const updatedAt = v.updated_at || "";
-        return {
-          id: v.id,
-          title: vehicleDisplayTitle(v),
-          year: Number(v.year),
-          make: v.make,
-          model: v.model,
-          priceCents: Number(v.price_cents),
-          mileage: Number(v.mileage),
-          hasStudio: (v.thumbnail_url || "").startsWith("data:image/"),
-          tileUrl: `/api/thumb/${encodeURIComponent(v.id)}?v=${encodeURIComponent(updatedAt)}`,
-          listingUrl: v.dealer_listing_url || "",
-          vin: v.vin || "",
-        } satisfies DealerPortalVehicle;
-      }),
+      vehicles: [] as DealerPortalVehicle[],
       referrals: [] as {
         id: number;
         vehicle_label: string;

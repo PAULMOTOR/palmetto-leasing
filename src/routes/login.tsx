@@ -115,7 +115,8 @@ function DealerLoginForm() {
         return;
       }
       sessionStorage.setItem("palmetto_dealer_token", res.token);
-      void nav({ to: "/portal/dealer" });
+      sessionStorage.setItem("palmetto_dealer_slug", res.slug);
+      void nav({ to: "/desk/$slug", params: { slug: res.slug } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -162,7 +163,7 @@ function DealerLoginForm() {
         />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Signing in…" : "Enter dealer portal"}
+        {loading ? "Signing in…" : "Enter control centre"}
       </Button>
     </form>
   );
