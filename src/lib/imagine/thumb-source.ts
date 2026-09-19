@@ -39,6 +39,17 @@ export function listingHasActualDealerPhotos(
   return true;
 }
 
+/** Shopper grid: Palmetto overhead of this VIN — never a dealer 3/4, never a guess. */
+export function isPhotographedStudioTile(row: {
+  thumbnail_url?: string | null;
+  thumbnail_source?: string | null;
+}): boolean {
+  return (
+    Boolean(row.thumbnail_url?.startsWith("data:image/")) &&
+    (row.thumbnail_source || "") === "photographed"
+  );
+}
+
 export function thumbSourceFromImagine(opts: {
   mode: "edit" | "generate";
   hasActualPhotos: boolean;

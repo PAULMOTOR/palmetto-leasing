@@ -7,7 +7,7 @@ import { generateVehicleThumbnail } from "./generate-thumb";
 import { isEphemeralImagineUrl, isStudioThumbUrl } from "./persist-image";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
 import { selectImagineRefs, listingPhotosInDealerOrder } from "@/lib/leasing/gallery";
-import { fetchListingGallery } from "@/lib/leasing/fetch-listing-gallery";
+import { mergeLiveGallery } from "@/lib/leasing/fetch-listing-gallery";
 import {
   isPlaceholderListing,
   listingHasActualDealerPhotos,
@@ -128,16 +128,19 @@ export async function generateMissingImagineThumbs(opts?: {
     if (fails >= 3) return false;
     const studio = isStudioThumbUrl(r.thumbnail_url);
     const current = specs.imagineRev === STUDIO_PROMPT_REV;
-    // force = redo this dealer even if the tile already passed the current recipe
-    if (!force && studio && current && specs.imagineQa !== "fail") return false;
-    if (!studio) return true;
-    if (force || match || dealer) return true;
-    if (r.thumbnail_source !== "inferred") return false;
     const placeholder = isPlaceholderListing(r.specs_json);
-    return listingHasActualDealerPhotos(parsePhotos(r.photo_urls), {
+    const actual = listingHasActualDealerPhotos(parsePhotos(r.photo_urls), {
       placeholder,
       source: specs.source,
     });
+    if (placeholder && !force) return false;
+    if (!force && studio && current && specs.imagineQa !== "fail" && r.thumbnail_source === "photographed") {
+      return false;
+    }
+    if (!studio) return actual || Boolean(r.dealer_listing_url);
+    if (force || match || dealer) return true;
+    if (r.thumbnail_source !== "inferred") return false;
+    return actual;
   });
 
   const sorted = needsRender.slice().sort((a, b) => {
@@ -152,16 +155,8 @@ export async function generateMissingImagineThumbs(opts?: {
   await Promise.all(
     need.map(async (r) => {
       const photos = parsePhotos(r.photo_urls);
-      if (listingPhotosInDealerOrder(photos, 8).length >= 3) return;
-      if (!r.dealer_listing_url?.startsWith("http")) return;
-      const live = await Promise.race([
-        fetchListingGallery(r.dealer_listing_url, { limit: 12 }),
-        new Promise<{ photos: string[] }>((resolve) =>
-          setTimeout(() => resolve({ photos: [] }), 7_000),
-        ),
-      ]);
-      if (!live.photos.length) return;
-      const merged = listingPhotosInDealerOrder([...live.photos, ...photos], 16);
+      const merged = await mergeLiveGallery(photos, r.dealer_listing_url);
+      if (merged.join("\0") === photos.join("\0")) return;
       r.photo_urls = JSON.stringify(merged);
       await sql`
         update vehicles
@@ -193,6 +188,10 @@ export async function generateMissingImagineThumbs(opts?: {
       skipped += 1;
       continue;
     }
+    if (!actual) {
+      skipped += 1;
+      continue;
+    }
 
     try {
       const imag = await generateVehicleThumbnail({
@@ -206,7 +205,7 @@ export async function generateMissingImagineThumbs(opts?: {
           bodyStyle: r.body_style,
         },
         referencePhotoUrls: pool,
-        listingPhotosArePlaceholder: placeholder || !actual,
+        listingPhotosArePlaceholder: false,
       });
 
       if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
@@ -315,17 +314,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
       ? [r.thumbnail_url]
       : [];
   let photos = [...stored, ...thumbHttp];
-  // Scrape the VDP when we don't have a real walkaround (AT SRP is often 1 cover).
-  const haveListing = listingPhotosInDealerOrder(photos, 4).length >= 2;
-  if (!haveListing && r.dealer_listing_url?.startsWith("http")) {
-    const live = await Promise.race([
-      fetchListingGallery(r.dealer_listing_url, { limit: 12 }),
-      new Promise<{ photos: string[] }>((resolve) =>
-        setTimeout(() => resolve({ photos: [] }), 6_000),
-      ),
-    ]);
-    if (live.photos.length) photos = [...live.photos, ...photos];
-  }
+  photos = await mergeLiveGallery(photos, r.dealer_listing_url);
   const ordered = listingPhotosInDealerOrder(photos, 16);
   if (selectImagineRefs(ordered, { limit: 1 }).length === 0) {
     return {

@@ -27,25 +27,14 @@ import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
 const TERM_OPTIONS = LEASE_TERM_OPTIONS;
 
-const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
-
 function isEphemeral(url: string) {
   return /imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(url || "");
 }
 
 function buildThumbCandidates(vehicle: VehicleCardType): string[] {
-  const raw = [
-    vehicle.thumbnail_url,
-    ...(vehicle.photos || []),
-    PLACEHOLDER,
-  ].filter(Boolean) as string[];
-  const out: string[] = [];
-  for (const u of raw) {
-    if (isEphemeral(u)) continue;
-    if (!out.includes(u)) out.push(u);
-  }
-  if (!out.length) out.push(PLACEHOLDER);
-  return out;
+  const t = vehicle.thumbnail_url || "";
+  if (t && !isEphemeral(t)) return [t];
+  return [];
 }
 
 /**
@@ -64,7 +53,35 @@ function TileThumb({
 }) {
   const candidates = useMemo(() => buildThumbCandidates(vehicle), [vehicle]);
   const [idx, setIdx] = useState(0);
-  const src = candidates[Math.min(idx, candidates.length - 1)] || PLACEHOLDER;
+  const src = candidates[Math.min(idx, Math.max(0, candidates.length - 1))] || "";
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-white">
+      {src ? (
+      <img
+        key={src}
+        src={src}
+        alt=""
+        role="presentation"
+        width={800}
+        height={800}
+        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "low"}
+        decoding="async"
+        onError={() => {
+          setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
+        }}
+        className="h-full w-full max-h-full max-w-full bg-white object-cover object-center transition-transform duration-[var(--motion-slow)] ease-[var(--ease-smooth-out)] group-hover:scale-[1.015]"
+        style={{
+          backgroundColor: "#FFFFFF",
+          objectPosition: "50% 50%",
+        }}
+        title={title}
+      />
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-white">

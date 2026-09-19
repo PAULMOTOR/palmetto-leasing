@@ -1,7 +1,7 @@
 /**
  * Cheap vision gate after Imagine. Reject inverted / 3/4 / wrong-generation
- * tiles so they never land on the catalog. Time-boxed; on API failure we accept
- * (geometric shrink already ran).
+ * tiles so they never land on the catalog. Time-boxed; on API failure we
+ * reject (fail closed) so a Urus cannot sneak onto a 911.
  */
 import type { ThumbSubject } from "./thumb-prompt";
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
@@ -22,15 +22,16 @@ export async function reviewStudioTile(opts: {
   car: ThumbSubject;
   apiKey: string;
 }): Promise<TileQa> {
-  const accept: TileQa = {
-    ok: true,
-    inverted: false,
-    notOverhead: false,
-    wrongBody: false,
-    reason: "pass",
-  };
   const preview = shrinkForQa(opts.tileDataUri);
-  if (!preview) return accept;
+  if (!preview) {
+    return {
+      ok: false,
+      inverted: false,
+      notOverhead: false,
+      wrongBody: false,
+      reason: "qa-unavailable",
+    };
+  }
 
   const label = vehicleDisplayTitle(opts.car);
   const body = {
@@ -56,37 +57,46 @@ export async function reviewStudioTile(opts: {
     ],
   };
 
-  try {
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${opts.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
-    });
-    if (!res.ok) return accept;
-    const json = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const text = json.choices?.[0]?.message?.content || "";
-    const parsed = parseQaJson(text);
-    if (!parsed) return accept;
-    const inverted = Boolean(parsed.inverted);
-    const notOverhead = Boolean(parsed.notOverhead);
-    const wrongBody = Boolean(parsed.wrongBody);
-    const ok = parsed.ok !== false && !inverted && !notOverhead && !wrongBody;
-    return {
-      ok,
-      inverted,
-      notOverhead,
-      wrongBody,
-      reason: String(parsed.reason || (ok ? "pass" : "rejected")).slice(0, 180),
-    };
-  } catch {
-    return accept;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${opts.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(QA_TIMEOUT_MS),
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const text = json.choices?.[0]?.message?.content || "";
+      const parsed = parseQaJson(text);
+      if (!parsed) continue;
+      const inverted = Boolean(parsed.inverted);
+      const notOverhead = Boolean(parsed.notOverhead);
+      const wrongBody = Boolean(parsed.wrongBody);
+      const ok = parsed.ok !== false && !inverted && !notOverhead && !wrongBody;
+      return {
+        ok,
+        inverted,
+        notOverhead,
+        wrongBody,
+        reason: String(parsed.reason || (ok ? "pass" : "rejected")).slice(0, 180),
+      };
+    } catch {
+      /* retry once, then fail closed */
+    }
   }
+  return {
+    ok: false,
+    inverted: false,
+    notOverhead: false,
+    wrongBody: false,
+    reason: "qa-unavailable",
+  };
 }
 
 function parseQaJson(text: string): Partial<TileQa> | null {

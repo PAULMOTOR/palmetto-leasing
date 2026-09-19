@@ -38,38 +38,56 @@ export async function generateVehicleThumbnail(opts: {
   listingPhotosArePlaceholder?: boolean;
   identityDataUris?: { front: string; rear: string; interior: string };
 }): Promise<ImagineThumbResult> {
-  const editSource = opts.listingPhotosArePlaceholder ? "inferred" : "photographed";
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) return { ok: false, mode: "skipped", error: "XAI_API_KEY not set" };
 
-  const fromUploads = Boolean(opts.identityDataUris?.front);
-  const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" });
-
   try {
-    let front: string | null = null;
-
     if (opts.identityDataUris?.front) {
-      front = opts.identityDataUris.front;
-    } else {
-      const ordered = listingPhotosInDealerOrder(opts.referencePhotoUrls || [], 16);
-      if (!ordered.length) return { ok: false, mode: "error", error: "No listing photos to render from" };
-      front = await firstExteriorDataUri(ordered);
-      if (!front) {
-        const https = ordered.map((u) => upgradeImageUrl(u)).find((u) => /^https?:\/\//i.test(u));
-        if (https) front = https;
-      }
+      return paintFromSources([opts.identityDataUris.front], {
+        car: opts.car,
+        key,
+        fromUploads: true,
+        rear: opts.identityDataUris.rear,
+      });
     }
 
-    if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };
+    const ordered = listingPhotosInDealerOrder(opts.referencePhotoUrls || [], 16);
+    if (!ordered.length) return { ok: false, mode: "error", error: "No listing photos to render from" };
+    if (opts.listingPhotosArePlaceholder) {
+      return { ok: false, mode: "skipped", error: "No actual dealer photography" };
+    }
+    const sources = await collectExteriorDataUris(ordered, 2);
+    if (sources.length) {
+      return paintFromSources(sources, { car: opts.car, key, fromUploads: false });
+    }
+    const https = ordered
+      .map((u) => upgradeImageUrl(u))
+      .find((u) => /^https?:\/\//i.test(u) && /autoscout24\.net\/listing-images/i.test(u));
+    if (!https) return { ok: false, mode: "error", error: "Could not download a listing photo" };
+    return paintFromSources([https], { car: opts.car, key, fromUploads: false });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, mode: "error", error: /aborted|load failed/i.test(msg) ? "Imagine timed out" : msg };
+  }
+}
 
-    const hasRear = Boolean(opts.identityDataUris?.rear);
-    const prompt = buildThumbEditPrompt(opts.car, {
-      fromUploads,
-      hasRear,
-    });
+const asImg = (url: string) => ({ url, type: "image_url" as const, detail: "high" as const });
+
+async function paintFromSources(
+  sources: string[],
+  opts: {
+    car: ThumbSubject;
+    key: string;
+    fromUploads: boolean;
+    rear?: string;
+  },
+): Promise<ImagineThumbResult> {
+  const hasRear = Boolean(opts.rear);
+  const prompt = buildThumbEditPrompt(opts.car, { fromUploads: opts.fromUploads, hasRear });
+  let lastError = "Imagine failed";
+  for (const front of sources) {
     const images = [asImg(front), asImg(STYLE_LOCK_URL)];
-    if (hasRear && opts.identityDataUris?.rear) images.push(asImg(opts.identityDataUris.rear));
-
+    if (hasRear && opts.rear) images.push(asImg(opts.rear));
     const dual = await callXai(
       {
         model: MODEL,
@@ -78,42 +96,42 @@ export async function generateVehicleThumbnail(opts: {
         response_format: "b64_json",
         images,
       },
-      key,
+      opts.key,
     );
-    if (!dual.ok) return { ok: false, mode: "error", error: dual.error || "Imagine failed" };
-
+    if (!dual.ok) {
+      lastError = dual.error || "Imagine failed";
+      continue;
+    }
     const persisted = await persistImagineResult({ b64: dual.b64, url: dual.url });
     if (!("durableUrl" in persisted)) {
-      return { ok: false, mode: "error", error: persisted.error };
+      lastError = persisted.error;
+      continue;
     }
-
     const qa = await reviewStudioTile({
       tileDataUri: persisted.durableUrl,
       car: opts.car,
-      apiKey: key,
+      apiKey: opts.key,
     });
     if (!qa.ok) {
-      return {
-        ok: false,
-        mode: "rejected",
-        error: `QA: ${qa.reason}`,
-        qa: qa.reason,
-        rev: STUDIO_PROMPT_REV,
-      };
+      lastError = `QA: ${qa.reason}`;
+      continue;
     }
-
     return {
       ok: true,
       url: persisted.durableUrl,
       mode: "edit",
-      source: editSource,
+      source: "photographed",
       qa: qa.reason,
       rev: STUDIO_PROMPT_REV,
     };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, mode: "error", error: /aborted|load failed/i.test(msg) ? "Imagine timed out" : msg };
   }
+  return {
+    ok: false,
+    mode: /QA:/i.test(lastError) ? "rejected" : "error",
+    error: lastError,
+    qa: lastError.replace(/^QA:\s*/i, ""),
+    rev: STUDIO_PROMPT_REV,
+  };
 }
 
 async function callXai(
@@ -153,15 +171,19 @@ async function callXai(
   return { ok: false, error: "Empty Imagine response" };
 }
 
-async function firstExteriorDataUri(urls: string[]): Promise<string | null> {
-  let fallback: string | null = null;
-  for (const raw of urls.slice(0, 8)) {
+async function collectExteriorDataUris(urls: string[], limit: number): Promise<string[]> {
+  const out: string[] = [];
+  for (const raw of urls.slice(0, 10)) {
+    if (out.length >= limit) break;
     const data = await fetchImageAsDataUri(upgradeImageUrl(raw));
     if (!data) continue;
-    if (!fallback) fallback = data;
-    if (!looksLikeCabinDataUri(data)) return data;
+    const comma = data.indexOf(",");
+    const bytes = comma > 0 ? Math.floor((data.length - comma) * 0.75) : 0;
+    if (bytes < 12_000) continue;
+    if (looksLikeCabinDataUri(data)) continue;
+    out.push(data);
   }
-  return fallback;
+  return out;
 }
 
 /**

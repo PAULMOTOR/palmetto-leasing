@@ -1,9 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { palmettoOrigin } from "@/lib/leasing/thumb-url";
-import { bareAutoscoutUrl } from "@/lib/leasing/gallery";
-
-const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
 
 function cors(headers: Record<string, string> = {}) {
   return {
@@ -13,13 +9,10 @@ function cors(headers: Record<string, string> = {}) {
   };
 }
 
-function redirectTo(path: string) {
-  const loc = /^https?:\/\//i.test(path)
-    ? path
-    : `${palmettoOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
+function notFound() {
   return new Response(null, {
-    status: 302,
-    headers: cors({ Location: loc, "Cache-Control": "public, max-age=120" }),
+    status: 404,
+    headers: cors({ "Cache-Control": "no-store" }),
   });
 }
 
@@ -56,7 +49,7 @@ export const Route = createFileRoute("/api/thumb/$id")({
         }),
       GET: async ({ params, request }) => {
         const id = decodeURIComponent(params.id || "").trim();
-        if (!id || id.length > 160) return redirectTo(PLACEHOLDER);
+        if (!id || id.length > 160) return notFound();
         const versioned = Boolean(new URL(request.url).searchParams.get("v"));
         try {
           const sql = await getSql();
@@ -67,18 +60,12 @@ export const Route = createFileRoute("/api/thumb/$id")({
           `;
           const thumb = rows[0]?.thumbnail_url || "";
           if (thumb.startsWith("data:image/")) {
-            return dataUriToResponse(thumb, versioned) ?? redirectTo(PLACEHOLDER);
-          }
-          if (/^https?:\/\//i.test(thumb) && !/imgen\.x\.ai|xai-tmp-imgen/i.test(thumb)) {
-            return redirectTo(bareAutoscoutUrl(thumb));
-          }
-          if (thumb.startsWith("/") && !thumb.startsWith("//")) {
-            return redirectTo(thumb);
+            return dataUriToResponse(thumb, versioned) ?? notFound();
           }
         } catch {
           /* fall through */
         }
-        return redirectTo(PLACEHOLDER);
+        return notFound();
       },
     },
   },

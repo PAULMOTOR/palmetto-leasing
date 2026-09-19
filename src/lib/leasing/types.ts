@@ -42,6 +42,7 @@ export type Vehicle = {
   description: string;
   specs_json: string;
   thumbnail_url: string;
+  thumbnail_source?: string;
   photo_urls: string;
   dealer_listing_url: string;
   status: string;

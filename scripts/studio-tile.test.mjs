@@ -56,8 +56,10 @@ test("fit enlarges toys and does not letterbox a grey mat", () => {
 test("studio source skips cabin shots", () => {
   const gen = readFileSync(new URL("../src/lib/imagine/generate-thumb.ts", import.meta.url), "utf8");
   const cabin = readFileSync(new URL("../src/lib/imagine/cabin-detect.ts", import.meta.url), "utf8");
-  assert.match(gen, /firstExteriorDataUri/);
+  assert.match(gen, /collectExteriorDataUris/);
   assert.match(gen, /looksLikeCabinDataUri/);
+  assert.match(gen, /bytes < 12_000/);
+  assert.match(gen, /paintFromSources/);
   assert.match(cabin, /headliner/);
   assert.match(cabin, /top < 42/);
   assert.match(cabin, /mid > 80/);
@@ -66,17 +68,16 @@ test("studio source skips cabin shots", () => {
   assert.match(promptSrc, /never a Urus SUV/);
   assert.match(promptSrc, /NEVER a Lamborghini Urus/);
   assert.match(promptSrc, /Copy Image 1's silhouette/);
+  assert.match(gen, /No actual dealer photography/);
 });
 
 test("AutoScout listing-images stay bare — size crops 404", () => {
   const gallery = readFileSync(new URL("../src/lib/leasing/gallery.ts", import.meta.url), "utf8");
   const at = readFileSync(new URL("../src/lib/crawler/parse-autotrader.ts", import.meta.url), "utf8");
-  const thumb = readFileSync(new URL("../src/routes/api/thumb.$id.ts", import.meta.url), "utf8");
   assert.match(gallery, /export function bareAutoscoutUrl/);
   assert.match(gallery, /if \(\/autoscout24\\.net\\\/listing-images\\\/\/i\.test\(out\)\) return out/);
   assert.match(at, /bareAutoscoutUrl\(decodeListingPhotoUrl/);
   assert.doesNotMatch(at, /replace\([^\n]*800x600/);
-  assert.match(thumb, /bareAutoscoutUrl\(thumb\)/);
 
   function bareAutoscoutUrl(url) {
     if (!url || !/autoscout24\.net\/listing-images\//i.test(url)) return url;
@@ -118,8 +119,27 @@ test("crawl paints one rooftop per pass and keeps Imagine skip flags", () => {
   assert.match(run, /pickOneDealerImagineBatch/);
   assert.match(run, /mergeListingSpecs/);
   assert.match(run, /imagineSkip/);
+  assert.match(run, /resetSkip: photosChanged/);
+  assert.match(run, /mergeLiveGallery/);
   assert.doesNotMatch(run, /roundRobinByDealer/);
   assert.match(batch, /pickOneDealerImagineBatch/);
+  assert.match(batch, /mergeLiveGallery/);
+  assert.match(queue, /opts\?\.resetSkip/);
+
+  function mergeListingSpecs(previous, incoming, opts) {
+    const next = { ...(incoming || {}) };
+    const prev = previous || {};
+    for (const key of ["imagineRev", "imagineQa", "imagineQaFails", "imagineSkip"]) {
+      if (opts?.resetSkip && (key === "imagineSkip" || key === "imagineQaFails")) continue;
+      if (prev[key]) next[key] = prev[key];
+    }
+    return next;
+  }
+  const kept = mergeListingSpecs({ imagineSkip: "1", imagineRev: "15" }, { source: "live" });
+  assert.equal(kept.imagineSkip, "1");
+  const reset = mergeListingSpecs({ imagineSkip: "1", imagineRev: "15" }, { source: "live" }, { resetSkip: true });
+  assert.equal(reset.imagineSkip, undefined);
+  assert.equal(reset.imagineRev, "15");
 
   function pickOneDealerImagineBatch(rows, limit, preferDealer) {
     const queues = new Map();
@@ -151,4 +171,22 @@ test("crawl paints one rooftop per pass and keeps Imagine skip flags", () => {
   assert.ok(b.every((r) => r.dealership_id === "mclaren-of-toronto"));
   const c = pickOneDealerImagineBatch(rows.filter((r) => r.dealership_id !== "mclaren-of-toronto"), 3, "mclaren-of-toronto");
   assert.ok(c.every((r) => r.dealership_id === "vfc-auto"));
+});
+
+test("shopper grid only shows photographed Palmetto tiles", () => {
+  const queries = readFileSync(new URL("../src/lib/leasing/queries.ts", import.meta.url), "utf8");
+  const card = readFileSync(new URL("../src/components/inventory/vehicle-card.tsx", import.meta.url), "utf8");
+  const thumb = readFileSync(new URL("../src/routes/api/thumb.$id.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../src/lib/imagine/thumb-source.ts", import.meta.url), "utf8");
+  const qa = readFileSync(new URL("../src/lib/imagine/tile-qa.ts", import.meta.url), "utf8");
+  assert.match(source, /export function isPhotographedStudioTile/);
+  assert.match(queries, /rowOnShopperGrid/);
+  assert.match(queries, /isPhotographedStudioTile/);
+  assert.doesNotMatch(card, /top-porsche-911/);
+  assert.doesNotMatch(card, /\.\.\.\(vehicle\.photos/);
+  assert.match(thumb, /status: 404/);
+  assert.doesNotMatch(thumb, /top-porsche-911/);
+  assert.doesNotMatch(thumb, /redirectTo/);
+  assert.match(qa, /qa-unavailable/);
+  assert.doesNotMatch(qa, /return accept;/);
 });

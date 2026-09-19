@@ -41,10 +41,12 @@ export const IMAGINE_SPEC_KEYS = [
 export function mergeListingSpecs(
   previous: Record<string, string | undefined> | undefined,
   incoming: Record<string, string | undefined> | undefined,
+  opts?: { resetSkip?: boolean },
 ): Record<string, string | undefined> {
   const next: Record<string, string | undefined> = { ...(incoming || {}) };
   const prev = previous || {};
   for (const key of IMAGINE_SPEC_KEYS) {
+    if (opts?.resetSkip && (key === "imagineSkip" || key === "imagineQaFails")) continue;
     if (prev[key]) next[key] = prev[key];
   }
   return next;

@@ -18,7 +18,8 @@ import {
 } from "@/lib/imagine/thumb-source";
 import { listingFingerprint } from "./parse-vehicles";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
-import { bareAutoscoutUrl, selectImagineRefs } from "@/lib/leasing/gallery";
+import { bareAutoscoutUrl, selectImagineRefs, imageIdentityKey } from "@/lib/leasing/gallery";
+import { mergeLiveGallery } from "@/lib/leasing/fetch-listing-gallery";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { sweepDeadListings } from "./dead-listings";
 import { mergeListingSpecs, pickOneDealerImagineBatch } from "@/lib/imagine/queue";
@@ -297,10 +298,11 @@ async function runInventoryCrawlInner(opts?: {
         thumbnail_url: string;
         thumbnail_source: string;
         specs_json: string;
+        dealer_listing_url: string;
       }>`
         select id, dealership_id, year, make, model, trim, exterior_color, interior_color, body_style,
                photo_urls, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source,
-               specs_json
+               specs_json, coalesce(dealer_listing_url, '') as dealer_listing_url
         from vehicles
         where status = 'active'
           and (
@@ -327,7 +329,7 @@ async function runInventoryCrawlInner(opts?: {
         const studio = isStudioThumbUrl(item.thumbnail_url);
         const inferred = item.thumbnail_source === "inferred";
         if (inferred && studio) return actual;
-        if (!studio) return true;
+        if (!studio) return !placeholder && (actual || Boolean(item.dealer_listing_url));
         return false;
       });
       const lastDealerRow = await sql<{ value: string }>`
@@ -347,18 +349,29 @@ async function runInventoryCrawlInner(opts?: {
       }
 
       for (const item of batch) {
-        const photos = [
-          ...parsePhotos(item.photo_urls),
-          ...(item.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(item.thumbnail_url)
-            ? [bareAutoscoutUrl(item.thumbnail_url)]
-            : []),
-        ];
+        const stored = parsePhotos(item.photo_urls);
+        const photos = await mergeLiveGallery(
+          [
+            ...stored,
+            ...(item.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(item.thumbnail_url)
+              ? [bareAutoscoutUrl(item.thumbnail_url)]
+              : []),
+          ],
+          item.dealer_listing_url,
+        );
+        if (photos.join("\0") !== stored.join("\0")) {
+          item.photo_urls = JSON.stringify(photos);
+          await sql`
+            update vehicles set photo_urls = ${item.photo_urls}, updated_at = now()
+            where id = ${item.id}
+          `;
+        }
         const placeholder = isPlaceholderListing(item.specs_json);
         const actual = listingHasActualDealerPhotos(photos, {
           placeholder,
           source: parseSpecs(item.specs_json).source,
         });
-        if (!selectImagineRefs(photos, { limit: 1 }).length) continue;
+        if (!actual || !selectImagineRefs(photos, { limit: 1 }).length) continue;
         const imag = await generateVehicleThumbnail({
           car: {
             year: item.year,
@@ -370,7 +383,7 @@ async function runInventoryCrawlInner(opts?: {
             bodyStyle: item.body_style,
           },
           referencePhotoUrls: photos,
-          listingPhotosArePlaceholder: placeholder || !actual,
+          listingPhotosArePlaceholder: false,
         });
         if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
           const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
@@ -424,7 +437,7 @@ async function runInventoryCrawlInner(opts?: {
         `Imagine tiles: ${imagined}/${batch.length} ${batch[0]?.dealership_id || ""} (one rooftop per pass)`.trim(),
       );
     } else if (wantThumbs) {
-      notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
+      notes.push("XAI_API_KEY unset — unpainted listings stay off the shopper grid");
     }
 
     // Remove stale vehicles. Partial crawls only touch the requested dealer(s).
@@ -530,13 +543,22 @@ async function upsertVehicle(
     thumbnail_url: string;
     thumbnail_source: string;
     specs_json: string;
+    photo_urls: string;
   }>`
-    select id, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source, specs_json
+    select id, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source, specs_json, photo_urls
     from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
+  const prevPhotoKeys = parsePhotos(existing[0]?.photo_urls || "")
+    .map(imageIdentityKey)
+    .sort()
+    .join("|");
+  const nextPhotoKeys = photos.map(imageIdentityKey).sort().join("|");
+  const photosChanged = Boolean(existing[0] && prevPhotoKeys !== nextPhotoKeys);
   const specsJson = JSON.stringify(
-    mergeListingSpecs(parseSpecs(existing[0]?.specs_json || "{}"), item.specs),
+    mergeListingSpecs(parseSpecs(existing[0]?.specs_json || "{}"), item.specs, {
+      resetSkip: photosChanged,
+    }),
   );
   const incomingPlaceholder = isPlaceholderListing(item.specs);
   const incomingActual = listingHasActualDealerPhotos(photos, {

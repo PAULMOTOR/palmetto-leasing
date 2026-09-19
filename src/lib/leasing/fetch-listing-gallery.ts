@@ -202,3 +202,22 @@ function walkImages(node: unknown, push: (u: string) => void, depth = 0): void {
     for (const v of Object.values(o)) walkImages(v, push, depth + 1);
   }
 }
+
+/** Pull the VDP walkaround when the SRP only gave a cover shot. */
+export async function mergeLiveGallery(
+  photos: string[],
+  listingUrl: string,
+  opts?: { limit?: number; timeoutMs?: number },
+): Promise<string[]> {
+  const have = listingPhotosInDealerOrder(photos || [], 8);
+  if (have.length >= 3) return listingPhotosInDealerOrder(photos || [], 16);
+  if (!listingUrl?.startsWith("http")) return listingPhotosInDealerOrder(photos || [], 16);
+  const live = await Promise.race([
+    fetchListingGallery(listingUrl, { limit: opts?.limit ?? 12 }),
+    new Promise<{ photos: string[] }>((resolve) =>
+      setTimeout(() => resolve({ photos: [] }), opts?.timeoutMs ?? 7_000),
+    ),
+  ]);
+  if (!live.photos.length) return listingPhotosInDealerOrder(photos || [], 16);
+  return listingPhotosInDealerOrder([...live.photos, ...(photos || [])], 16);
+}

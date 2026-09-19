@@ -21,12 +21,8 @@ import { parsePhotos, parseSpecs } from "./types";
 import { buildVehicleGalleryPool, listingPhotosInDealerOrder } from "./gallery";
 import { fetchListingGallery } from "./fetch-listing-gallery";
 import { generateMissingImagineThumbs } from "@/lib/imagine/batch-thumbs";
-import {
-  firstDurablePhoto,
-  isEphemeralImagineUrl,
-} from "@/lib/imagine/persist-image";
 import { normalizeDealerListingUrl } from "./seed";
-import { isPlaceholderListing, listingHasActualDealerPhotos } from "@/lib/imagine/thumb-source";
+import { isPlaceholderListing, listingHasActualDealerPhotos, isPhotographedStudioTile } from "@/lib/imagine/thumb-source";
 
 function rowHasDealerPhotos(
   row: { photo_urls?: string; specs_json?: string },
@@ -37,6 +33,17 @@ function rowHasDealerPhotos(
   });
 }
 
+function rowOnShopperGrid(
+  row: {
+    photo_urls?: string;
+    specs_json?: string;
+    thumbnail_url?: string;
+    thumbnail_source?: string;
+  },
+): boolean {
+  return isPhotographedStudioTile(row) && rowHasDealerPhotos(row);
+}
+
 async function toCard(
   row: Vehicle & { dealer_name?: string; dealer_city?: string; dealer_province?: string },
   settings?: Awaited<ReturnType<typeof loadQuoteSettingsAsync>>,
@@ -45,14 +52,8 @@ async function toCard(
   const quote = calculateLease(Number(row.price_cents), qs);
   const photos = parsePhotos(row.photo_urls).length
     ? parsePhotos(row.photo_urls)
-    : row.thumbnail_url
-      ? [row.thumbnail_url]
-      : [];
-  // imgen.x.ai /xai-tmp-imgen/ URLs expire (404) — never serve them as the tile
-  let thumb = row.thumbnail_url || "";
-  if (!thumb || isEphemeralImagineUrl(thumb)) {
-    thumb = firstDurablePhoto(photos, row.thumbnail_url) || "/vehicles/top-porsche-911.jpg";
-  }
+    : [];
+  const thumb = isPhotographedStudioTile(row) ? row.thumbnail_url || "" : "";
   const httpPhotos = slimPhotoUrls(photos);
   return {
     ...row,
@@ -137,14 +138,16 @@ export const listVehicles = createServerFn({ method: "GET" })
         from vehicles v
         join dealerships d on d.id = v.dealership_id
         where v.status = 'active' and d.active = true and v.price_cents >= 15000000
+          and v.thumbnail_url like 'data:image/%'
+          and coalesce(v.thumbnail_source, '') = 'photographed'
         order by v.price_cents desc
       `;
       list = await Promise.all(
-        rows.filter(rowHasDealerPhotos).map((r) => toCard(r, quoteSettings)),
+        rows.filter(rowOnShopperGrid).map((r) => toCard(r, quoteSettings)),
       );
     } catch (err) {
       console.warn("[listVehicles] DB unavailable, static catalog:", err);
-      list = listCatalogVehicles(quoteSettings).filter(rowHasDealerPhotos);
+      list = listCatalogVehicles(quoteSettings);
     }
 
     list = dedupeCards(list);
@@ -209,7 +212,7 @@ export const getVehicleBySlug = createServerFn({ method: "GET" })
         where v.slug = ${data.slug}
         limit 1
       `;
-      if (rows[0] && rowHasDealerPhotos(rows[0])) return toCard(rows[0]);
+      if (rows[0] && rowOnShopperGrid(rows[0])) return toCard(rows[0]);
     } catch {
       /* fall through */
     }
@@ -220,7 +223,7 @@ export const listDealers = createServerFn({ method: "GET" }).handler(async () =>
   try {
     await ensureSeededInventory();
     const sql = await getSql();
-    return sql<{
+    const rows = await sql<{
       id: string;
       name: string;
       city: string;
@@ -229,11 +232,14 @@ export const listDealers = createServerFn({ method: "GET" }).handler(async () =>
       count: number;
     }>`
       select d.id, d.name, d.city, d.province, d.brands,
-        (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as count
+        (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active'
+          and v.thumbnail_url like 'data:image/%'
+          and coalesce(v.thumbnail_source, '') = 'photographed') as count
       from dealerships d
       where d.active = true
       order by d.name
     `;
+    return rows.filter((d) => Number(d.count) > 0);
   } catch {
     return listCatalogDealerSummaries();
   }
