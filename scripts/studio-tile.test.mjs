@@ -9,8 +9,8 @@ import jpeg from "jpeg-js";
 const promptSrc = readFileSync(new URL("../src/lib/imagine/thumb-prompt.ts", import.meta.url), "utf8");
 const fitSrc = readFileSync(new URL("../src/lib/imagine/normalize-tile.ts", import.meta.url), "utf8");
 
-test("prompt rev is 14 and not a collage or half-frame toy", () => {
-  assert.match(promptSrc, /STUDIO_PROMPT_REV = "14"/);
+test("prompt rev is 15 and not a collage or half-frame toy", () => {
+  assert.match(promptSrc, /STUDIO_PROMPT_REV = "15"/);
   assert.match(promptSrc, /Never invert/);
   assert.match(promptSrc, /three-quarters of the square/);
   assert.match(promptSrc, /BOTTOM edge/);
@@ -64,6 +64,8 @@ test("studio source skips cabin shots", () => {
   assert.match(gen, /impit/);
   assert.match(gen, /autoscout24/);
   assert.match(promptSrc, /never a Urus SUV/);
+  assert.match(promptSrc, /NEVER a Lamborghini Urus/);
+  assert.match(promptSrc, /Copy Image 1's silhouette/);
 });
 
 test("AutoScout listing-images stay bare — size crops 404", () => {
@@ -93,6 +95,18 @@ test("AutoScout listing-images stay bare — size crops 404", () => {
   assert.equal(bareAutoscoutUrl(hi), bare);
   assert.equal(bareAutoscoutUrl(bare), bare);
   assert.equal(bareAutoscoutUrl("https://imagescdn.d2cmedia.ca/car.jpg"), "https://imagescdn.d2cmedia.ca/car.jpg");
+});
+
+test("D2C dealer thumbs upgrade mb/s8 to the full cbc photograph", () => {
+  const gallery = readFileSync(new URL("../src/lib/leasing/gallery.ts", import.meta.url), "utf8");
+  assert.match(gallery, /imagescdn\\.d2cmedia\\.ca\\\/\)\(\?:mb\|s8\)/);
+  const mb =
+    "https://imagescdn.d2cmedia.ca/mbc4e2fe9022931a12b8d42347715a351e/5000/13475827/1/Porsche-911-2025.jpg";
+  const cbc = mb.replace("/mb", "/cbc");
+  assert.equal(
+    mb.replace(/(imagescdn\.d2cmedia\.ca\/)(?:mb|s8)([0-9a-f]+)/i, "$1cbc$2"),
+    cbc,
+  );
 });
 
 test("crawl paints one rooftop per pass and keeps Imagine skip flags", () => {

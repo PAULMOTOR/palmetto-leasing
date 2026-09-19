@@ -146,6 +146,12 @@ export function upgradeImageUrl(url: string): string {
   out = bareAutoscoutUrl(out);
   if (/autoscout24\.net\/listing-images\//i.test(out)) return out;
 
+  // D2C dealer CDN: mb/s8 are tiny thumbs. cbc is the listing photograph.
+  out = out.replace(
+    /(imagescdn\.d2cmedia\.ca\/)(?:mb|s8)([0-9a-f]+)/i,
+    "$1cbc$2",
+  );
+
   // AutoScout / AutoTrader CA listing CDN size segments
   // e.g. /120x90.jpg, /320x240.webp, /640x480.jpg → 1920x1080
   out = out.replace(/\/(\d{2,4})x(\d{2,4})\.(jpe?g|webp|png)(\?|$)/i, (_m, w, h, ext, end) => {
@@ -181,6 +187,7 @@ export function imageIdentityKey(url: string): string {
     // Strip size segment for autoscout: /listing-images/ID_UUID.ext/SIZE.ext
     let path = u.pathname
       .replace(/\/\d{2,4}x\d{2,4}\.(jpe?g|webp|png)$/i, "")
+      .replace(/\/(?:mb|s8|cbc)([0-9a-f]{16,})/i, "/d2c$1")
       .replace(/_(?:thumb|small|medium|large|hires)/gi, "")
       .toLowerCase();
     return `${u.hostname}${path}`;

@@ -6,7 +6,7 @@
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
 /** Bump when the recipe changes so dealer batches can skip already-good tiles. */
-export const STUDIO_PROMPT_REV = "14";
+export const STUDIO_PROMPT_REV = "15";
 
 export type ThumbSubject = {
   year: number;
@@ -24,15 +24,22 @@ function paintInstruction(car: ThumbSubject): string {
     raw && !/^(grey|gray|silver|n\/a|na|-)$/i.test(raw) ? raw : "";
   const hint = named ? ` Listing text says ${named}, but Image 1 wins if they disagree.` : "";
   return (
-    `PAINT: copy Image 1 exactly — body, roof, wheels, calipers, stripes.${hint} ` +
-    `If Image 1 is one color, output one color. Never Image 2's grey body, never a two-tone or livery that is not in Image 1.`
+    `PAINT: copy Image 1 exactly — body silhouette, greenhouse height, roof, wheels, calipers, stripes.${hint} ` +
+    `If Image 1 is a low coupe, output a low coupe. If Image 1 is one color, output one color. ` +
+    `Never Image 2's grey body, never Image 2's proportions, never a two-tone or livery that is not in Image 1.`
   );
 }
 
 function bodyInstruction(car: ThumbSubject): string {
-  const blob = `${car.make} ${car.model} ${car.trim || ""}`.toLowerCase();
+  const blob = `${car.make} ${car.model} ${car.trim || ""} ${car.bodyStyle || ""}`.toLowerCase();
+  if (/porsche/.test(blob) && /911|718|cayman|boxster|gt3|gt2|carrera|targa|turbo/.test(blob)) {
+    return ` LOW Porsche sports car — short greenhouse, round four-point headlights, engine in the REAR — NEVER a Lamborghini Urus, NEVER an SUV or crossover. Copy Image 1's silhouette.`;
+  }
   if (/revuelto|aventador|huracan|temerario|gallardo|murcielago|countach|sian/.test(blob)) {
     return ` LOW mid-engine supercar — Y headlights, hexagonal engine cover — never a Urus SUV.`;
+  }
+  if (/coupe|convertible|spyder|spider|roadster/.test(blob)) {
+    return ` Low sports-car greenhouse — never an SUV, never a Urus, never a crossover.`;
   }
   return "";
 }
