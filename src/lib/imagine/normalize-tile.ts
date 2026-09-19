@@ -8,9 +8,9 @@ import jpeg from "jpeg-js";
 type Raster = { width: number; height: number; data: Uint8Array };
 
 /** Occupancy below this gets zoomed in — the half-frame toys. */
-export const FIT_MIN = 0.64;
-/** Target occupancy after a zoom — matches the Palmetto camera plate. */
-export const FIT_TARGET = 0.74;
+export const FIT_MIN = 0.55;
+/** Target occupancy after a zoom — modest floor on all four sides. */
+export const FIT_TARGET = 0.68;
 
 export function normalizeStudioTileDataUri(dataUri: string): string | null {
   if (!dataUri.startsWith("data:image/jpeg") && !dataUri.startsWith("data:image/jpg")) {
@@ -29,6 +29,7 @@ export function normalizeStudioTileDataUri(dataUri: string): string | null {
     };
     raster = cropUniformBorder(raster);
     raster = fitCarInStudio(raster);
+    raster = centerCarInStudio(raster);
     const encoded = jpeg.encode(
       { data: raster.data, width: raster.width, height: raster.height },
       92,
@@ -141,6 +142,12 @@ function cornerFloor(src: Raster): { r: number; g: number; b: number; lum: numbe
 
 /** Fraction of the square occupied by the car's axis-aligned bbox. */
 export function carOccupancy(src: Raster): number {
+  const box = carBBox(src);
+  if (!box) return 0;
+  return Math.max(box.maxX - box.minX, box.maxY - box.minY) / Math.min(src.width, src.height);
+}
+
+function carBBox(src: Raster): { minX: number; minY: number; maxX: number; maxY: number } | null {
   const floor = cornerFloor(src);
   const { width: w, height: h, data } = src;
   let minX = w;
@@ -159,8 +166,8 @@ export function carOccupancy(src: Raster): number {
       if (y > maxY) maxY = y;
     }
   }
-  if (maxX <= minX || maxY <= minY) return 0;
-  return Math.max(maxX - minX, maxY - minY) / Math.min(w, h);
+  if (maxX <= minX || maxY <= minY) return null;
+  return { minX, minY, maxX, maxY };
 }
 
 /**
@@ -177,6 +184,57 @@ export function fitCarInStudio(src: Raster): Raster {
   const scale = Math.min(1.35, FIT_TARGET / occupancy);
   if (scale <= 1.04) return src;
   return zoomCrop(src, scale);
+}
+
+/** Nudge the car to geometric center. Fill exposed floor from the corners — no resize. */
+export function centerCarInStudio(src: Raster): Raster {
+  const box = carBBox(src);
+  if (!box) return src;
+  const w = src.width;
+  const h = src.height;
+  const cx = (box.minX + box.maxX) / 2;
+  const cy = (box.minY + box.maxY) / 2;
+  let dx = Math.round(w / 2 - cx);
+  let dy = Math.round(h / 2 - cy);
+  const nx0 = box.minX + dx;
+  const nx1 = box.maxX + dx;
+  const ny0 = box.minY + dy;
+  const ny1 = box.maxY + dy;
+  if (nx0 < 4) dx += 4 - nx0;
+  if (nx1 > w - 5) dx -= nx1 - (w - 5);
+  if (ny0 < 4) dy += 4 - ny0;
+  if (ny1 > h - 5) dy -= ny1 - (h - 5);
+  dx = Math.round(dx);
+  dy = Math.round(dy);
+  if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return src;
+  return translateFillFloor(src, dx, dy);
+}
+
+function translateFillFloor(src: Raster, dx: number, dy: number): Raster {
+  const floor = cornerFloor(src);
+  const w = src.width;
+  const h = src.height;
+  const out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const sx = x - dx;
+      const sy = y - dy;
+      const di = (y * w + x) * 4;
+      if (sx < 0 || sy < 0 || sx >= w || sy >= h) {
+        out[di] = floor.r;
+        out[di + 1] = floor.g;
+        out[di + 2] = floor.b;
+        out[di + 3] = 255;
+        continue;
+      }
+      const si = (sy * w + sx) * 4;
+      out[di] = src.data[si]!;
+      out[di + 1] = src.data[si + 1]!;
+      out[di + 2] = src.data[si + 2]!;
+      out[di + 3] = 255;
+    }
+  }
+  return { width: w, height: h, data: out };
 }
 
 function zoomCrop(src: Raster, scale: number): Raster {

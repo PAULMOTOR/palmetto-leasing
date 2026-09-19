@@ -9,12 +9,15 @@ import jpeg from "jpeg-js";
 const promptSrc = readFileSync(new URL("../src/lib/imagine/thumb-prompt.ts", import.meta.url), "utf8");
 const fitSrc = readFileSync(new URL("../src/lib/imagine/normalize-tile.ts", import.meta.url), "utf8");
 
-test("prompt rev is 15 and not a collage or half-frame toy", () => {
-  assert.match(promptSrc, /STUDIO_PROMPT_REV = "15"/);
+test("prompt rev is 16 with dark cabin and even floor", () => {
+  assert.match(promptSrc, /STUDIO_PROMPT_REV = "16"/);
   assert.match(promptSrc, /Never invert/);
-  assert.match(promptSrc, /three-quarters of the square/);
+  assert.match(promptSrc, /two-thirds of the square/);
   assert.match(promptSrc, /BOTTOM edge/);
   assert.match(promptSrc, /Not a tiny toy/);
+  assert.match(promptSrc, /never invent yellow/);
+  assert.match(promptSrc, /even floor on all four sides/);
+  assert.match(promptSrc, /never a tighter crop/);
   assert.doesNotMatch(promptSrc, /contact sheet/i);
   assert.doesNotMatch(promptSrc, /about half the square/);
 });
@@ -26,10 +29,11 @@ test("classics are not rewritten as current Ferraris", () => {
 
 test("fit enlarges toys and does not letterbox a grey mat", () => {
   assert.doesNotMatch(fitSrc, /FIT_TRIGGER/);
-  assert.match(fitSrc, /FIT_TARGET = 0\.74/);
-  assert.match(fitSrc, /FIT_MIN = 0\.64/);
+  assert.match(fitSrc, /FIT_TARGET = 0\.68/);
+  assert.match(fitSrc, /FIT_MIN = 0\.55/);
   assert.match(fitSrc, /zoomCrop/);
   assert.match(fitSrc, /sampleBilinear/);
+  assert.match(fitSrc, /centerCarInStudio/);
   assert.match(fitSrc, /Never letterbox/);
   assert.doesNotMatch(fitSrc, /shrinkOntoFloor/);
   const side = 64;

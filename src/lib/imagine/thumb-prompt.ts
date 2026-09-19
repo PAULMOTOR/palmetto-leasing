@@ -1,12 +1,12 @@
 /**
- * Dual-image recipe (rev 14): dealer photo = this VIN; greyscale plate = camera + scale.
- * Rev 13 shrank cars to half-frame and they looked like toys.
- * Interior is not sent. Scale target is ~three-quarters of the square.
+ * Dual-image recipe (rev 16): dealer photo = this VIN; greyscale plate = camera.
+ * Rev 15 leaked yellow cabins and copied Image 2's tight crop.
+ * Interior is not sent. Scale is modest floor on all four sides — not a close crop.
  */
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 
 /** Bump when the recipe changes so dealer batches can skip already-good tiles. */
-export const STUDIO_PROMPT_REV = "15";
+export const STUDIO_PROMPT_REV = "16";
 
 export type ThumbSubject = {
   year: number;
@@ -28,6 +28,14 @@ function paintInstruction(car: ThumbSubject): string {
     `If Image 1 is a low coupe, output a low coupe. If Image 1 is one color, output one color. ` +
     `Never Image 2's grey body, never Image 2's proportions, never a two-tone or livery that is not in Image 1.`
   );
+}
+
+function cabinInstruction(car: ThumbSubject): string {
+  const raw = car.interiorColor?.trim() || "";
+  if (raw && /yellow|giallo|crema|tan|beige|saddle|cognac/i.test(raw)) {
+    return ` Windshield may hint the listed ${raw} cabin.`;
+  }
+  return ` Dark greenhouse glass — never invent yellow, cream, or tan seats. Cabin is not a color source.`;
 }
 
 function bodyInstruction(car: ThumbSubject): string {
@@ -65,10 +73,10 @@ export function buildThumbEditPrompt(
     : "";
 
   return (
-    `Overhead catalog still of this exact ${label}. ${paintInstruction(car)}${eraInstruction(car)}${bodyInstruction(car)} ` +
-    `${source} Image 2 is a greyscale camera plate — copy its camera (high boom, long telephoto, square seamless studio) AND how large the car sits in the frame, never its grey paint. ` +
+    `Overhead catalog still of this exact ${label}. ${paintInstruction(car)}${cabinInstruction(car)}${eraInstruction(car)}${bodyInstruction(car)} ` +
+    `${source} Image 2 is a greyscale camera plate — copy its camera (high boom, long telephoto, square seamless studio), never its grey paint and never a tighter crop. ` +
     `ONE car, right-side up: wheels on the floor, roof toward the camera, nose pointing to the BOTTOM edge of the square, matching Image 2. Never invert, never a 3/4 hero, never a collage. ` +
-    `Fill about three-quarters of the square — modest floor on all four sides, bumpers/mirrors/spoiler fully visible. Not a tiny toy in the middle, not clipped at the edges. Wheels straight, headlights off. Square, no text.` +
+    `Car centered. Fill about two-thirds of the square — even floor on all four sides, bumpers/mirrors/spoiler fully visible with air around them. Not a tiny toy, not clipped, not a close crop. Wheels straight, headlights off. Square, no text.` +
     rear
   );
 }

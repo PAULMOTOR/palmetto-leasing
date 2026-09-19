@@ -34,6 +34,11 @@ export async function reviewStudioTile(opts: {
   }
 
   const label = vehicleDisplayTitle(opts.car);
+  const listedCabin = (opts.car.interiorColor || "").trim();
+  const yellowCabinOk = /yellow|giallo|crema|tan|beige|saddle|cognac/i.test(listedCabin);
+  const cabinQa = yellowCabinOk
+    ? ""
+    : ` Reject a clearly yellow or cream cabin through the windshield (invented interior). `;
   const body = {
     model: "grok-4.5",
     temperature: 0,
@@ -49,6 +54,8 @@ export async function reviewStudioTile(opts: {
               `The car is right-side up (wheels toward the floor of the scene, roof to camera) with its NOSE pointing to the BOTTOM edge of the square. ` +
               `Reject if: the car is inverted/upside-down, nose points to the top, it is a 3/4 or side hero, a collage, a different generation/body, or the paint is obviously not a real photo of this car (grey plate leak, invented two-tone). ` +
               `If the listed car is a 911, coupe, spider, or sports car, reject any SUV/crossover including a Lamborghini Urus. ` +
+              cabinQa +
+              `Reject if bumpers or mirrors are clipped off the square. ` +
               `Return ONLY JSON: {"ok":boolean,"inverted":boolean,"notOverhead":boolean,"wrongBody":boolean,"reason":string}`,
           },
           { type: "image_url", image_url: { url: preview, detail: "low" } },
