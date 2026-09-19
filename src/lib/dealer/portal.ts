@@ -9,6 +9,8 @@ import { loadImageSupportEmail } from "@/lib/admin/image-support";
 import { formatCad, formatNumber } from "@/lib/utils";
 import { resolveDealerSlug } from "@/lib/crm/dealers";
 import { DEALERS } from "@/lib/leasing/seed";
+import { parsePhotos } from "@/lib/leasing/types";
+import { slimPhotoUrls } from "@/lib/leasing/thumb-url";
 
 const DEALER_PIN = () => process.env.DEALER_PIN?.trim() || "dealer";
 const ADMIN_PIN = () => process.env.ADMIN_PIN?.trim() || "palmetto";
@@ -32,6 +34,7 @@ export type DealerPortalVehicle = {
   mileage: number;
   hasStudio: boolean;
   tileUrl: string;
+  photos: string[];
   listingUrl: string;
   vin: string;
 };
@@ -153,12 +156,13 @@ export const getDealerPortal = createServerFn({ method: "GET" })
           price_cents: number;
           mileage: number;
           thumbnail_url: string;
+          photo_urls: string;
           dealer_listing_url: string;
           vin: string;
           updated_at: string;
         }>`
           select id, year, make, model, trim, price_cents, mileage, thumbnail_url,
-                 dealer_listing_url, coalesce(vin, '') as vin, updated_at::text as updated_at
+                 photo_urls, dealer_listing_url, coalesce(vin, '') as vin, updated_at::text as updated_at
           from vehicles
           where dealership_id = ${dealerId} and status = 'active'
           order by price_cents desc
@@ -187,6 +191,7 @@ export const getDealerPortal = createServerFn({ method: "GET" })
               mileage: Number(v.mileage),
               hasStudio: (v.thumbnail_url || "").startsWith("data:image/"),
               tileUrl: `/api/thumb/${encodeURIComponent(v.id)}?v=${encodeURIComponent(updatedAt)}`,
+              photos: slimPhotoUrls(parsePhotos(v.photo_urls || "")),
               listingUrl: v.dealer_listing_url || "",
               vin: v.vin || "",
             } satisfies DealerPortalVehicle;

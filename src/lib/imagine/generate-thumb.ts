@@ -54,6 +54,10 @@ export async function generateVehicleThumbnail(opts: {
       const ordered = listingPhotosInDealerOrder(opts.referencePhotoUrls || [], 16);
       if (!ordered.length) return { ok: false, mode: "error", error: "No listing photos to render from" };
       front = await firstExteriorDataUri(ordered);
+      if (!front) {
+        const https = ordered.map((u) => upgradeImageUrl(u)).find((u) => /^https?:\/\//i.test(u));
+        if (https) front = https;
+      }
     }
 
     if (!front) return { ok: false, mode: "error", error: "Could not download a listing photo" };

@@ -14,6 +14,7 @@ import {
 } from "@/lib/imagine/thumb-source";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { STUDIO_PROMPT_REV } from "./thumb-prompt";
+import { pickOneDealerImagineBatch } from "./queue";
 
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
@@ -139,14 +140,14 @@ export async function generateMissingImagineThumbs(opts?: {
     });
   });
 
-  const need = needsRender
-    .slice()
-    .sort((a, b) => {
-      const fa = Number(parseSpecs(a.specs_json).imagineQaFails || 0);
-      const fb = Number(parseSpecs(b.specs_json).imagineQaFails || 0);
-      return fa - fb;
-    })
-    .slice(0, limit);
+  const sorted = needsRender.slice().sort((a, b) => {
+    const fa = Number(parseSpecs(a.specs_json).imagineQaFails || 0);
+    const fb = Number(parseSpecs(b.specs_json).imagineQaFails || 0);
+    return fa - fb;
+  });
+  // Explicit dealer/match stays on that set. Catalog-wide: one rooftop per pass.
+  const need =
+    dealer || match ? sorted.slice(0, limit) : pickOneDealerImagineBatch(sorted, limit);
 
   await Promise.all(
     need.map(async (r) => {
@@ -234,7 +235,11 @@ export async function generateMissingImagineThumbs(opts?: {
         errors.push(`${r.make} ${r.model}: ${imag.error || "QA rejected"}`);
       } else {
         errors.push(`${r.make} ${r.model}: ${imag.error || "no studio image"}`);
-        if (/download a listing photo/i.test(imag.error || "")) {
+        const httpPhotos = pool.filter((p) => /^https?:\/\//i.test(p));
+        const autoscoutOnly =
+          httpPhotos.length > 0 &&
+          httpPhotos.every((p) => /autoscout24\.net\/listing-images/i.test(p));
+        if (/download a listing photo/i.test(imag.error || "") || autoscoutOnly) {
           const specs = stampImagineSpecs(r.specs_json, { imagineSkip: "1" });
           await sql`
             update vehicles set specs_json = ${specs}, updated_at = now()

@@ -65,3 +65,76 @@ test("studio source skips cabin shots", () => {
   assert.match(gen, /autoscout24/);
   assert.match(promptSrc, /never a Urus SUV/);
 });
+
+test("AutoScout listing-images stay bare — size crops 404", () => {
+  const gallery = readFileSync(new URL("../src/lib/leasing/gallery.ts", import.meta.url), "utf8");
+  const at = readFileSync(new URL("../src/lib/crawler/parse-autotrader.ts", import.meta.url), "utf8");
+  const thumb = readFileSync(new URL("../src/routes/api/thumb.$id.ts", import.meta.url), "utf8");
+  assert.match(gallery, /export function bareAutoscoutUrl/);
+  assert.match(gallery, /if \(\/autoscout24\\.net\\\/listing-images\\\/\/i\.test\(out\)\) return out/);
+  assert.match(at, /bareAutoscoutUrl\(decodeListingPhotoUrl/);
+  assert.doesNotMatch(at, /replace\([^\n]*800x600/);
+  assert.match(thumb, /bareAutoscoutUrl\(thumb\)/);
+
+  function bareAutoscoutUrl(url) {
+    if (!url || !/autoscout24\.net\/listing-images\//i.test(url)) return url;
+    return url.replace(
+      /(\/listing-images\/[0-9a-f-]+_[0-9a-f-]+\.(?:jpe?g|png|webp))\/\d+x\d+\.(?:jpe?g|png|webp)(\?.*)?$/i,
+      "$1$2",
+    );
+  }
+  const cropped =
+    "https://prod.pictures.autoscout24.net/listing-images/a09d20c7-3be5-4bbe-b5c4-5fbb2c6c5b31_35763e4a-9616-4cf4-9373-7d78909e226b.jpg/800x600.webp";
+  const hi =
+    "https://prod.pictures.autoscout24.net/listing-images/a09d20c7-3be5-4bbe-b5c4-5fbb2c6c5b31_35763e4a-9616-4cf4-9373-7d78909e226b.jpg/1920x1080.webp";
+  const bare =
+    "https://prod.pictures.autoscout24.net/listing-images/a09d20c7-3be5-4bbe-b5c4-5fbb2c6c5b31_35763e4a-9616-4cf4-9373-7d78909e226b.jpg";
+  assert.equal(bareAutoscoutUrl(cropped), bare);
+  assert.equal(bareAutoscoutUrl(hi), bare);
+  assert.equal(bareAutoscoutUrl(bare), bare);
+  assert.equal(bareAutoscoutUrl("https://imagescdn.d2cmedia.ca/car.jpg"), "https://imagescdn.d2cmedia.ca/car.jpg");
+});
+
+test("crawl paints one rooftop per pass and keeps Imagine skip flags", () => {
+  const run = readFileSync(new URL("../src/lib/crawler/run.ts", import.meta.url), "utf8");
+  const queue = readFileSync(new URL("../src/lib/imagine/queue.ts", import.meta.url), "utf8");
+  const batch = readFileSync(new URL("../src/lib/imagine/batch-thumbs.ts", import.meta.url), "utf8");
+  assert.match(queue, /export function pickOneDealerImagineBatch/);
+  assert.match(queue, /export function mergeListingSpecs/);
+  assert.match(run, /pickOneDealerImagineBatch/);
+  assert.match(run, /mergeListingSpecs/);
+  assert.match(run, /imagineSkip/);
+  assert.doesNotMatch(run, /roundRobinByDealer/);
+  assert.match(batch, /pickOneDealerImagineBatch/);
+
+  function pickOneDealerImagineBatch(rows, limit, preferDealer) {
+    const queues = new Map();
+    for (const row of rows) {
+      const list = queues.get(row.dealership_id) || [];
+      list.push(row);
+      queues.set(row.dealership_id, list);
+    }
+    if (!queues.size) return [];
+    const keys = [...queues.keys()].sort();
+    let dealer = keys[0];
+    const prefer = (preferDealer || "").trim();
+    if (prefer && (queues.get(prefer)?.length || 0) > 0) dealer = prefer;
+    else if (prefer) dealer = keys.find((k) => k > prefer) || keys[0];
+    return (queues.get(dealer) || []).slice(0, limit);
+  }
+  const rows = [
+    { dealership_id: "vfc-auto", id: "v1" },
+    { dealership_id: "vfc-auto", id: "v2" },
+    { dealership_id: "mclaren-of-toronto", id: "m1" },
+    { dealership_id: "mclaren-of-toronto", id: "m2" },
+    { dealership_id: "mclaren-of-toronto", id: "m3" },
+    { dealership_id: "mclaren-of-toronto", id: "m4" },
+  ];
+  const a = pickOneDealerImagineBatch(rows, 3);
+  assert.equal(a.length, 3);
+  assert.ok(a.every((r) => r.dealership_id === "mclaren-of-toronto"));
+  const b = pickOneDealerImagineBatch(rows, 3, "mclaren-of-toronto");
+  assert.ok(b.every((r) => r.dealership_id === "mclaren-of-toronto"));
+  const c = pickOneDealerImagineBatch(rows.filter((r) => r.dealership_id !== "mclaren-of-toronto"), 3, "mclaren-of-toronto");
+  assert.ok(c.every((r) => r.dealership_id === "vfc-auto"));
+});

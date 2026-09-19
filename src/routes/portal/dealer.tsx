@@ -19,6 +19,31 @@ export const Route = createFileRoute("/portal/dealer")({
   }),
 });
 
+function DealerTileThumb({
+  tileUrl,
+  photos,
+  title,
+}: {
+  tileUrl: string;
+  photos?: string[];
+  title: string;
+}) {
+  const candidates = [tileUrl, ...(photos || [])].filter((u, i, all) => u && all.indexOf(u) === i);
+  const [idx, setIdx] = useState(0);
+  const src = candidates[Math.min(idx, Math.max(0, candidates.length - 1))] || "";
+  return (
+    <img
+      src={src}
+      alt=""
+      className="h-full w-full object-cover object-center"
+      title={title}
+      onError={() => {
+        setIdx((i) => (i + 1 < candidates.length ? i + 1 : i));
+      }}
+    />
+  );
+}
+
 function DealerPortalPage() {
   const nav = useNavigate();
   const [token, setToken] = useState<string | null>(null);
@@ -115,6 +140,7 @@ function DealerPortalPage() {
       mileage: number;
       hasStudio: boolean;
       tileUrl: string;
+      photos?: string[];
     }[];
   };
 
@@ -170,7 +196,7 @@ function DealerPortalPage() {
                 className="overflow-hidden rounded-[var(--radius-xl)] border border-border bg-surface"
               >
                 <div className="relative aspect-square bg-white">
-                  <img src={v.tileUrl} alt="" className="h-full w-full object-cover object-center" />
+                  <DealerTileThumb tileUrl={v.tileUrl} photos={v.photos} title={v.title} />
                   {!v.hasStudio && (
                     <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
                       Dealer photo

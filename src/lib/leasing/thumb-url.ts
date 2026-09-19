@@ -1,4 +1,6 @@
 /** Public origin for inventory tiles posted to the CRM. */
+import { bareAutoscoutUrl } from "@/lib/leasing/gallery";
+
 export function palmettoOrigin(): string {
   return (
     process.env.PUBLIC_SITE_URL?.trim() ||
@@ -30,6 +32,7 @@ export function publicTileUrl(
   if (/imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(t)) {
     return `/api/thumb/${encodeURIComponent(vehicleId)}${qs}`;
   }
+  if (/^https?:\/\//i.test(t)) return bareAutoscoutUrl(t);
   return t;
 }
 
@@ -65,10 +68,12 @@ export function inventoryTileHandoffUrl(
 }
 
 export function slimPhotoUrls(photos: string[]): string[] {
-  return photos.filter(
-    (p) =>
-      /^https?:\/\//i.test(p) &&
-      !p.startsWith("data:") &&
-      !/imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(p),
-  );
+  return photos
+    .map((p) => bareAutoscoutUrl(p))
+    .filter(
+      (p) =>
+        /^https?:\/\//i.test(p) &&
+        !p.startsWith("data:") &&
+        !/imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(p),
+    );
 }

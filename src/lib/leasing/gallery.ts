@@ -130,11 +130,21 @@ export function decodeListingPhotoUrl(raw: string): string {
 
 /**
  * Upgrade thumbnail / low-res CDN URLs to full dealer photography size.
- * AutoScout24: .../uuid.jpg/120x90.jpg → .../uuid.jpg/1920x1080.jpg
+ * AutoScout listing-images 404 with a size crop — use the bare file.
  */
+export function bareAutoscoutUrl(url: string): string {
+  if (!url || !/autoscout24\.net\/listing-images\//i.test(url)) return url;
+  return url.replace(
+    /(\/listing-images\/[0-9a-f-]+_[0-9a-f-]+\.(?:jpe?g|png|webp))\/\d+x\d+\.(?:jpe?g|png|webp)(\?.*)?$/i,
+    "$1$2",
+  );
+}
+
 export function upgradeImageUrl(url: string): string {
   if (!url || url.startsWith("data:")) return url;
   let out = decodeListingPhotoUrl(url);
+  out = bareAutoscoutUrl(out);
+  if (/autoscout24\.net\/listing-images\//i.test(out)) return out;
 
   // AutoScout / AutoTrader CA listing CDN size segments
   // e.g. /120x90.jpg, /320x240.webp, /640x480.jpg → 1920x1080
@@ -314,6 +324,9 @@ export function normalizeGalleryUrls(photos: string[]): string[] {
 }
 
 function scoreRes(url: string): number {
+  if (/autoscout24\.net\/listing-images\//i.test(url) && !/\/\d+x\d+\./.test(url)) {
+    return 1920 * 1080;
+  }
   const m = url.match(/\/(\d{2,4})x(\d{2,4})\./);
   if (m) return Number(m[1]) * Number(m[2]);
   if (/1920|1600|1280|large|hires|original/i.test(url)) return 1920 * 1080;

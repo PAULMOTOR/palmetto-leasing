@@ -4,6 +4,7 @@
  * Dealer pages are 20 listings each — follow ?page=2..numberOfPages.
  */
 import { PREMIUM_MIN_CENTS, type SeedVehicle } from "@/lib/leasing/seed";
+import { bareAutoscoutUrl, decodeListingPhotoUrl } from "@/lib/leasing/gallery";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -106,8 +107,8 @@ export function parseAutoTraderHtml(html: string, pageUrl: string, dealerId: str
     const photos = (l.images || [])
       .map((img) => {
         if (typeof img !== "string") return "";
-        // Prefer larger crop than the 250x188 list thumb
-        return img.replace(/\/\d+x\d+\.webp(\?.*)?$/i, "/800x600.webp$1");
+        // AutoScout listing-images 404 on size crops — keep the bare file.
+        return bareAutoscoutUrl(decodeListingPhotoUrl(img));
       })
       .filter((u) => /^https?:\/\//i.test(u));
 

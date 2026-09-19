@@ -18,37 +18,14 @@ import {
 } from "@/lib/imagine/thumb-source";
 import { listingFingerprint } from "./parse-vehicles";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
-import { selectImagineRefs } from "@/lib/leasing/gallery";
+import { bareAutoscoutUrl, selectImagineRefs } from "@/lib/leasing/gallery";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { sweepDeadListings } from "./dead-listings";
+import { mergeListingSpecs, pickOneDealerImagineBatch } from "@/lib/imagine/queue";
 
 const PREMIUM_THRESHOLD_CENTS = PREMIUM_MIN_CENTS;
 const POOL_VERSION = "12-oem-partners";
 const MAX_IMAGINE_PER_CRAWL = Number(process.env.IMAGINE_MAX_PER_CRAWL || 3);
-
-function roundRobinByDealer<T extends { dealership_id: string }>(rows: T[], limit: number): T[] {
-  if (rows.length <= limit) return rows;
-  const queues = new Map<string, T[]>();
-  for (const row of rows) {
-    const list = queues.get(row.dealership_id) || [];
-    list.push(row);
-    queues.set(row.dealership_id, list);
-  }
-  const out: T[] = [];
-  const keys = [...queues.keys()];
-  while (out.length < limit) {
-    let added = 0;
-    for (const key of keys) {
-      if (out.length >= limit) break;
-      const next = queues.get(key)?.shift();
-      if (!next) continue;
-      out.push(next);
-      added += 1;
-    }
-    if (!added) break;
-  }
-  return out;
-}
 
 let seedChain: Promise<unknown> = Promise.resolve();
 function enqueueSeed<T>(fn: () => Promise<T>): Promise<T> {
@@ -334,15 +311,18 @@ async function runInventoryCrawlInner(opts?: {
           )
         order by
           case when coalesce(thumbnail_source, '') = 'inferred' then 0 else 1 end,
-          last_seen_at desc
-        limit ${MAX_IMAGINE_PER_CRAWL * 6}
+          price_cents desc
+        limit 400
       `;
       const eligible = candidates.filter((item) => {
+        const specs = parseSpecs(item.specs_json || "{}");
+        if (specs.imagineSkip === "1") return false;
+        if (Number(specs.imagineQaFails || 0) >= 3) return false;
         const placeholder = isPlaceholderListing(item.specs_json);
         const photos = parsePhotos(item.photo_urls);
         const actual = listingHasActualDealerPhotos(photos, {
           placeholder,
-          source: parseSpecs(item.specs_json).source,
+          source: specs.source,
         });
         const studio = isStudioThumbUrl(item.thumbnail_url);
         const inferred = item.thumbnail_source === "inferred";
@@ -350,13 +330,27 @@ async function runInventoryCrawlInner(opts?: {
         if (!studio) return true;
         return false;
       });
-      const batch = roundRobinByDealer(eligible, MAX_IMAGINE_PER_CRAWL);
+      const lastDealerRow = await sql<{ value: string }>`
+        select value from app_meta where key = 'imagine_last_dealer' limit 1
+      `;
+      const batch = pickOneDealerImagineBatch(
+        eligible,
+        MAX_IMAGINE_PER_CRAWL,
+        lastDealerRow[0]?.value,
+      );
+      if (batch[0]?.dealership_id) {
+        await sql`
+          insert into app_meta (key, value, updated_at)
+          values ('imagine_last_dealer', ${batch[0].dealership_id}, now())
+          on conflict (key) do update set value = excluded.value, updated_at = now()
+        `;
+      }
 
       for (const item of batch) {
         const photos = [
           ...parsePhotos(item.photo_urls),
           ...(item.thumbnail_url?.startsWith("http") && !isEphemeralImagineUrl(item.thumbnail_url)
-            ? [item.thumbnail_url]
+            ? [bareAutoscoutUrl(item.thumbnail_url)]
             : []),
         ];
         const placeholder = isPlaceholderListing(item.specs_json);
@@ -410,10 +404,24 @@ async function runInventoryCrawlInner(opts?: {
           notes.push(`Imagine QA ${item.id}: ${imag.error || "rejected"}`);
         } else if (imag.error) {
           notes.push(`Imagine ${item.id}: ${imag.error}`);
+          const httpPhotos = photos.filter((p) => /^https?:\/\//i.test(p));
+          const autoscoutOnly =
+            httpPhotos.length > 0 &&
+            httpPhotos.every((p) => /autoscout24\.net\/listing-images/i.test(p));
+          if (/download a listing photo/i.test(imag.error) || autoscoutOnly) {
+            const specs = {
+              ...parseSpecs(item.specs_json),
+              imagineSkip: "1",
+            };
+            await sql`
+              update vehicles set specs_json = ${JSON.stringify(specs)}, updated_at = now()
+              where id = ${item.id}
+            `;
+          }
         }
       }
       notes.push(
-        `Imagine tiles: ${imagined}/${batch.length} (photographed locked; inferred re-rendered only with dealer photos)`,
+        `Imagine tiles: ${imagined}/${batch.length} ${batch[0]?.dealership_id || ""} (one rooftop per pass)`.trim(),
       );
     } else if (wantThumbs) {
       notes.push("XAI_API_KEY unset — tiles use real dealer photos until Imagine is configured");
@@ -507,22 +515,34 @@ async function upsertVehicle(
   const listingUrl = item.listing_path.startsWith("http")
     ? item.listing_path
     : dealerListingUrl(item.dealership_id, item.listing_path);
-  const specsJson = JSON.stringify(item.specs);
-  const photosJson = JSON.stringify(item.photos.length ? item.photos : [item.thumbnail]);
-  const thumbnail = item.thumbnail.startsWith("http")
-    ? item.thumbnail
-    : item.photos.find((p) => p.startsWith("http")) || item.thumbnail;
+  const photos = (item.photos.length ? item.photos : [item.thumbnail].filter(Boolean)).map(
+    (u) => bareAutoscoutUrl(u),
+  );
+  const photosJson = JSON.stringify(photos);
+  const thumbnail = bareAutoscoutUrl(
+    item.thumbnail.startsWith("http")
+      ? item.thumbnail
+      : photos.find((p) => p.startsWith("http")) || item.thumbnail,
+  );
 
-  const existing = await sql<{ id: string; thumbnail_url: string; thumbnail_source: string }>`
-    select id, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source
+  const existing = await sql<{
+    id: string;
+    thumbnail_url: string;
+    thumbnail_source: string;
+    specs_json: string;
+  }>`
+    select id, thumbnail_url, coalesce(thumbnail_source, '') as thumbnail_source, specs_json
     from vehicles where id = ${id} limit 1
   `;
   const isNew = existing.length === 0;
-  const incomingPlaceholder = isPlaceholderListing(item.specs);
-  const incomingActual = listingHasActualDealerPhotos(
-    item.photos.length ? item.photos : [item.thumbnail].filter(Boolean),
-    { placeholder: incomingPlaceholder, source: item.specs?.source },
+  const specsJson = JSON.stringify(
+    mergeListingSpecs(parseSpecs(existing[0]?.specs_json || "{}"), item.specs),
   );
+  const incomingPlaceholder = isPlaceholderListing(item.specs);
+  const incomingActual = listingHasActualDealerPhotos(photos, {
+    placeholder: incomingPlaceholder,
+    source: item.specs?.source,
+  });
   const prevUrl = existing[0]?.thumbnail_url || "";
   const prevSource = existing[0]?.thumbnail_source || "";
   const prevStudio =
@@ -543,8 +563,10 @@ async function upsertVehicle(
       thumbSource = "inferred";
     }
   } else if (!isNew && prevStudio) {
-    keepThumb = prevUrl.startsWith("data:image/") || prevUrl.startsWith("http") ? prevUrl : thumbnail;
-    thumbSource = prevSource || (incomingActual ? "dealer" : "dealer");
+    keepThumb = prevUrl.startsWith("data:image/")
+      ? prevUrl
+      : bareAutoscoutUrl(prevUrl.startsWith("http") ? prevUrl : thumbnail);
+    thumbSource = prevSource || "dealer";
   }
 
   await sql`

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { palmettoOrigin } from "@/lib/leasing/thumb-url";
+import { bareAutoscoutUrl } from "@/lib/leasing/gallery";
 
 const PLACEHOLDER = "/vehicles/top-porsche-911.jpg";
 
@@ -69,7 +70,7 @@ export const Route = createFileRoute("/api/thumb/$id")({
             return dataUriToResponse(thumb, versioned) ?? redirectTo(PLACEHOLDER);
           }
           if (/^https?:\/\//i.test(thumb) && !/imgen\.x\.ai|xai-tmp-imgen/i.test(thumb)) {
-            return redirectTo(thumb);
+            return redirectTo(bareAutoscoutUrl(thumb));
           }
           if (thumb.startsWith("/") && !thumb.startsWith("//")) {
             return redirectTo(thumb);
