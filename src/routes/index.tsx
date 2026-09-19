@@ -40,7 +40,8 @@ const FILTER_IDLE_MS = 1200;
 /** Stay fully visible while near the top of the page. */
 const TOP_ALWAYS_VISIBLE_PX = 48;
 /** Cards per page. Full catalog stays in memory so filters still run over every car. */
-const PAGE_SIZE = 24;
+const PAGE_SIZE_OPTIONS = [12, 24, 48, 96] as const;
+const DEFAULT_PAGE_SIZE = 24;
 
 function InventoryPage() {
   const navigate = Route.useNavigate();
@@ -51,6 +52,7 @@ function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const [year, setYear] = useState("");
@@ -189,20 +191,20 @@ function InventoryPage() {
     return list;
   }, [dealerPool, year, make, model, monthly]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageStart = (currentPage - 1) * pageSize;
   const paged = useMemo(
-    () => filtered.slice(pageStart, pageStart + PAGE_SIZE),
-    [filtered, pageStart],
+    () => filtered.slice(pageStart, pageStart + pageSize),
+    [filtered, pageStart, pageSize],
   );
   const rangeFrom = filtered.length === 0 ? 0 : pageStart + 1;
-  const rangeTo = Math.min(pageStart + PAGE_SIZE, filtered.length);
+  const rangeTo = Math.min(pageStart + pageSize, filtered.length);
 
   useEffect(() => {
     setPage(1);
     setExpandedId(null);
-  }, [dealer, year, make, model, monthly]);
+  }, [dealer, year, make, model, monthly, pageSize]);
 
   const goToPage = (next: number) => {
     const clamped = Math.min(Math.max(1, next), pageCount);
@@ -276,7 +278,7 @@ function InventoryPage() {
               {hasFilters && stats && filtered.length !== stats.total ? (
                 <span className="text-fg-subtle"> · of {stats.total}</span>
               ) : null}
-              {!loading && filtered.length > PAGE_SIZE ? (
+              {!loading && filtered.length > pageSize ? (
                 <span className="text-fg-subtle">
                   {" "}
                   · {rangeFrom}–{rangeTo}
@@ -323,6 +325,16 @@ function InventoryPage() {
                 value={monthly}
                 onChange={(v) => setMonthly(v as MonthlyRangeId | "")}
                 options={MONTHLY_RANGES.map((r) => ({ value: r.id, label: r.label }))}
+              />
+              <FilterSelect
+                label="Per page"
+                value={String(pageSize)}
+                onChange={(v) => setPageSize(Number(v) || DEFAULT_PAGE_SIZE)}
+                options={PAGE_SIZE_OPTIONS.map((n) => ({
+                  value: String(n),
+                  label: `${n} per page`,
+                }))}
+                allowEmpty={false}
               />
               {hasFilters && (
                 <button
@@ -384,16 +396,16 @@ function InventoryPage() {
                 />
               ))}
             </div>
-            {pageCount > 1 ? (
-              <InventoryPager
-                page={currentPage}
-                pageCount={pageCount}
-                from={rangeFrom}
-                to={rangeTo}
-                total={filtered.length}
-                onPage={goToPage}
-              />
-            ) : null}
+            <InventoryPager
+              page={currentPage}
+              pageCount={pageCount}
+              from={rangeFrom}
+              to={rangeTo}
+              total={filtered.length}
+              pageSize={pageSize}
+              onPage={goToPage}
+              onPageSize={(n) => setPageSize(n)}
+            />
           </div>
         )}
       </div>
@@ -419,14 +431,18 @@ function InventoryPager({
   from,
   to,
   total,
+  pageSize,
   onPage,
+  onPageSize,
 }: {
   page: number;
   pageCount: number;
   from: number;
   to: number;
   total: number;
+  pageSize: number;
   onPage: (n: number) => void;
+  onPageSize: (n: number) => void;
 }) {
   const items = paginationItems(page, pageCount);
   return (
@@ -434,9 +450,22 @@ function InventoryPager({
       className="mt-8 flex flex-col items-center gap-3 sm:mt-10"
       aria-label="Inventory pages"
     >
-      <p className="text-[13px] text-fg-muted">
-        {from}–{to} of {total}
-      </p>
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <p className="text-[13px] text-fg-muted">
+          {from}–{to} of {total}
+        </p>
+        <FilterSelect
+          label="Per page"
+          value={String(pageSize)}
+          onChange={(v) => onPageSize(Number(v) || DEFAULT_PAGE_SIZE)}
+          options={PAGE_SIZE_OPTIONS.map((n) => ({
+            value: String(n),
+            label: `${n} per page`,
+          }))}
+          allowEmpty={false}
+        />
+      </div>
+      {pageCount > 1 ? (
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -492,6 +521,7 @@ function InventoryPager({
           <ChevronRight className="size-4" />
         </button>
       </div>
+      ) : null}
     </nav>
   );
 }
@@ -523,11 +553,13 @@ function FilterSelect({
   value,
   onChange,
   options,
+  allowEmpty = true,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
+  allowEmpty?: boolean;
 }) {
   return (
     <label className="relative inline-flex cursor-pointer items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg">
@@ -541,7 +573,7 @@ function FilterSelect({
         className="absolute inset-0 cursor-pointer opacity-0"
         aria-label={label}
       >
-        <option value="">{label}</option>
+        {allowEmpty ? <option value="">{label}</option> : null}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
