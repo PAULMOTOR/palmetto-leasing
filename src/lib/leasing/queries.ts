@@ -57,7 +57,7 @@ async function toCard(
   const httpPhotos = slimPhotoUrls(photos);
   return {
     ...row,
-    thumbnail_url: publicTileUrl(row.id, thumb, row.updated_at),
+    thumbnail_url: publicTileUrl(row.id, thumb, row.tile_rev),
     price_cents: Number(row.price_cents),
     mileage: Number(row.mileage),
     year: Number(row.year),
@@ -464,7 +464,7 @@ export const submitLeaseQuote = createServerFn({ method: "POST" })
         trim = v.trim || "";
         vin = v.vin || "";
         stock = v.stock_number || "";
-        image = inventoryTileHandoffUrl(v.id, undefined, v.updated_at);
+        image = inventoryTileHandoffUrl(v.id, undefined, v.tile_rev);
       }
     } catch {
       /* static */

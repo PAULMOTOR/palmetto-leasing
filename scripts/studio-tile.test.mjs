@@ -243,3 +243,13 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   assert.match(adminDealers, /show_commission/);
   assert.match(adminDealers, /commission_pct/);
 });
+
+test("re-render bumps a versioned tile filename", () => {
+  const thumbs = readFileSync(new URL("../src/lib/leasing/thumb-url.ts", import.meta.url), "utf8");
+  const persist = readFileSync(new URL("../src/lib/imagine/batch-thumbs.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../src/routes/api/thumb.$id.ts", import.meta.url), "utf8");
+  assert.match(thumbs, /studioTilePath/);
+  assert.match(thumbs, /\.v\$\{n\}/);
+  assert.match(persist, /tile_rev = coalesce\(tile_rev, 0\) \+ 1/);
+  assert.match(route, /parseStudioTileParam/);
+});

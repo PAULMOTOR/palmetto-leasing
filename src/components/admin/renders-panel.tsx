@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { listAdminRenders, type AdminRenderRow } from "@/lib/admin/renders";
 import { Button } from "@/components/ui/button";
 import { formatCad, formatNumber } from "@/lib/utils";
+import { studioTilePath } from "@/lib/leasing/thumb-url";
 
 type Slot = "front" | "rear" | "interior";
 type Triple = { front?: string; rear?: string; interior?: string };
@@ -97,7 +98,8 @@ export function RendersPanel({
 
   const queue = dealers.find((d) => d.id === dealerId)?.queue ?? 0;
 
-  function applyResult(row: AdminRenderRow, data: { source?: string; updatedAt?: string }) {
+  function applyResult(row: AdminRenderRow, data: { source?: string; updatedAt?: string; tileRev?: number }) {
+    const tileRev = Math.max(1, Number(data.tileRev || row.tileRev || 1));
     const v = data.updatedAt || String(Date.now());
     setRows((prev) =>
       (prev || []).map((r) =>
@@ -109,7 +111,8 @@ export function RendersPanel({
               stale: false,
               promptRev: r.promptRev,
               updatedAt: v,
-              tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(v)}`,
+              tileRev,
+              tileUrl: studioTilePath(r.id, tileRev),
             }
           : r,
       ),
@@ -170,6 +173,7 @@ export function RendersPanel({
         error?: string;
         source?: string;
         updatedAt?: string;
+        tileRev?: number;
       };
       if (data.hasApiKey === false) {
         toast.error("XAI_API_KEY missing on Vercel");
@@ -181,7 +185,7 @@ export function RendersPanel({
       }
       applyResult(row, data);
       toast.success(extra ? "Rendered from your uploads" : "Tile replaced", {
-        description: row.title,
+        description: data.tileRev ? `${row.title} · v${data.tileRev}` : row.title,
       });
       if (extra) {
         setUploads((prev) => {
@@ -273,6 +277,7 @@ export function RendersPanel({
               >
                 <div className="relative aspect-square bg-white">
                   <img
+                    key={r.tileUrl}
                     src={r.tileUrl}
                     alt=""
                     className="h-full w-full object-cover object-center"

@@ -9,6 +9,25 @@ export function palmettoOrigin(): string {
   ).replace(/\/$/, "");
 }
 
+/** `/api/thumb/{id}.v2` — new filename on every re-render so browsers cannot keep the old tile. */
+export function studioTilePath(vehicleId: string, rev?: number | null): string {
+  const id = encodeURIComponent((vehicleId || "").trim());
+  const n = Math.max(1, Math.floor(Number(rev) || 1));
+  return `/api/thumb/${id}.v${n}`;
+}
+
+export function parseStudioTileParam(param: string): { vehicleId: string; rev: number | null } {
+  const raw = decodeURIComponent(param || "").trim();
+  const m = /^(.*)\.v(\d+)$/.exec(raw);
+  if (m?.[1]) return { vehicleId: m[1], rev: Number(m[2]) };
+  return { vehicleId: raw.replace(/\?.*$/, ""), rev: null };
+}
+
+function revFrom(cache?: string | number | Date | null): number {
+  if (typeof cache === "number" && Number.isFinite(cache) && cache > 0) return Math.floor(cache);
+  return 1;
+}
+
 export function tileCacheToken(updatedAt?: string | Date | null): string {
   if (!updatedAt) return "";
   if (updatedAt instanceof Date) return String(updatedAt.getTime());
@@ -21,16 +40,12 @@ export function tileCacheToken(updatedAt?: string | Date | null): string {
 export function publicTileUrl(
   vehicleId: string,
   thumbnailUrl: string | null | undefined,
-  updatedAt?: string | Date | null,
+  revOrUpdated?: string | number | Date | null,
 ): string {
   const t = thumbnailUrl || "";
-  const token = tileCacheToken(updatedAt);
-  const qs = token ? `?v=${encodeURIComponent(token)}` : "";
-  if (t.startsWith("data:image/")) {
-    return `/api/thumb/${encodeURIComponent(vehicleId)}${qs}`;
-  }
-  if (/imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(t)) {
-    return `/api/thumb/${encodeURIComponent(vehicleId)}${qs}`;
+  const rev = revFrom(revOrUpdated);
+  if (t.startsWith("data:image/") || /imgen\.x\.ai|xai-tmp-imgen|xai-imgen/i.test(t)) {
+    return studioTilePath(vehicleId, rev);
   }
   if (/^https?:\/\//i.test(t)) return bareAutoscoutUrl(t);
   return t;
@@ -58,13 +73,11 @@ export function absolutePublicTileUrl(
 export function inventoryTileHandoffUrl(
   vehicleId: string,
   origin = palmettoOrigin(),
-  updatedAt?: string | Date | null,
+  rev?: string | number | Date | null,
 ): string {
   const id = encodeURIComponent((vehicleId || "").trim());
   if (!id) return "";
-  const token = tileCacheToken(updatedAt);
-  const qs = token ? `?v=${encodeURIComponent(token)}` : "";
-  return `${(origin || palmettoOrigin()).replace(/\/$/, "")}/api/thumb/${id}${qs}`;
+  return `${(origin || palmettoOrigin()).replace(/\/$/, "")}${studioTilePath(vehicleId, revFrom(rev))}`;
 }
 
 export function slimPhotoUrls(photos: string[]): string[] {

@@ -50,6 +50,7 @@ export type Vehicle = {
   first_seen_at: string;
   last_seen_at: string;
   updated_at?: string;
+  tile_rev?: number;
   removed_at: string | null;
   dealer_name?: string;
   dealer_city?: string;

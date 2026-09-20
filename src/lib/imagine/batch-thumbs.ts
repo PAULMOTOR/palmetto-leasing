@@ -16,6 +16,23 @@ import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { STUDIO_PROMPT_REV } from "./thumb-prompt";
 import { pickOneDealerImagineBatch } from "./queue";
 
+async function writeStudioTile(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  opts: { id: string; url: string; source: string; specs: string },
+): Promise<number> {
+  const rows = await sql<{ tile_rev: number }>`
+    update vehicles
+    set thumbnail_url = ${opts.url},
+        thumbnail_source = ${opts.source},
+        specs_json = ${opts.specs},
+        tile_rev = coalesce(tile_rev, 0) + 1,
+        updated_at = now()
+    where id = ${opts.id}
+    returning tile_rev
+  `;
+  return Number(rows[0]?.tile_rev || 1);
+}
+
 export async function generateMissingImagineThumbs(opts?: {
   limit?: number;
   force?: boolean;
@@ -211,14 +228,7 @@ export async function generateMissingImagineThumbs(opts?: {
       if (imag.ok && imag.url && isStudioThumbUrl(imag.url)) {
         const source = imag.source || (actual && imag.mode === "edit" ? "photographed" : "inferred");
         const specs = stampImagineSpecs(r.specs_json, { imagineRev: STUDIO_PROMPT_REV, imagineQa: "pass" });
-        await sql`
-          update vehicles
-          set thumbnail_url = ${imag.url},
-              thumbnail_source = ${source},
-              specs_json = ${specs},
-              updated_at = now()
-          where id = ${r.id}
-        `;
+        await writeStudioTile(sql, { id: r.id, url: imag.url, source, specs });
         succeeded += 1;
       } else if (imag.mode === "rejected") {
         rejected += 1;
@@ -274,6 +284,7 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
   hasApiKey: boolean;
   error?: string;
   updatedAt?: string;
+  tileRev?: number;
   source?: "photographed" | "inferred";
 }> {
   const hasApiKey = Boolean(process.env.XAI_API_KEY?.trim());
@@ -352,15 +363,13 @@ export async function generateVehicleThumbById(vehicleId: string): Promise<{
 
   const now = new Date().toISOString();
   const specs = stampImagineSpecs(r.specs_json, { imagineRev: STUDIO_PROMPT_REV, imagineQa: "pass" });
-  await sql`
-    update vehicles
-    set thumbnail_url = ${imag.url},
-        thumbnail_source = ${"photographed"},
-        specs_json = ${specs},
-        updated_at = now()
-    where id = ${r.id}
-  `;
-  return { ok: true, hasApiKey: true, updatedAt: now, source: "photographed" };
+  const tileRev = await writeStudioTile(sql, {
+    id: r.id,
+    url: imag.url,
+    source: "photographed",
+    specs,
+  });
+  return { ok: true, hasApiKey: true, updatedAt: now, tileRev, source: "photographed" };
 }
 
 function isJpegDataUri(s: string): boolean {
@@ -380,6 +389,7 @@ export async function generateVehicleThumbFromUploads(
   hasApiKey: boolean;
   error?: string;
   updatedAt?: string;
+  tileRev?: number;
   source?: "photographed" | "inferred";
 }> {
   const hasApiKey = Boolean(process.env.XAI_API_KEY?.trim());
@@ -430,15 +440,13 @@ export async function generateVehicleThumbFromUploads(
 
   const now = new Date().toISOString();
   const specs = stampImagineSpecs(r.specs_json, { imagineRev: STUDIO_PROMPT_REV, imagineQa: "pass" });
-  await sql`
-    update vehicles
-    set thumbnail_url = ${imag.url},
-        thumbnail_source = ${"photographed"},
-        specs_json = ${specs},
-        updated_at = now()
-    where id = ${r.id}
-  `;
-  return { ok: true, hasApiKey: true, updatedAt: now, source: "photographed" };
+  const tileRev = await writeStudioTile(sql, {
+    id: r.id,
+    url: imag.url,
+    source: "photographed",
+    specs,
+  });
+  return { ok: true, hasApiKey: true, updatedAt: now, tileRev, source: "photographed" };
 }
 
 function stampImagineSpecs(

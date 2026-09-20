@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
+import { parseStudioTileParam, studioTilePath } from "@/lib/leasing/thumb-url";
 
 function cors(headers: Record<string, string> = {}) {
   return {
@@ -53,18 +54,32 @@ export const Route = createFileRoute("/api/thumb/$id")({
           status: 204,
           headers: cors({ "Access-Control-Max-Age": "86400" }),
         }),
-      GET: async ({ params, request }) => {
-        const id = decodeURIComponent(params.id || "").trim();
+      GET: async ({ params }) => {
+        const parsed = parseStudioTileParam(params.id || "");
+        const id = parsed.vehicleId;
         if (!id || id.length > 160) return notFound();
-        const versioned = Boolean(new URL(request.url).searchParams.get("v"));
         try {
           const sql = await getSql();
-          const rows = await sql<{ thumbnail_url: string }>`
-            select thumbnail_url from vehicles
+          const rows = await sql<{ thumbnail_url: string; tile_rev: number | null }>`
+            select thumbnail_url, coalesce(tile_rev, 1) as tile_rev
+            from vehicles
             where id = ${id} and status = 'active'
             limit 1
           `;
-          const thumb = rows[0]?.thumbnail_url || "";
+          const row = rows[0];
+          if (!row) return notFound();
+          const currentRev = Math.max(1, Number(row.tile_rev) || 1);
+          if (parsed.rev != null && parsed.rev !== currentRev) {
+            return new Response(null, {
+              status: 302,
+              headers: cors({
+                Location: studioTilePath(id, currentRev),
+                "Cache-Control": "no-store",
+              }),
+            });
+          }
+          const versioned = parsed.rev === currentRev;
+          const thumb = row.thumbnail_url || "";
           if (thumb.startsWith("data:image/")) {
             return dataUriToResponse(thumb, versioned) ?? notFound();
           }

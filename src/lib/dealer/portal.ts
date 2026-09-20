@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
-import { palmettoOrigin } from "@/lib/leasing/thumb-url";
+import { palmettoOrigin, studioTilePath, slimPhotoUrls } from "@/lib/leasing/thumb-url";
 import { sendMail } from "@/lib/mail/send";
 import { loadImageSupportEmail } from "@/lib/admin/image-support";
 import { formatCad, formatNumber } from "@/lib/utils";
@@ -11,7 +11,6 @@ import { resolveDealerSlug } from "@/lib/crm/dealers";
 import { DEALERS } from "@/lib/leasing/seed";
 import { parseDealerToken, findDealerUserByEmail, dealerUserToken } from "@/lib/desk/users";
 import { parsePhotos } from "@/lib/leasing/types";
-import { slimPhotoUrls } from "@/lib/leasing/thumb-url";
 
 const DEALER_PIN = () => process.env.DEALER_PIN?.trim() || "dealer";
 const ADMIN_PIN = () => process.env.ADMIN_PIN?.trim() || "palmetto";
@@ -197,9 +196,11 @@ export const getDealerPortal = createServerFn({ method: "GET" })
           dealer_listing_url: string;
           vin: string;
           updated_at: string;
+          tile_rev: number | null;
         }>`
           select id, year, make, model, trim, price_cents, mileage, thumbnail_url,
-                 photo_urls, dealer_listing_url, coalesce(vin, '') as vin, updated_at::text as updated_at
+                 photo_urls, dealer_listing_url, coalesce(vin, '') as vin, updated_at::text as updated_at,
+                 coalesce(tile_rev, 1) as tile_rev
           from vehicles
           where dealership_id = ${dealerId} and status = 'active'
           order by price_cents desc
@@ -217,7 +218,6 @@ export const getDealerPortal = createServerFn({ method: "GET" })
             inventoryUrl: d.inventory_url,
           },
           vehicles: vehicles.map((v) => {
-            const updatedAt = v.updated_at || "";
             return {
               id: v.id,
               title: vehicleDisplayTitle(v),
@@ -227,7 +227,7 @@ export const getDealerPortal = createServerFn({ method: "GET" })
               priceCents: Number(v.price_cents),
               mileage: Number(v.mileage),
               hasStudio: (v.thumbnail_url || "").startsWith("data:image/"),
-              tileUrl: `/api/thumb/${encodeURIComponent(v.id)}?v=${encodeURIComponent(updatedAt)}`,
+              tileUrl: studioTilePath(v.id, Number(v.tile_rev) || 1),
               photos: slimPhotoUrls(parsePhotos(v.photo_urls || "")),
               listingUrl: v.dealer_listing_url || "",
               vin: v.vin || "",
@@ -298,11 +298,13 @@ export const requestImageFix = createServerFn({ method: "POST" })
       dealer_listing_url: string;
       thumbnail_source: string;
       dealer_name: string;
+      tile_rev: number | null;
     }>`
       select v.id, v.year, v.make, v.model, v.trim, v.price_cents, v.mileage,
              coalesce(v.vin, '') as vin, v.dealer_listing_url,
              coalesce(v.thumbnail_source, '') as thumbnail_source,
-             d.name as dealer_name
+             d.name as dealer_name,
+             coalesce(v.tile_rev, 1) as tile_rev
       from vehicles v
       join dealerships d on d.id = v.dealership_id
       where v.id = ${data.vehicleId} and v.dealership_id = ${dealerId} and v.status = 'active'
@@ -322,7 +324,7 @@ export const requestImageFix = createServerFn({ method: "POST" })
     const title = vehicleDisplayTitle(v);
     const origin = palmettoOrigin();
     const adminUrl = `${origin}/admin?tab=renders&q=${encodeURIComponent(title)}`;
-    const tileUrl = `${origin}/api/thumb/${encodeURIComponent(v.id)}`;
+    const tileUrl = `${origin}${studioTilePath(v.id, Number(v.tile_rev) || 1)}`;
     const note = (data.note || "").trim();
     const to = await loadImageSupportEmail();
 

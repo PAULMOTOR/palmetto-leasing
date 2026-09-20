@@ -11,6 +11,7 @@ import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
 import { listingPhotosInDealerOrder } from "@/lib/leasing/gallery";
 import { STUDIO_PROMPT_REV } from "@/lib/imagine/thumb-prompt";
+import { studioTilePath } from "@/lib/leasing/thumb-url";
 
 export type AdminRenderRow = {
   id: string;
@@ -27,6 +28,7 @@ export type AdminRenderRow = {
   hasListingPhoto: boolean;
   tileUrl: string;
   updatedAt: string;
+  tileRev: number;
   promptRev: string;
   stale: boolean;
 };
@@ -53,13 +55,15 @@ export const listAdminRenders = createServerFn({ method: "GET" })
       thumbnail_source: string;
       photo_urls: string;
       updated_at: string;
+      tile_rev: number | null;
       dealer_name: string;
       dealership_id: string;
       specs_json: string;
     }>`
       select v.id, v.year, v.make, v.model, v.trim, v.price_cents, v.mileage,
              v.thumbnail_url, coalesce(v.thumbnail_source, '') as thumbnail_source,
-             v.photo_urls, v.updated_at::text as updated_at, d.name as dealer_name,
+             v.photo_urls, v.updated_at::text as updated_at, coalesce(v.tile_rev, 1) as tile_rev,
+             d.name as dealer_name,
              v.dealership_id, v.specs_json
       from vehicles v
       join dealerships d on d.id = v.dealership_id
@@ -70,6 +74,7 @@ export const listAdminRenders = createServerFn({ method: "GET" })
     `;
     return rows.map((r) => {
       const updatedAt = r.updated_at || "";
+      const tileRev = Math.max(1, Number(r.tile_rev) || 1);
       const hasStudio = (r.thumbnail_url || "").startsWith("data:image/");
       const listingPhotos = listingPhotosInDealerOrder(parsePhotos(r.photo_urls || ""), 8);
       const hasListingPhoto = listingPhotos.length > 0 || /^https?:\/\//i.test(r.thumbnail_url || "");
@@ -87,8 +92,9 @@ export const listAdminRenders = createServerFn({ method: "GET" })
         hasStudio,
         inferred: hasStudio && r.thumbnail_source === "inferred",
         hasListingPhoto,
-        tileUrl: `/api/thumb/${encodeURIComponent(r.id)}?v=${encodeURIComponent(updatedAt)}`,
+        tileUrl: studioTilePath(r.id, tileRev),
         updatedAt,
+        tileRev,
         promptRev,
         stale: hasStudio && promptRev !== STUDIO_PROMPT_REV,
       } satisfies AdminRenderRow;
