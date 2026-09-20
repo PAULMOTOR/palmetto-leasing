@@ -61,10 +61,15 @@ export async function persistImagineResult(opts: {
       : `data:image/jpeg;base64,${opts.b64}`;
     // Cap ~700KB base64 payload for Neon row size comfort
     if (raw.length <= 2_500_000) {
-      const normalized = raw.startsWith("data:image/jpeg")
-        ? normalizeStudioTileDataUri(raw)
-        : null;
-      return { durableUrl: normalized || raw };
+      const normalized =
+        raw.startsWith("data:image/jpeg") || raw.startsWith("data:image/jpg")
+          ? normalizeStudioTileDataUri(raw)
+          : null;
+      if (normalized) return { durableUrl: normalized };
+      if (raw.startsWith("data:image/") && raw.length <= 380_000) {
+        return { durableUrl: raw };
+      }
+      return { error: "Studio tile too large to store" };
     }
   }
 

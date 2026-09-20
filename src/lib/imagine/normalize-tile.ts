@@ -30,14 +30,19 @@ export function normalizeStudioTileDataUri(dataUri: string): string | null {
     raster = cropUniformBorder(raster);
     raster = fitCarInStudio(raster);
     raster = centerCarInStudio(raster);
-    const encoded = jpeg.encode(
-      { data: raster.data, width: raster.width, height: raster.height },
-      92,
-    );
-    if (!encoded?.data?.length) return null;
-    const out = `data:image/jpeg;base64,${Buffer.from(encoded.data).toString("base64")}`;
-    if (out.length > 400_000) return null;
-    return out;
+    if (raster.width > 1024 || raster.height > 1024) {
+      raster = scaleToMax(raster, 1024);
+    }
+    for (const quality of [88, 80, 72]) {
+      const encoded = jpeg.encode(
+        { data: raster.data, width: raster.width, height: raster.height },
+        quality,
+      );
+      if (!encoded?.data?.length) continue;
+      const out = `data:image/jpeg;base64,${Buffer.from(encoded.data).toString("base64")}`;
+      if (out.length <= 380_000) return out;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -232,6 +237,23 @@ function translateFillFloor(src: Raster, dx: number, dy: number): Raster {
       out[di + 1] = src.data[si + 1]!;
       out[di + 2] = src.data[si + 2]!;
       out[di + 3] = 255;
+    }
+  }
+  return { width: w, height: h, data: out };
+}
+
+function scaleToMax(src: Raster, maxSide: number): Raster {
+  const side = Math.max(src.width, src.height);
+  if (side <= maxSide) return src;
+  const scale = maxSide / side;
+  const w = Math.max(1, Math.round(src.width * scale));
+  const h = Math.max(1, Math.round(src.height * scale));
+  const out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const fy = ((y + 0.5) / h) * src.height - 0.5;
+    for (let x = 0; x < w; x++) {
+      const fx = ((x + 0.5) / w) * src.width - 0.5;
+      sampleBilinear(src, fx, fy, out, (y * w + x) * 4);
     }
   }
   return { width: w, height: h, data: out };
