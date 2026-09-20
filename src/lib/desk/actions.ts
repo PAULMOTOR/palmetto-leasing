@@ -28,7 +28,7 @@ export const deskBoard = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const ctx = await assertDealerDesk(data.token, data.slug);
     const board = await fetchDeskBoard(ctx.slug);
-    board.deals = await attachHeroShots(board.deals);
+    board.deals = await attachHeroShots(board.deals, ctx.dealerId);
     let commission = { show: false, pct: 0 };
     try {
       await ensurePortalSchema();
@@ -65,7 +65,7 @@ export const deskDeal = createServerFn({ method: "GET" })
     const ctx = await assertDealerDesk(data.token, data.slug);
     const deal = await fetchDeskDeal(ctx.slug, data.id);
     if (!deal) throw new Error("Deal not found");
-    const [withHero] = await attachHeroShots([deal]);
+    const [withHero] = await attachHeroShots([deal], ctx.dealerId);
     return { deal: withHero, slug: ctx.slug, dealerName: ctx.name };
   });
 
@@ -131,7 +131,12 @@ export const deskStartDeal = createServerFn({ method: "POST" })
     const contactName = assignedRep.name || ctx.name;
     const contactEmail = assignedRep.email;
     const contactPhone = assignedRep.phone;
-    const heroUrl = await heroShotByVin(data.vin);
+    const heroUrl = await heroShotByVin(data.vin, {
+      dealerId: ctx.dealerId,
+      year: data.year,
+      make: data.make,
+      model: data.model,
+    });
     const vehicleLabel = [data.year, data.make, data.model, data.trim].filter(Boolean).join(" ");
     const started = await startCrmDeal({
       dealer: ctx.slug,
@@ -197,7 +202,7 @@ export const deskCreditLink = createServerFn({ method: "POST" })
     const link = await sendCreditLink(ctx.slug, data.id, data.email);
     if (!link.ok || !link.url || !data.email) return link;
     const deal = await fetchDeskDeal(ctx.slug, data.id);
-    const [withHero] = deal ? await attachHeroShots([deal]) : [undefined];
+    const [withHero] = deal ? await attachHeroShots([deal], ctx.dealerId) : [undefined];
     const { sendMail } = await import("@/lib/mail/send");
     const mail = creditAppMail({
       dealerName: ctx.name,

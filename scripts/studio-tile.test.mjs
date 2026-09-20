@@ -240,6 +240,8 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   assert.match(hero, /heroShotByVin/);
   assert.match(hero, /creditAppMail/);
   assert.match(hero, /Open credit app/);
+  assert.match(hero, /modelKey/);
+  assert.match(hero, /studioTilePath/);
   const calc = readFileSync(new URL("../src/lib/leasing/calc.ts", import.meta.url), "utf8");
   assert.match(calc, /DESK_MIN_APR = 0\.0599/);
   assert.match(calc, /DESK_MIN_DOWN_RATE = 0\.05/);

@@ -24,6 +24,9 @@ export function DealHero({
       height={size}
       className="shrink-0 rounded-lg bg-white object-cover object-center"
       style={{ width: size, height: size }}
+      onError={(e) => {
+        e.currentTarget.style.visibility = "hidden";
+      }}
     />
   );
 }

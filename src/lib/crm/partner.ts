@@ -118,12 +118,18 @@ function parseDeal(raw: unknown, fallbackDealer: string): DeskDeal | null {
   const make = asString(o.make ?? car.make);
   const model = asString(o.model ?? car.model);
   const trim = asString(o.trim ?? car.trim);
-  const vin = asString(o.vin ?? car.vin).toUpperCase();
+  const vin =
+    asString(o.vin ?? car.vin ?? car.vehicleIdentificationNumber).replace(/[^A-Za-z0-9]/g, "").toUpperCase() ||
+    (asString(o.vehicle).toUpperCase().match(/\b[A-HJ-NPR-Z0-9]{17}\b/) || [""])[0];
   const vehicle =
     asString(o.vehicle) ||
     [year, make, model, trim].filter(Boolean).join(" ").trim();
   void fallbackDealer;
   const quoteRaw = o.quote && typeof o.quote === "object" ? (o.quote as Record<string, unknown>) : null;
+  const rawHero =
+    asString(o.heroUrl ?? o.heroImageUrl ?? o.image ?? o.photoUrl) ||
+    asString(car.image ?? car.photoUrl);
+  const heroUrl = rawHero && !rawHero.startsWith("data:") ? rawHero : undefined;
   return {
     id,
     clientName: asString(o.clientName ?? o.name ?? o.client),
@@ -140,10 +146,7 @@ function parseDeal(raw: unknown, fallbackDealer: string): DeskDeal | null {
     docsMissing: asStringList(o.docsMissing ?? o.docs_missing),
     complianceHold: Boolean(o.complianceHold ?? o.compliance_hold),
     updatedAt: asString(o.updatedAt ?? o.updated_at) || new Date().toISOString(),
-    heroUrl:
-      asString(o.heroUrl ?? o.heroImageUrl ?? o.image ?? o.photoUrl) ||
-      asString((car as Record<string, unknown>).image ?? (car as Record<string, unknown>).photoUrl) ||
-      undefined,
+    heroUrl,
     quote: quoteRaw
       ? {
           price: Number(quoteRaw.price) || undefined,
