@@ -32,6 +32,7 @@ export const deskBoard = createServerFn({ method: "GET" })
       dealer: ctx.slug,
       dealerName: board.dealerName || ctx.name,
       slug: ctx.slug,
+      user: ctx.user,
     };
   });
 
@@ -62,23 +63,34 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         name: z.string().min(1).max(120),
         email: z.string().email().max(160),
         phone: z.string().max(40).optional(),
-        vin: z.string().max(24).optional(),
+        vin: z.string().length(17),
         year: z.number().int().min(1980).max(2100).nullable().optional(),
         make: z.string().max(60).optional(),
         model: z.string().max(80).optional(),
         trim: z.string().max(80).optional(),
+        odometerKm: z.number().min(1).max(2_000_000),
         price: z.number().min(0).optional(),
         down: z.number().min(0).optional(),
         residual: z.number().min(0).optional(),
         term: z.number().min(0).optional(),
         monthly: z.number().min(0).optional(),
         rate: z.number().min(0).optional(),
+        kmPerYear: z.number().min(0).optional(),
+        sendCreditLink: z.boolean().optional(),
+        application: z.record(z.string(), z.unknown()).optional(),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
     const ctx = await assertDealerDesk(data.token, data.slug);
-    return startCrmDeal({
+    if (!ctx.user) {
+      return {
+        ok: false as const,
+        error: "Sign in with your email so this file is assigned to you — not a Palmetto sales rep.",
+        live: false,
+      };
+    }
+    const started = await startCrmDeal({
       dealer: ctx.slug,
       name: data.name,
       email: data.email,
@@ -88,13 +100,38 @@ export const deskStartDeal = createServerFn({ method: "POST" })
       make: data.make,
       model: data.model,
       trim: data.trim,
+      odometerKm: data.odometerKm,
       price: data.price,
       down: data.down,
       residual: data.residual,
       term: data.term,
       monthly: data.monthly,
       rate: data.rate,
+      kmPerYear: data.kmPerYear,
+      application: data.application,
+      assignedRep: {
+        name: ctx.user.name,
+        email: ctx.user.email,
+        phone: ctx.user.phone,
+      },
+      sendCreditLink: data.sendCreditLink,
     });
+    if (!started.ok || !started.id) return started;
+    if (data.sendCreditLink) {
+      const link = await sendCreditLink(ctx.slug, started.id, data.email);
+      if (link.ok && link.url) {
+        const { sendMail } = await import("@/lib/mail/send");
+        const mailed = await sendMail({
+          to: data.email,
+          subject: `Credit application — ${[data.year, data.make, data.model].filter(Boolean).join(" ") || "Palmetto lease"}`,
+          text: `${ctx.user.name} at ${ctx.name} sent you a Palmetto credit application.\n\n${link.url}\n\nQuestions: ${ctx.user.email}${ctx.user.phone ? ` · ${ctx.user.phone}` : ""}`,
+          html: `<p>${ctx.user.name} at ${ctx.name} sent you a Palmetto credit application.</p><p><a href="${link.url}">Open credit app</a></p><p>Questions: ${ctx.user.email}${ctx.user.phone ? ` · ${ctx.user.phone}` : ""}</p>`,
+        });
+        return { ...started, creditUrl: link.url, mailed: mailed.ok, mailError: mailed.error };
+      }
+      return { ...started, creditUrl: link.url, mailed: false, mailError: link.error };
+    }
+    return started;
   });
 
 export const deskCreditLink = createServerFn({ method: "POST" })

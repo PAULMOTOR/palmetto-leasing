@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { RendersPanel } from "@/components/admin/renders-panel";
+import { DealerPeople } from "@/components/admin/dealer-people";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -375,6 +376,7 @@ function AdminPage() {
           <DealerRow
             key={d.id}
             dealer={d}
+            token={token || ""}
             onToggle={() => onToggle(d)}
             onDelete={() => onDelete(d)}
             onSaveUrls={onSaveUrls}
@@ -696,11 +698,13 @@ function QuoteSettingsEditor({
 
 function DealerRow({
   dealer,
+  token,
   onToggle,
   onDelete,
   onSaveUrls,
 }: {
   dealer: AdminDealer;
+  token: string;
   onToggle: () => void;
   onDelete: () => void;
   onSaveUrls: (d: AdminDealer, website: string, inventory: string) => Promise<void>;
@@ -802,6 +806,7 @@ function DealerRow({
           </Button>
         </div>
       )}
+      {token ? <DealerPeople token={token} dealerId={dealer.id} /> : null}
     </div>
   );
 }

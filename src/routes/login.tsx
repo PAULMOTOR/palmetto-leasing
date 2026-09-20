@@ -102,20 +102,33 @@ function DealerLoginForm() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const dealerId = resolveDealerId(username, dealers);
-    if (!dealerId) {
+    const looksEmail = username.includes("@");
+    const dealerId = looksEmail ? null : resolveDealerId(username, dealers);
+    if (!looksEmail && !dealerId) {
       toast.error("Unknown dealership");
       return;
     }
     setLoading(true);
     try {
-      const res = await dealerPortalLogin({ data: { dealerId, pin: password } });
+      const res = await dealerPortalLogin({
+        data: {
+          pin: password,
+          dealerId: dealerId || undefined,
+          username,
+          email: looksEmail ? username : undefined,
+        },
+      });
       if (!res.ok) {
         toast.error("Invalid password");
         return;
       }
       sessionStorage.setItem("palmetto_dealer_token", res.token);
       sessionStorage.setItem("palmetto_dealer_slug", res.slug);
+      if (res.user) {
+        sessionStorage.setItem("palmetto_dealer_user", JSON.stringify(res.user));
+      } else {
+        sessionStorage.removeItem("palmetto_dealer_user");
+      }
       void nav({ to: "/desk/$slug", params: { slug: res.slug } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Login failed");
@@ -127,9 +140,9 @@ function DealerLoginForm() {
   return (
     <form method="post" action="/login" onSubmit={onSubmit} className="mt-6 space-y-3" autoComplete="on">
       <div>
-        <Label htmlFor="username">Username</Label>
+        <Label htmlFor="dealer-username">Email or dealership</Label>
         <Input
-          id="username"
+          id="dealer-username"
           name="username"
           type="text"
           autoComplete="username"
@@ -140,7 +153,7 @@ function DealerLoginForm() {
           onChange={(e) => setUsername(e.target.value)}
           list="palmetto-dealer-usernames"
           required
-          placeholder="Your dealership"
+          placeholder="you@dealership.com"
           className="mt-1"
         />
         <datalist id="palmetto-dealer-usernames">

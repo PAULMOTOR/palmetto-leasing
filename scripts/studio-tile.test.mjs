@@ -210,3 +210,22 @@ test("Renders tab only lists live listings and rotates a dead-URL sweep", () => 
   assert.match(cron, /sweepDeadListings/);
   assert.match(vercel, /\/api\/cron\/sweep/);
 });
+
+test("dealer control centre has no inventory link and assigns the signed-in employee", () => {
+  const shell = readFileSync(new URL("../src/components/desk/shell.tsx", import.meta.url), "utf8");
+  const partner = readFileSync(new URL("../src/lib/crm/partner.ts", import.meta.url), "utf8");
+  const access = readFileSync(new URL("../src/lib/desk/access.ts", import.meta.url), "utf8");
+  const schema = readFileSync(new URL("../src/lib/db/ensure-portal-schema.ts", import.meta.url), "utf8");
+  const neu = readFileSync(new URL("../src/routes/desk/$slug/new.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(shell, /to="\/"/);
+  assert.doesNotMatch(shell, />Inventory</);
+  assert.match(shell, /Sign out/);
+  assert.match(partner, /assignPaulMotorRep: false/);
+  assert.match(partner, /stage: "quoted"/);
+  assert.match(partner, /kind: "dealer_user"/);
+  assert.match(access, /user: DealerUser/);
+  assert.match(schema, /dealer_users/);
+  assert.match(neu, /Kilometres/);
+  assert.match(neu, /Submit to credit/);
+  assert.match(neu, /Email credit app/);
+});

@@ -376,33 +376,55 @@ export async function startCrmDeal(input: {
   name: string;
   email: string;
   phone?: string;
-  vin?: string;
+  vin: string;
   year?: number | null;
   make?: string;
   model?: string;
   trim?: string;
+  odometerKm: number;
   price?: number;
   down?: number;
   residual?: number;
   term?: number;
   monthly?: number;
   rate?: number;
+  kmPerYear?: number;
+  application?: Record<string, unknown>;
+  assignedRep?: { name: string; email: string; phone: string } | null;
+  sendCreditLink?: boolean;
 }): Promise<{ ok: boolean; id?: string; error?: string; live: boolean }> {
   const slug = slugifyDealer(input.dealer);
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
+  const vin = input.vin.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (!name || !email) return { ok: false, error: "Name and email are required", live: crmIsLive() };
+  if (vin.length !== 17) return { ok: false, error: "VIN is required (17 characters)", live: crmIsLive() };
+  if (!Number.isFinite(input.odometerKm) || input.odometerKm <= 0) {
+    return { ok: false, error: "Kilometres are required", live: crmIsLive() };
+  }
+
+  const filledApp = Boolean(input.application && Object.keys(input.application).length);
+  const bucket: DeskBucket = filledApp || input.sendCreditLink ? "credit_review" : "quote_sent";
+  const assigned = input.assignedRep
+    ? {
+        name: input.assignedRep.name,
+        email: input.assignedRep.email,
+        phone: input.assignedRep.phone,
+        kind: "dealer_user",
+      }
+    : null;
 
   const payload = {
     name,
     email,
     phone: (input.phone || "").trim(),
     car: {
-      vin: (input.vin || "").toUpperCase(),
+      vin,
       year: input.year ?? null,
       make: input.make || "",
       model: input.model || "",
       trim: input.trim || "",
+      odometerKm: Math.round(input.odometerKm),
     },
     dealer: { slug },
     dealerSlug: slug,
@@ -412,10 +434,20 @@ export async function startCrmDeal(input: {
     term: input.term || 0,
     monthly: input.monthly || 0,
     rate: input.rate || 0,
-    creditConsent: false,
+    kmPerYear: input.kmPerYear || 6000,
+    creditConsent: filledApp,
     source: "dealer_desk",
     site: "https://www.palmettoleasing.com",
     vehicle: [input.year, input.make, input.model, input.trim].filter(Boolean).join(" "),
+    stage: "quoted",
+    bucket,
+    assignPaulMotorRep: false,
+    skipDefaultRep: true,
+    assignedRep: assigned,
+    application: input.application || undefined,
+    notes: assigned
+      ? `Dealer desk · ${assigned.name} (${assigned.email}${assigned.phone ? ` · ${assigned.phone}` : ""})`
+      : "Dealer desk — rooftop login, no employee on file",
   };
 
   if (!crmIsLive()) {
@@ -426,17 +458,25 @@ export async function startCrmDeal(input: {
       clientName: name,
       email,
       phone: payload.phone || undefined,
-      vin: payload.car.vin,
+      vin,
       year: input.year ?? null,
       make: input.make || "",
       model: input.model || "",
       trim: input.trim || "",
       vehicle: payload.vehicle,
-      bucket: "started",
-      bucketLabel: "started",
+      bucket,
+      bucketLabel: bucket,
       docsMissing: [],
       complianceHold: false,
       updatedAt: new Date().toISOString(),
+      quote: {
+        price: input.price,
+        down: input.down,
+        residual: input.residual,
+        term: input.term,
+        monthly: input.monthly,
+        rate: input.rate,
+      },
     };
     board.deals.unshift(deal);
     demoStore.set(slug, board.deals);
@@ -465,7 +505,7 @@ export async function startCrmDeal(input: {
     } catch {
       /* ignore */
     }
-    const id = asString(json.id) || asString(json.leadId);
+    const id = asString(json.id) || asString(json.leadId) || asString(json.crmLeadId) || asString(json.referenceId);
     if (!res.ok || json.ok === false) {
       return { ok: false, error: asString(json.error) || `CRM ${res.status}`, live: true };
     }

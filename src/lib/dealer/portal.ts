@@ -9,6 +9,7 @@ import { loadImageSupportEmail } from "@/lib/admin/image-support";
 import { formatCad, formatNumber } from "@/lib/utils";
 import { resolveDealerSlug } from "@/lib/crm/dealers";
 import { DEALERS } from "@/lib/leasing/seed";
+import { parseDealerToken, findDealerUserByEmail, dealerUserToken } from "@/lib/desk/users";
 import { parsePhotos } from "@/lib/leasing/types";
 import { slimPhotoUrls } from "@/lib/leasing/thumb-url";
 
@@ -20,8 +21,7 @@ function escapeHtml(s: string): string {
 }
 
 function dealerIdFromToken(token: string): string {
-  if (!token.startsWith("dealer:")) throw new Error("Unauthorized");
-  return token.slice("dealer:".length);
+  return parseDealerToken(token).dealerId;
 }
 
 export type DealerPortalVehicle = {
@@ -63,7 +63,14 @@ export const listActiveDealersForLogin = createServerFn({ method: "GET" }).handl
 
 export const dealerPortalLogin = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
-    z.object({ dealerId: z.string().min(1), pin: z.string().min(1).max(64) }).parse(input),
+    z
+      .object({
+        pin: z.string().min(1).max(64),
+        dealerId: z.string().max(64).optional(),
+        email: z.string().max(160).optional(),
+        username: z.string().max(160).optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     const pinOk = (stored: string | null | undefined) => {
@@ -74,13 +81,20 @@ export const dealerPortalLogin = createServerFn({ method: "POST" })
     const signedIn = async (
       id: string,
       name: string,
-      extra?: { referralFeeBps?: number; quoteRateOffsetBps?: number; active?: boolean },
+      extra?: {
+        referralFeeBps?: number;
+        quoteRateOffsetBps?: number;
+        active?: boolean;
+        user?: { id: string; name: string; email: string; phone: string };
+      },
     ) => {
       const slug = (await resolveDealerSlug({ localSlug: id, localName: name })) || id;
+      const token = extra?.user ? dealerUserToken(id, extra.user.id) : `dealer:${id}`;
       return {
         ok: true as const,
-        token: `dealer:${id}`,
+        token,
         slug,
+        user: extra?.user || null,
         dealer: {
           id,
           name,
@@ -90,6 +104,29 @@ export const dealerPortalLogin = createServerFn({ method: "POST" })
         },
       };
     };
+
+    const emailOrUser = (data.email || data.username || "").trim();
+    if (emailOrUser.includes("@")) {
+      try {
+        const person = await findDealerUserByEmail(emailOrUser);
+        if (person && pinOk(person.pin)) {
+          return signedIn(person.dealershipId, person.dealerName, {
+            user: {
+              id: person.id,
+              name: person.name,
+              email: person.email,
+              phone: person.phone,
+            },
+          });
+        }
+        if (person) return { ok: false as const };
+      } catch {
+        /* fall through to rooftop pin */
+      }
+    }
+
+    const dealerId = (data.dealerId || "").trim();
+    if (!dealerId) return { ok: false as const };
 
     try {
       await ensurePortalSchema();
@@ -105,7 +142,7 @@ export const dealerPortalLogin = createServerFn({ method: "POST" })
         quote_rate_offset_bps: number;
       }>`
         select id, name, city, province, active, portal_pin, referral_fee_bps, quote_rate_offset_bps
-        from dealerships where id = ${data.dealerId} limit 1
+        from dealerships where id = ${dealerId} limit 1
       `;
       const d = rows[0];
       if (d) {
@@ -120,7 +157,7 @@ export const dealerPortalLogin = createServerFn({ method: "POST" })
       /* seed fallback so preview login works without crawled dealerships */
     }
 
-    const seed = DEALERS.find((x) => x.id === data.dealerId && x.active);
+    const seed = DEALERS.find((x) => x.id === dealerId && x.active);
     if (!seed || !pinOk(null)) return { ok: false as const };
     return signedIn(seed.id, seed.name);
   });

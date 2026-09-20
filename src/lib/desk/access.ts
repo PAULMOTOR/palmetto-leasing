@@ -4,12 +4,10 @@
  */
 import { resolveDealerSlug, slugifyDealer } from "@/lib/crm/dealers";
 import { DEALERS } from "@/lib/leasing/seed";
+import { loadDealerUser, parseDealerToken, type DealerUser } from "@/lib/desk/users";
 
 export function dealerIdFromToken(token: string): string {
-  if (!token.startsWith("dealer:")) throw new Error("Sign in as a dealer");
-  const id = token.slice("dealer:".length).trim();
-  if (!id) throw new Error("Sign in as a dealer");
-  return id;
+  return parseDealerToken(token).dealerId;
 }
 
 /** URL slug is this rooftop only when it matches the Palmetto id or the CRM slug. */
@@ -27,10 +25,11 @@ export type DeskContext = {
   dealerId: string;
   slug: string;
   name: string;
+  user: DealerUser | null;
 };
 
 export async function assertDealerDesk(token: string, urlSlug: string): Promise<DeskContext> {
-  const dealerId = dealerIdFromToken(token);
+  const { dealerId, userId } = parseDealerToken(token);
   const seed = DEALERS.find((d) => d.id === dealerId);
   const resolved =
     (await resolveDealerSlug({ localSlug: dealerId, localName: seed?.name })) ||
@@ -38,9 +37,14 @@ export async function assertDealerDesk(token: string, urlSlug: string): Promise<
   if (!rooftopMatches({ dealerId, urlSlug, resolvedSlug: resolved })) {
     throw new Error("This desk belongs to another rooftop");
   }
+  const user = userId ? await loadDealerUser(userId) : null;
+  if (userId && (!user || user.dealershipId !== dealerId)) {
+    throw new Error("Sign in as a person at this rooftop");
+  }
   return {
     dealerId,
     slug: resolved,
     name: seed?.name || dealerId,
+    user,
   };
 }

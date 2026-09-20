@@ -6,10 +6,26 @@ import { cn } from "@/lib/utils";
 
 export const DEALER_TOKEN_KEY = "palmetto_dealer_token";
 export const DEALER_SLUG_KEY = "palmetto_dealer_slug";
+export const DEALER_USER_KEY = "palmetto_dealer_user";
+
+export type StoredDealerUser = { id: string; name: string; email: string; phone: string };
 
 export function readDealerToken(): string | null {
   if (typeof sessionStorage === "undefined") return null;
   return sessionStorage.getItem(DEALER_TOKEN_KEY);
+}
+
+export function readDealerUser(): StoredDealerUser | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(DEALER_USER_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as StoredDealerUser;
+    if (!v?.id || !v.name) return null;
+    return v;
+  } catch {
+    return null;
+  }
 }
 
 export function DeskFrame({
@@ -26,6 +42,7 @@ export function DeskFrame({
   const nav = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<StoredDealerUser | null>(null);
 
   useEffect(() => {
     const t = readDealerToken();
@@ -33,12 +50,14 @@ export function DeskFrame({
       void nav({ to: "/login" });
       return;
     }
+    setUser(readDealerUser());
     setReady(true);
   }, [nav]);
 
   function signOut() {
     sessionStorage.removeItem(DEALER_TOKEN_KEY);
     sessionStorage.removeItem(DEALER_SLUG_KEY);
+    sessionStorage.removeItem(DEALER_USER_KEY);
     void nav({ to: "/login" });
   }
 
@@ -77,22 +96,14 @@ export function DeskFrame({
           </p>
           <h1 className="mt-1 text-lg font-medium tracking-tight">{dealerName || slug}</h1>
           <p className="mt-1 text-xs text-fg-muted">
-            {live
-              ? "Watching Paul Motor CRM — Palmetto captures, CRM keeps the file."
-              : "Preview board — production Palmetto talks to the CRM with the Apply secret."}
+            {user
+              ? `${user.name} · ${user.email}${user.phone ? ` · ${user.phone}` : ""}`
+              : "Sign in with your email so credit can reach you on the file."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/portal/dealer">Tiles</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/">Inventory</Link>
-          </Button>
-          <Button variant="secondary" size="sm" onClick={signOut}>
-            Sign out
-          </Button>
-        </div>
+        <Button variant="secondary" size="sm" onClick={signOut}>
+          Sign out
+        </Button>
       </div>
 
       <nav className="mb-6 flex gap-1 rounded-full border border-border bg-surface p-1">

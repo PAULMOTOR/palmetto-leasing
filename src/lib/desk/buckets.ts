@@ -13,16 +13,16 @@ export const DESK_BUCKETS = [
 
 export type DeskBucket = (typeof DESK_BUCKETS)[number];
 
-export const DESK_BUCKET_LABELS: Record<DeskBucket, string> = {
-  started: "started",
-  quote_sent: "quote_sent",
-  app_ids: "app_ids",
-  credit_review: "credit_review",
-  docs_missing: "docs_missing",
-  gsm_approved: "gsm_approved",
-  compliance_hold: "compliance_hold",
-  in_book: "in_book",
-  lost: "lost",
+export const DESK_BUCKET_TITLES: Record<DeskBucket, string> = {
+  started: "Started",
+  quote_sent: "Quoted",
+  app_ids: "IDs in",
+  credit_review: "Credit",
+  docs_missing: "Docs",
+  gsm_approved: "Approved",
+  compliance_hold: "Hold",
+  in_book: "In book",
+  lost: "Lost",
 };
 
 export function isDeskBucket(v: unknown): v is DeskBucket {
@@ -31,7 +31,7 @@ export function isDeskBucket(v: unknown): v is DeskBucket {
 
 export function bucketLabel(bucket: string, fromCrm?: string): string {
   if (fromCrm && fromCrm.trim()) return fromCrm.trim();
-  if (isDeskBucket(bucket)) return DESK_BUCKET_LABELS[bucket];
+  if (isDeskBucket(bucket)) return DESK_BUCKET_TITLES[bucket];
   return bucket;
 }
 

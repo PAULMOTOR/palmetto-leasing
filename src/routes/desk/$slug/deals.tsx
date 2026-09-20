@@ -3,8 +3,9 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
+import { DealProgressNeedle } from "@/components/desk/vintage-gauge";
 import { deskBoard } from "@/lib/desk/actions";
-import { DESK_BUCKETS, isDeskBucket, type DeskBucket } from "@/lib/desk/buckets";
+import { DESK_BUCKETS, DESK_BUCKET_TITLES, isDeskBucket, type DeskBucket } from "@/lib/desk/buckets";
 import type { DeskBoard, DeskDeal } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +64,7 @@ function DealsListPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <FilterChip slug={slug} active={!bucket} label="all" />
         {DESK_BUCKETS.map((b) => (
-          <FilterChip key={b} slug={slug} bucket={b} active={bucket === b} label={b} />
+          <FilterChip key={b} slug={slug} bucket={b} active={bucket === b} label={DESK_BUCKET_TITLES[b]} />
         ))}
       </div>
 
@@ -89,7 +90,7 @@ function DealsListPage() {
                 <th className="px-4 py-3 font-medium">VIN</th>
                 <th className="px-4 py-3 font-medium">Vehicle</th>
                 <th className="px-4 py-3 font-medium">Client</th>
-                <th className="px-4 py-3 font-medium">bucketLabel</th>
+                <th className="px-4 py-3 font-medium">Progress</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -146,9 +147,12 @@ function DealRow({ slug, deal }: { slug: string; deal: DeskDeal }) {
       </td>
       <td className="px-4 py-3 text-fg-muted">{deal.clientName || "—"}</td>
       <td className="px-4 py-3">
-        <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] tracking-wide">
-          {deal.bucketLabel}
-        </span>
+        <div className="flex items-center gap-2">
+          <DealProgressNeedle bucket={deal.bucket} />
+          <span className="text-[11px] tracking-wide">
+            {DESK_BUCKET_TITLES[deal.bucket] || deal.bucketLabel}
+          </span>
+        </div>
       </td>
     </tr>
   );

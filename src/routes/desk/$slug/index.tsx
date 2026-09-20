@@ -1,11 +1,11 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
+import { DealProgressNeedle, VintageGauge } from "@/components/desk/vintage-gauge";
 import { deskBoard } from "@/lib/desk/actions";
-import { DESK_BUCKETS, type DeskBucket } from "@/lib/desk/buckets";
+import { DESK_BUCKETS, DESK_BUCKET_TITLES } from "@/lib/desk/buckets";
 import type { DeskBoard } from "@/lib/desk/types";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/desk/$slug/")({
   component: DeskHome,
@@ -51,7 +51,8 @@ function DeskHome() {
   }
 
   const gauges = board?.gauges;
-  const total = gauges ? DESK_BUCKETS.reduce((n, b) => n + (gauges[b] || 0), 0) : 0;
+  const deals = board?.deals || [];
+  const peak = Math.max(8, ...DESK_BUCKETS.map((b) => gauges?.[b] || 0));
 
   return (
     <DeskFrame slug={slug} dealerName={board?.dealerName} live={board?.live}>
@@ -61,52 +62,82 @@ function DeskHome() {
         </p>
       ) : null}
       {/another rooftop/i.test(error || "") ? null : (
-      <>
-      <p className="mb-4 text-sm text-fg-muted">
-        {total} open file{total === 1 ? "" : "s"} on this rooftop. Click a gauge to open the list.
-      </p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {DESK_BUCKETS.map((bucket) => (
-          <GaugeCard
-            key={bucket}
-            bucket={bucket}
-            count={gauges?.[bucket] || 0}
-            onClick={() =>
-              void nav({
-                to: "/desk/$slug/deals",
-                params: { slug },
-                search: { bucket },
-              })
-            }
-          />
-        ))}
-      </div>
-      </>
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {DESK_BUCKETS.map((bucket) => (
+              <VintageGauge
+                key={bucket}
+                label={DESK_BUCKET_TITLES[bucket]}
+                value={gauges?.[bucket] || 0}
+                max={peak}
+                onClick={() =>
+                  void nav({
+                    to: "/desk/$slug/deals",
+                    params: { slug },
+                    search: { bucket },
+                  })
+                }
+              />
+            ))}
+          </div>
+
+          <div className="mt-8 overflow-hidden rounded-[var(--radius-xl)] border border-border bg-surface shadow-[var(--shadow-card)]">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">Your files</p>
+              <Link
+                to="/desk/$slug/new"
+                params={{ slug }}
+                className="text-xs font-medium text-fg hover:underline"
+              >
+                New deal
+              </Link>
+            </div>
+            {deals.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-fg-muted">No files submitted yet.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="border-b border-border text-left text-[10px] tracking-[0.14em] text-fg-subtle uppercase">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">VIN</th>
+                    <th className="px-4 py-3 font-medium">Vehicle</th>
+                    <th className="px-4 py-3 font-medium">Client</th>
+                    <th className="px-4 py-3 font-medium">Progress</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {deals.map((d) => {
+                    const ymm =
+                      [d.year, d.make, d.model].filter(Boolean).join(" ") || d.vehicle || "—";
+                    return (
+                      <tr key={d.id} className="hover:bg-surface-2">
+                        <td className="px-4 py-3 font-mono text-xs">{d.vin || "—"}</td>
+                        <td className="px-4 py-3">
+                          <Link
+                            to="/desk/$slug/deals/$id"
+                            params={{ slug, id: d.id }}
+                            className="font-medium text-fg hover:underline"
+                          >
+                            {ymm}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 text-fg-muted">{d.clientName || "—"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <DealProgressNeedle bucket={d.bucket} />
+                            <span className="text-[11px] tracking-wide text-fg-muted">
+                              {DESK_BUCKET_TITLES[d.bucket] || d.bucketLabel}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
     </DeskFrame>
-  );
-}
-
-function GaugeCard({
-  bucket,
-  count,
-  onClick,
-}: {
-  bucket: DeskBucket;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-[var(--radius-xl)] border border-border bg-surface p-4 text-left shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)]",
-        count > 0 ? "border-border-strong" : "",
-      )}
-    >
-      <p className="text-[10px] tracking-[0.14em] text-fg-subtle uppercase">{bucket}</p>
-      <p className="mt-2 font-display text-3xl font-semibold tabular-nums tracking-tight">{count}</p>
-    </button>
   );
 }
