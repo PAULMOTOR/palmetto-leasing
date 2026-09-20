@@ -40,6 +40,12 @@ function cabinInstruction(car: ThumbSubject): string {
 
 function bodyInstruction(car: ThumbSubject): string {
   const blob = `${car.make} ${car.model} ${car.trim || ""} ${car.bodyStyle || ""}`.toLowerCase();
+  if (/g-?class|g-?wagen|gwagen|g550|g\s*550|g63|g\s*63|g500/.test(blob)) {
+    return ` BOXY Mercedes G-Class — flat roof, vertical sides, rectangular greenhouse, square tail. Copy Image 1's roof (small lip only if it is there). NEVER a Lamborghini Urus, never rounded SUV haunches, never a fastback wing, never Y headlights.`;
+  }
+  if (/\burus\b/.test(blob)) {
+    return ` Lamborghini Urus crossover — rounded haunches and Y headlights — never a boxy G-Wagen, never a coupe.`;
+  }
   if (/porsche/.test(blob) && /911|718|cayman|boxster|gt3|gt2|carrera|targa|turbo/.test(blob)) {
     return ` LOW Porsche sports car — short greenhouse, round four-point headlights, engine in the REAR — NEVER a Lamborghini Urus, NEVER an SUV or crossover. Copy Image 1's silhouette.`;
   }
@@ -48,6 +54,9 @@ function bodyInstruction(car: ThumbSubject): string {
   }
   if (/coupe|convertible|spyder|spider|roadster/.test(blob)) {
     return ` Low sports-car greenhouse — never an SUV, never a Urus, never a crossover.`;
+  }
+  if (/suv|crossover|utility/.test(blob)) {
+    return ` Copy Image 1's SUV silhouette exactly — NEVER a Lamborghini Urus unless Image 1 is a Urus.`;
   }
   return "";
 }

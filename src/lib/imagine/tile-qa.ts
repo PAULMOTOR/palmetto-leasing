@@ -54,6 +54,7 @@ export async function reviewStudioTile(opts: {
               `The car is right-side up (wheels toward the floor of the scene, roof to camera) with its NOSE pointing to the BOTTOM edge of the square. ` +
               `Reject if: the car is inverted/upside-down, nose points to the top, it is a 3/4 or side hero, a collage, a different generation/body, or the paint is obviously not a real photo of this car (grey plate leak, invented two-tone). ` +
               `If the listed car is a 911, coupe, spider, or sports car, reject any SUV/crossover including a Lamborghini Urus. ` +
+              `If the listed car is a Mercedes G-Class / G-Wagen, reject a rounded Urus-like rear, fastback wing, or Y headlights — it must stay boxy with a flat roof. ` +
               cabinQa +
               `Reject if bumpers or mirrors are clipped off the square. ` +
               `Return ONLY JSON: {"ok":boolean,"inverted":boolean,"notOverhead":boolean,"wrongBody":boolean,"reason":string}`,

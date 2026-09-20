@@ -72,6 +72,8 @@ test("studio source skips cabin shots", () => {
   assert.match(promptSrc, /never a Urus SUV/);
   assert.match(promptSrc, /NEVER a Lamborghini Urus/);
   assert.match(promptSrc, /Copy Image 1's silhouette/);
+  assert.match(promptSrc, /BOXY Mercedes G-Class/);
+  assert.match(promptSrc, /never rounded SUV haunches/);
   assert.match(gen, /No actual dealer photography/);
 });
 
