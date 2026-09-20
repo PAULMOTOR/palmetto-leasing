@@ -374,6 +374,8 @@ export async function explodeVin(
 export async function startCrmDeal(input: {
   dealer: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   phone?: string;
   vin: string;
@@ -399,7 +401,7 @@ export async function startCrmDeal(input: {
   const vin = input.vin.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (!name || !email) return { ok: false, error: "Name and email are required", live: crmIsLive() };
   if (vin.length !== 17) return { ok: false, error: "VIN is required (17 characters)", live: crmIsLive() };
-  if (!Number.isFinite(input.odometerKm) || input.odometerKm <= 0) {
+  if (!Number.isFinite(input.odometerKm) || input.odometerKm < 0) {
     return { ok: false, error: "Kilometres are required", live: crmIsLive() };
   }
 
@@ -416,6 +418,8 @@ export async function startCrmDeal(input: {
 
   const payload = {
     name,
+    firstName: (input.firstName || name.split(/\s+/)[0] || "").trim(),
+    lastName: (input.lastName || name.split(/\s+/).slice(1).join(" ") || "").trim(),
     email,
     phone: (input.phone || "").trim(),
     car: {

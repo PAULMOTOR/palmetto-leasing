@@ -80,6 +80,8 @@ export const deskStartDeal = createServerFn({ method: "POST" })
     tokenSlug
       .extend({
         name: z.string().min(1).max(120),
+        firstName: z.string().min(1).max(60).optional(),
+        lastName: z.string().min(1).max(60).optional(),
         email: z.string().email().max(160),
         phone: z.string().max(40).optional(),
         vin: z.string().length(17),
@@ -87,7 +89,7 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         make: z.string().max(60).optional(),
         model: z.string().max(80).optional(),
         trim: z.string().max(80).optional(),
-        odometerKm: z.number().min(1).max(2_000_000),
+        odometerKm: z.number().min(0).max(2_000_000),
         price: z.number().min(0).optional(),
         down: z.number().min(0).optional(),
         residual: z.number().min(0).optional(),
@@ -129,6 +131,8 @@ export const deskStartDeal = createServerFn({ method: "POST" })
     const started = await startCrmDeal({
       dealer: ctx.slug,
       name: data.name,
+      firstName: data.firstName,
+      lastName: data.lastName,
       email: data.email,
       phone: data.phone,
       vin: data.vin,
@@ -253,4 +257,73 @@ export const deskInventory = createServerFn({ method: "GET" })
     } catch {
       return { vehicles: [] as { id: string; title: string; vin: string; year: number | null; make: string; model: string; trim: string; price: number; mileage: number }[] };
     }
+  });
+
+export const deskListPeople = createServerFn({ method: "GET" })
+  .validator((input: unknown) => tokenSlug.parse(input))
+  .handler(async ({ data }) => {
+    const ctx = await assertDealerDesk(data.token, data.slug);
+    await ensurePortalSchema();
+    const sql = await getSql();
+    const rows = await sql<{
+      id: string;
+      dealership_id: string;
+      name: string;
+      email: string;
+      phone: string;
+      active: boolean;
+    }>`
+      select id, dealership_id, name, email, phone, active
+      from dealer_users
+      where dealership_id = ${ctx.dealerId}
+      order by name
+    `;
+    return rows.map((r) => ({
+      id: r.id,
+      dealershipId: r.dealership_id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone || "",
+      active: Boolean(r.active),
+    }));
+  });
+
+export const deskUpsertPerson = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    tokenSlug
+      .extend({
+        name: z.string().min(1).max(120),
+        email: z.string().email().max(160),
+        phone: z.string().min(7).max(40),
+        pin: z.string().min(4).max(64),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await assertDealerDesk(data.token, data.slug);
+    await ensurePortalSchema();
+    const sql = await getSql();
+    const email = data.email.trim().toLowerCase();
+    const id = `du_${ctx.dealerId}_${email.replace(/[^a-z0-9]+/g, "_").slice(0, 40)}`;
+    await sql`
+      insert into dealer_users (id, dealership_id, name, email, phone, pin, active, updated_at)
+      values (
+        ${id},
+        ${ctx.dealerId},
+        ${data.name.trim()},
+        ${email},
+        ${data.phone.trim()},
+        ${data.pin},
+        true,
+        now()
+      )
+      on conflict (id) do update set
+        name = excluded.name,
+        email = excluded.email,
+        phone = excluded.phone,
+        pin = excluded.pin,
+        active = true,
+        updated_at = now()
+    `;
+    return { ok: true as const, id };
   });

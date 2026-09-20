@@ -85,6 +85,11 @@ export function DeskFrame({
       label: "Files",
       match: (p) => p.startsWith(`/desk/${slug}/deals`),
     },
+    {
+      to: `/desk/${slug}/people`,
+      label: "Team",
+      match: (p) => p.startsWith(`/desk/${slug}/people`),
+    },
   ];
 
   return (

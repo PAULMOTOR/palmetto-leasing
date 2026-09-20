@@ -25,10 +25,12 @@ import { Route as ApiAdminRerenderRouteImport } from './routes/api/admin/rerende
 import { Route as ApiAdminThumbsRouteImport } from './routes/api/admin/thumbs'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronCrawlRouteImport } from './routes/api/cron/crawl'
+import { Route as ApiCronSweepRouteImport } from './routes/api/cron/sweep'
 import { Route as ApiThumbIdRouteImport } from './routes/api/thumb.$id'
 import { Route as DeskSlugIndexRouteImport } from './routes/desk/$slug/index'
 import { Route as DeskSlugDealsRouteImport } from './routes/desk/$slug/deals'
 import { Route as DeskSlugNewRouteImport } from './routes/desk/$slug/new'
+import { Route as DeskSlugPeopleRouteImport } from './routes/desk/$slug/people'
 import { Route as DeskSlugDealsIdRouteImport } from './routes/desk/$slug/deals_.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -111,6 +113,11 @@ const ApiCronCrawlRoute = ApiCronCrawlRouteImport.update({
   path: '/api/cron/crawl',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSweepRoute = ApiCronSweepRouteImport.update({
+  id: '/api/cron/sweep',
+  path: '/api/cron/sweep',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiThumbIdRoute = ApiThumbIdRouteImport.update({
   id: '/api/thumb/$id',
   path: '/api/thumb/$id',
@@ -129,6 +136,11 @@ const DeskSlugDealsRoute = DeskSlugDealsRouteImport.update({
 const DeskSlugNewRoute = DeskSlugNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => DeskSlugRoute,
+} as any)
+const DeskSlugPeopleRoute = DeskSlugPeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
   getParentRoute: () => DeskSlugRoute,
 } as any)
 const DeskSlugDealsIdRoute = DeskSlugDealsIdRouteImport.update({
@@ -154,9 +166,11 @@ export interface FileRoutesByFullPath {
   '/api/admin/thumbs': typeof ApiAdminThumbsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
+  '/api/cron/sweep': typeof ApiCronSweepRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
   '/desk/$slug/deals': typeof DeskSlugDealsRoute
   '/desk/$slug/new': typeof DeskSlugNewRoute
+  '/desk/$slug/people': typeof DeskSlugPeopleRoute
   '/desk/$slug/': typeof DeskSlugIndexRoute
   '/desk/$slug/deals/$id': typeof DeskSlugDealsIdRoute
 }
@@ -176,9 +190,11 @@ export interface FileRoutesByTo {
   '/api/admin/thumbs': typeof ApiAdminThumbsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
+  '/api/cron/sweep': typeof ApiCronSweepRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
   '/desk/$slug/deals': typeof DeskSlugDealsRoute
   '/desk/$slug/new': typeof DeskSlugNewRoute
+  '/desk/$slug/people': typeof DeskSlugPeopleRoute
   '/desk/$slug': typeof DeskSlugIndexRoute
   '/desk/$slug/deals/$id': typeof DeskSlugDealsIdRoute
 }
@@ -200,9 +216,11 @@ export interface FileRoutesById {
   '/api/admin/thumbs': typeof ApiAdminThumbsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/crawl': typeof ApiCronCrawlRoute
+  '/api/cron/sweep': typeof ApiCronSweepRoute
   '/api/thumb/$id': typeof ApiThumbIdRoute
   '/desk/$slug/deals': typeof DeskSlugDealsRoute
   '/desk/$slug/new': typeof DeskSlugNewRoute
+  '/desk/$slug/people': typeof DeskSlugPeopleRoute
   '/desk/$slug/': typeof DeskSlugIndexRoute
   '/desk/$slug/deals_/$id': typeof DeskSlugDealsIdRoute
 }
@@ -225,9 +243,11 @@ export interface FileRouteTypes {
     | '/api/admin/thumbs'
     | '/api/auth/$'
     | '/api/cron/crawl'
+    | '/api/cron/sweep'
     | '/api/thumb/$id'
     | '/desk/$slug/deals'
     | '/desk/$slug/new'
+    | '/desk/$slug/people'
     | '/desk/$slug/'
     | '/desk/$slug/deals/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -247,9 +267,11 @@ export interface FileRouteTypes {
     | '/api/admin/thumbs'
     | '/api/auth/$'
     | '/api/cron/crawl'
+    | '/api/cron/sweep'
     | '/api/thumb/$id'
     | '/desk/$slug/deals'
     | '/desk/$slug/new'
+    | '/desk/$slug/people'
     | '/desk/$slug'
     | '/desk/$slug/deals/$id'
   id:
@@ -270,9 +292,11 @@ export interface FileRouteTypes {
     | '/api/admin/thumbs'
     | '/api/auth/$'
     | '/api/cron/crawl'
+    | '/api/cron/sweep'
     | '/api/thumb/$id'
     | '/desk/$slug/deals'
     | '/desk/$slug/new'
+    | '/desk/$slug/people'
     | '/desk/$slug/'
     | '/desk/$slug/deals_/$id'
   fileRoutesById: FileRoutesById
@@ -294,6 +318,7 @@ export interface RootRouteChildren {
   ApiAdminThumbsRoute: typeof ApiAdminThumbsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronCrawlRoute: typeof ApiCronCrawlRoute
+  ApiCronSweepRoute: typeof ApiCronSweepRoute
   ApiThumbIdRoute: typeof ApiThumbIdRoute
 }
 
@@ -411,6 +436,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronCrawlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/sweep': {
+      id: '/api/cron/sweep'
+      path: '/api/cron/sweep'
+      fullPath: '/api/cron/sweep'
+      preLoaderRoute: typeof ApiCronSweepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/thumb/$id': {
       id: '/api/thumb/$id'
       path: '/api/thumb/$id'
@@ -439,6 +471,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeskSlugNewRouteImport
       parentRoute: typeof DeskSlugRoute
     }
+    '/desk/$slug/people': {
+      id: '/desk/$slug/people'
+      path: '/people'
+      fullPath: '/desk/$slug/people'
+      preLoaderRoute: typeof DeskSlugPeopleRouteImport
+      parentRoute: typeof DeskSlugRoute
+    }
     '/desk/$slug/deals_/$id': {
       id: '/desk/$slug/deals_/$id'
       path: '/deals/$id'
@@ -452,6 +491,7 @@ declare module '@tanstack/react-router' {
 interface DeskSlugRouteChildren {
   DeskSlugDealsRoute: typeof DeskSlugDealsRoute
   DeskSlugNewRoute: typeof DeskSlugNewRoute
+  DeskSlugPeopleRoute: typeof DeskSlugPeopleRoute
   DeskSlugIndexRoute: typeof DeskSlugIndexRoute
   DeskSlugDealsIdRoute: typeof DeskSlugDealsIdRoute
 }
@@ -459,6 +499,7 @@ interface DeskSlugRouteChildren {
 const DeskSlugRouteChildren: DeskSlugRouteChildren = {
   DeskSlugDealsRoute: DeskSlugDealsRoute,
   DeskSlugNewRoute: DeskSlugNewRoute,
+  DeskSlugPeopleRoute: DeskSlugPeopleRoute,
   DeskSlugIndexRoute: DeskSlugIndexRoute,
   DeskSlugDealsIdRoute: DeskSlugDealsIdRoute,
 }
@@ -484,6 +525,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminThumbsRoute: ApiAdminThumbsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronCrawlRoute: ApiCronCrawlRoute,
+  ApiCronSweepRoute: ApiCronSweepRoute,
   ApiThumbIdRoute: ApiThumbIdRoute,
 }
 export const routeTree = rootRouteImport

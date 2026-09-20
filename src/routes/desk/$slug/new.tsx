@@ -48,7 +48,9 @@ function NewDealPage() {
   const [model, setModel] = useState("");
   const [trim, setTrim] = useState("");
   const [km, setKm] = useState("");
-  const [name, setName] = useState("");
+  const [stockId, setStockId] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [price, setPrice] = useState("");
@@ -102,7 +104,14 @@ function NewDealPage() {
   const finderFeeCents =
     commission.show && commission.pct > 0 ? Math.round(quote.capCostCents * (commission.pct / 100)) : 0;
 
+  function detachStock() {
+    setStockId("");
+    setKm("0");
+    setPrice("");
+  }
+
   function applyStock(id: string) {
+    setStockId(id);
     const v = stock.find((c) => c.id === id);
     if (!v) return;
     setVin(v.vin);
@@ -111,18 +120,35 @@ function NewDealPage() {
     setModel(v.model);
     setTrim(v.trim);
     if (v.price) setPrice(String(v.price));
-    if (v.mileage) setKm(String(v.mileage));
+    setKm(v.mileage ? String(v.mileage) : "0");
+  }
+
+  function onVinChange(raw: string) {
+    const next = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 17);
+    setVin(next);
+    const selected = stock.find((c) => c.id === stockId);
+    if (!selected) return;
+    if (selected.vin && next && selected.vin !== next && !selected.vin.startsWith(next)) {
+      detachStock();
+    } else if (!selected.vin && next.length === 17) {
+      detachStock();
+    }
   }
 
   async function onExplode() {
     const token = readDealerToken();
     if (!token) return;
+    const clean = vin.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
     setExploding(true);
     try {
-      const res = await deskExplodeVin({ data: { token, slug, vin } });
+      const res = await deskExplodeVin({ data: { token, slug, vin: clean } });
       if (!res.ok) {
         toast.message("Could not explode VIN", { description: "Type year, make and model." });
         return;
+      }
+      const selected = stock.find((c) => c.id === stockId);
+      if (!selected || !selected.vin || selected.vin !== clean) {
+        detachStock();
       }
       if (res.year) setYear(String(res.year));
       if (res.make) setMake(res.make);
@@ -145,11 +171,16 @@ function NewDealPage() {
       toast.error("VIN is required (17 characters)");
       return;
     }
-    const odometerKm = Number(km.replace(/[^\d.]/g, ""));
-    if (!odometerKm) {
+    const odometerKm = Number(String(km).replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(odometerKm) || odometerKm < 0) {
       toast.error("Kilometres are required");
       return;
     }
+    if (!firstName.trim() || !lastName.trim()) {
+      toast.error("First and last name are required");
+      return;
+    }
+    const name = `${firstName.trim()} ${lastName.trim()}`;
     if (creditMode === "fill" && !consent) {
       toast.error("Credit consent is required when filling the app");
       return;
@@ -174,6 +205,8 @@ function NewDealPage() {
           token,
           slug,
           name,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           email,
           phone: phone || undefined,
           vin: cleanVin,
@@ -217,8 +250,8 @@ function NewDealPage() {
     <DeskFrame slug={slug} dealerName={dealerName} live={live}>
       {!user ? (
         <p className="mb-4 rounded-[var(--radius-xl)] border border-border bg-surface px-4 py-3 text-sm text-fg-muted">
-          You're signed in as the rooftop. Submit still goes to credit. Add people in Admin
-          and sign in with your email so we call you on the file.
+          You're signed in as the rooftop. Submit still goes to credit. Add people under Team
+          and they can sign in with their email so we call them on the file.
         </p>
       ) : null}
       <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
@@ -231,7 +264,7 @@ function NewDealPage() {
                 <select
                   id="stock"
                   className="mt-1 flex h-11 w-full rounded-full border border-border bg-surface px-4 text-sm"
-                  defaultValue=""
+                  value={stockId}
                   onChange={(e) => applyStock(e.target.value)}
                 >
                   <option value="">Choose a listing…</option>
@@ -250,7 +283,7 @@ function NewDealPage() {
                 <Input
                   id="vin"
                   value={vin}
-                  onChange={(e) => setVin(e.target.value.toUpperCase())}
+                  onChange={(e) => onVinChange(e.target.value)}
                   onBlur={() => {
                     if (vin.replace(/[^A-Za-z0-9]/g, "").length === 17) void onExplode();
                   }}
@@ -283,8 +316,9 @@ function NewDealPage() {
 
           <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6">
             <h2 className="text-sm font-medium">Lessee</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <Field label="Client name" value={name} onChange={setName} required />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="First name" value={firstName} onChange={setFirstName} required />
+              <Field label="Last name" value={lastName} onChange={setLastName} required />
               <Field label="Email" value={email} onChange={setEmail} type="email" required />
               <Field label="Phone" value={phone} onChange={setPhone} type="tel" />
             </div>

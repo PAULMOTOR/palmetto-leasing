@@ -217,6 +217,7 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   const access = readFileSync(new URL("../src/lib/desk/access.ts", import.meta.url), "utf8");
   const schema = readFileSync(new URL("../src/lib/db/ensure-portal-schema.ts", import.meta.url), "utf8");
   const neu = readFileSync(new URL("../src/routes/desk/$slug/new.tsx", import.meta.url), "utf8");
+  const people = readFileSync(new URL("../src/routes/desk/$slug/people.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(shell, /to="\/"/);
   assert.doesNotMatch(shell, />Inventory</);
   assert.match(shell, /Sign out/);
@@ -230,7 +231,11 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   assert.match(neu, /Lessee fills out here/);
   assert.match(neu, /From your Palmetto inventory/);
   assert.match(neu, /DESK_MIN_APR/);
-  assert.match(neu, /Your commission/);
+  assert.match(neu, /First name/);
+  assert.match(neu, /Last name/);
+  assert.match(neu, /detachStock/);
+  assert.match(people, /Add person/);
+  assert.match(shell, /Team/);
   const calc = readFileSync(new URL("../src/lib/leasing/calc.ts", import.meta.url), "utf8");
   assert.match(calc, /DESK_MIN_APR = 0\.0599/);
   assert.match(calc, /DESK_MIN_DOWN_RATE = 0\.05/);
