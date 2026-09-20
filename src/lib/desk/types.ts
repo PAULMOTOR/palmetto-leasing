@@ -33,4 +33,5 @@ export type DeskBoard = {
   deals: DeskDeal[];
   live: boolean;
   error?: string;
+  commission?: { show: boolean; pct: number };
 };

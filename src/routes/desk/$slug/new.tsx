@@ -6,13 +6,15 @@ import { DeskFrame, readDealerToken, readDealerUser } from "@/components/desk/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { deskBoard, deskExplodeVin, deskStartDeal } from "@/lib/desk/actions";
+import { deskBoard, deskExplodeVin, deskInventory, deskStartDeal } from "@/lib/desk/actions";
 import {
   BASE_KM_PER_YEAR,
   calculateLease,
-  DEFAULT_BASE_INTEREST_RATE,
+  DESK_MIN_APR,
+  DESK_MIN_APR_PCT,
+  DESK_MIN_DOWN_PCT,
+  DESK_MIN_DOWN_RATE,
   LEASE_TERM_OPTIONS,
-  defaultDownRateForPrice,
 } from "@/lib/leasing/calc";
 import { formatCadExact } from "@/lib/utils";
 
@@ -22,6 +24,18 @@ export const Route = createFileRoute("/desk/$slug/new")({
     meta: [{ title: "New deal | Palmetto" }],
   }),
 });
+
+type StockCar = {
+  id: string;
+  title: string;
+  vin: string;
+  year: number | null;
+  make: string;
+  model: string;
+  trim: string;
+  price: number;
+  mileage: number;
+};
 
 function NewDealPage() {
   const { slug } = Route.useParams();
@@ -41,6 +55,9 @@ function NewDealPage() {
   const [term, setTerm] = useState(37);
   const [kmYear, setKmYear] = useState(BASE_KM_PER_YEAR);
   const [downPct, setDownPct] = useState(20);
+  const [aprPct, setAprPct] = useState(DESK_MIN_APR_PCT);
+  const [stock, setStock] = useState<StockCar[]>([]);
+  const [commission, setCommission] = useState({ show: false, pct: 0 });
   const [creditMode, setCreditMode] = useState<"email" | "fill">("email");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
@@ -61,20 +78,40 @@ function NewDealPage() {
       .then((b) => {
         setDealerName(b.dealerName || slug);
         setLive(b.live);
+        if (b.commission) setCommission(b.commission);
       })
       .catch(() => undefined);
+    void deskInventory({ data: { token, slug } })
+      .then((r) => setStock(r.vehicles))
+      .catch(() => setStock([]));
   }, [slug]);
 
   const priceCents = Math.round((Number(price) || 0) * 100);
   const quote = useMemo(() => {
-    const downRate = Math.min(0.7, Math.max(0.1, (Number(downPct) || 20) / 100));
+    const downRate = Math.min(0.7, Math.max(DESK_MIN_DOWN_RATE, (Number(downPct) || DESK_MIN_DOWN_PCT) / 100));
+    const rate = Math.max(DESK_MIN_APR, (Number(aprPct) || DESK_MIN_APR_PCT) / 100);
     return calculateLease(priceCents, {
       termMonths: term,
       kmPerYear: kmYear,
-      downPaymentRate: downRate || defaultDownRateForPrice(priceCents),
-      baseInterestRate: DEFAULT_BASE_INTEREST_RATE,
+      downPaymentRate: downRate,
+      minDownRate: DESK_MIN_DOWN_RATE,
+      baseInterestRate: rate,
     });
-  }, [priceCents, term, kmYear, downPct]);
+  }, [priceCents, term, kmYear, downPct, aprPct]);
+  const finderFeeCents =
+    commission.show && commission.pct > 0 ? Math.round(quote.capCostCents * (commission.pct / 100)) : 0;
+
+  function applyStock(id: string) {
+    const v = stock.find((c) => c.id === id);
+    if (!v) return;
+    setVin(v.vin);
+    setYear(v.year ? String(v.year) : "");
+    setMake(v.make);
+    setModel(v.model);
+    setTrim(v.trim);
+    if (v.price) setPrice(String(v.price));
+    if (v.mileage) setKm(String(v.mileage));
+  }
 
   async function onExplode() {
     const token = readDealerToken();
@@ -187,6 +224,25 @@ function NewDealPage() {
         <div className="space-y-4">
           <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6">
             <h2 className="text-sm font-medium">Vehicle</h2>
+            {stock.length > 0 ? (
+              <div className="mt-4">
+                <Label htmlFor="stock">From your Palmetto inventory</Label>
+                <select
+                  id="stock"
+                  className="mt-1 flex h-11 w-full rounded-full border border-border bg-surface px-4 text-sm"
+                  defaultValue=""
+                  onChange={(e) => applyStock(e.target.value)}
+                >
+                  <option value="">Choose a listing…</option>
+                  {stock.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.title}
+                      {v.vin ? ` · ${v.vin}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
               <div>
                 <Label htmlFor="vin">VIN</Label>
@@ -245,7 +301,7 @@ function NewDealPage() {
                 onClick={() => setCreditMode("fill")}
                 className={`h-9 flex-1 rounded-full text-sm font-medium ${creditMode === "fill" ? "bg-fg text-primary-fg" : "text-fg-muted"}`}
               >
-                Fill out for them
+                Lessee fills out here
               </button>
             </div>
 
@@ -290,12 +346,27 @@ function NewDealPage() {
           <div className="mt-4 space-y-3">
             <Field label="Price" value={price} onChange={setPrice} inputMode="decimal" required />
             <div>
-              <Label htmlFor="down">Down %</Label>
+              <Label htmlFor="down">Down % (min {DESK_MIN_DOWN_PCT}%)</Label>
               <Input
                 id="down"
+                type="number"
+                min={DESK_MIN_DOWN_PCT}
+                max={70}
+                step={0.5}
                 value={String(downPct)}
-                onChange={(e) => setDownPct(Number(e.target.value) || 0)}
-                inputMode="decimal"
+                onChange={(e) => setDownPct(Math.max(DESK_MIN_DOWN_PCT, Number(e.target.value) || DESK_MIN_DOWN_PCT))}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="apr">Interest % (min {DESK_MIN_APR_PCT}%)</Label>
+              <Input
+                id="apr"
+                type="number"
+                min={DESK_MIN_APR_PCT}
+                step={0.01}
+                value={String(aprPct)}
+                onChange={(e) => setAprPct(Math.max(DESK_MIN_APR_PCT, Number(e.target.value) || DESK_MIN_APR_PCT))}
                 className="mt-1"
               />
             </div>
@@ -336,9 +407,19 @@ function NewDealPage() {
                 <dd>{formatCadExact(quote.residualCents)}</dd>
               </div>
               <div className="flex justify-between">
+                <dt>Financed</dt>
+                <dd>{formatCadExact(quote.capCostCents)}</dd>
+              </div>
+              <div className="flex justify-between">
                 <dt>Rate</dt>
                 <dd>{(quote.baseInterestRate * 100).toFixed(2)}%</dd>
               </div>
+              {commission.show ? (
+                <div className="flex justify-between text-fg">
+                  <dt>Your commission ({commission.pct}%)</dt>
+                  <dd>{formatCadExact(finderFeeCents)}</dd>
+                </div>
+              ) : null}
             </dl>
           </div>
           <Button type="submit" className="mt-5 w-full" disabled={saving || !user}>

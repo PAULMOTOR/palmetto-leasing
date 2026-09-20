@@ -18,6 +18,8 @@ export type AdminDealer = {
   inventory_url: string;
   active: boolean;
   vehicle_count: number;
+  show_commission: boolean;
+  commission_pct: number;
 };
 
 export const verifyAdminPin = createServerFn({ method: "POST" })
@@ -48,9 +50,13 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         inventory_url: string;
         active: boolean;
         vehicle_count: number;
+        show_commission: boolean | null;
+        commission_pct: number | string | null;
       }>`
-        select d.*,
-          (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as vehicle_count
+        select d.id, d.name, d.city, d.province, d.brands, d.website_url, d.inventory_url, d.active,
+          (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as vehicle_count,
+          coalesce(d.show_commission, false) as show_commission,
+          coalesce(d.commission_pct, 1) as commission_pct
         from dealerships d
         order by d.name
       `;
@@ -58,6 +64,8 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         ...r,
         active: Boolean(r.active),
         vehicle_count: Number(r.vehicle_count),
+        show_commission: Boolean(r.show_commission),
+        commission_pct: Number(r.commission_pct) || 0,
       }));
     } catch {
       return DEALERS.map((d) => ({
@@ -70,6 +78,8 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         inventory_url: d.inventory_url,
         active: d.active,
         vehicle_count: 0,
+        show_commission: false,
+        commission_pct: 1,
       }));
     }
   });
@@ -87,6 +97,8 @@ export const updateDealer = createServerFn({ method: "POST" })
         city: z.string().max(80).optional(),
         province: z.string().max(8).optional(),
         active: z.boolean().optional(),
+        show_commission: z.boolean().optional(),
+        commission_pct: z.number().min(0).max(20).optional(),
       })
       .parse(input),
   )
@@ -104,7 +116,9 @@ export const updateDealer = createServerFn({ method: "POST" })
         brands = coalesce(${data.brands ?? null}, brands),
         city = coalesce(${data.city ?? null}, city),
         province = coalesce(${data.province ?? null}, province),
-        active = coalesce(${data.active ?? null}, active)
+        active = coalesce(${data.active ?? null}, active),
+        show_commission = coalesce(${data.show_commission ?? null}, show_commission),
+        commission_pct = coalesce(${data.commission_pct ?? null}, commission_pct)
       where id = ${data.id}
     `;
     if (data.inventory_url || data.active === true) {

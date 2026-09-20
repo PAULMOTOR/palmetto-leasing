@@ -711,13 +711,37 @@ function DealerRow({
 }) {
   const [website, setWebsite] = useState(dealer.website_url);
   const [inventory, setInventory] = useState(dealer.inventory_url);
+  const [showCommission, setShowCommission] = useState(Boolean(dealer.show_commission));
+  const [commissionPct, setCommissionPct] = useState(String(dealer.commission_pct ?? 1));
   const [saving, setSaving] = useState(false);
+  const [savingFee, setSavingFee] = useState(false);
   const dirty = website !== dealer.website_url || inventory !== dealer.inventory_url;
 
   useEffect(() => {
     setWebsite(dealer.website_url);
     setInventory(dealer.inventory_url);
-  }, [dealer.website_url, dealer.inventory_url]);
+    setShowCommission(Boolean(dealer.show_commission));
+    setCommissionPct(String(dealer.commission_pct ?? 1));
+  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct]);
+
+  async function saveCommission(nextShow: boolean, nextPct: number) {
+    if (!token) return;
+    setSavingFee(true);
+    try {
+      await updateDealer({
+        data: {
+          token,
+          id: dealer.id,
+          show_commission: nextShow,
+          commission_pct: nextPct,
+        },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save commission");
+    } finally {
+      setSavingFee(false);
+    }
+  }
 
   return (
     <div
@@ -785,6 +809,40 @@ function DealerRow({
             onChange={(e) => setInventory(e.target.value)}
             className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
           />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <label className="inline-flex items-center gap-2 text-sm text-fg">
+          <input
+            type="checkbox"
+            checked={showCommission}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setShowCommission(on);
+              void saveCommission(on, Number(commissionPct) || 0);
+            }}
+            className="size-4"
+          />
+          Show commission
+        </label>
+        <label className="inline-flex items-center gap-1.5 text-sm text-fg-muted">
+          <input
+            type="number"
+            min={0}
+            max={20}
+            step={0.1}
+            disabled={!showCommission || savingFee}
+            value={commissionPct}
+            onChange={(e) => setCommissionPct(e.target.value)}
+            onBlur={() => {
+              if (!showCommission) return;
+              const n = Math.max(0, Math.min(20, Number(commissionPct) || 0));
+              setCommissionPct(String(n));
+              void saveCommission(true, n);
+            }}
+            className="h-9 w-20 rounded-full border border-border bg-surface px-3 text-sm tabular-nums outline-none focus:border-accent disabled:opacity-40"
+          />
+          <span>% of financed</span>
         </label>
       </div>
       {dirty && (

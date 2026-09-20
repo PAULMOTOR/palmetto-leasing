@@ -27,12 +27,31 @@ export const deskBoard = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const ctx = await assertDealerDesk(data.token, data.slug);
     const board = await fetchDeskBoard(ctx.slug);
+    let commission = { show: false, pct: 0 };
+    try {
+      await ensurePortalSchema();
+      const sql = await getSql();
+      const rows = await sql<{ show_commission: boolean; commission_pct: number | string }>`
+        select coalesce(show_commission, false) as show_commission,
+               coalesce(commission_pct, 0) as commission_pct
+        from dealerships where id = ${ctx.dealerId} limit 1
+      `;
+      if (rows[0]) {
+        commission = {
+          show: Boolean(rows[0].show_commission),
+          pct: Number(rows[0].commission_pct) || 0,
+        };
+      }
+    } catch {
+      /* preview without dealers table */
+    }
     return {
       ...board,
       dealer: ctx.slug,
       dealerName: board.dealerName || ctx.name,
       slug: ctx.slug,
       user: ctx.user,
+      commission,
     };
   });
 
@@ -197,8 +216,9 @@ export const deskInventory = createServerFn({ method: "GET" })
         trim: string;
         vin: string;
         price_cents: number;
+        mileage: number;
       }>`
-        select id, year, make, model, trim, coalesce(vin, '') as vin, price_cents
+        select id, year, make, model, trim, coalesce(vin, '') as vin, price_cents, coalesce(mileage, 0) as mileage
         from vehicles
         where dealership_id = ${ctx.dealerId} and status = 'active'
         order by price_cents desc
@@ -214,9 +234,10 @@ export const deskInventory = createServerFn({ method: "GET" })
           model: v.model || "",
           trim: v.trim || "",
           price: Math.round(Number(v.price_cents || 0) / 100),
+          mileage: Number(v.mileage) || 0,
         })),
       };
     } catch {
-      return { vehicles: [] as { id: string; title: string; vin: string; year: number | null; make: string; model: string; trim: string; price: number }[] };
+      return { vehicles: [] as { id: string; title: string; vin: string; year: number | null; make: string; model: string; trim: string; price: number; mileage: number }[] };
     }
   });

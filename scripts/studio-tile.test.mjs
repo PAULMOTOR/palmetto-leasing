@@ -227,5 +227,14 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   assert.match(schema, /dealer_users/);
   assert.match(neu, /Kilometres/);
   assert.match(neu, /Submit to credit/);
-  assert.match(neu, /Email credit app/);
+  assert.match(neu, /Lessee fills out here/);
+  assert.match(neu, /From your Palmetto inventory/);
+  assert.match(neu, /DESK_MIN_APR/);
+  assert.match(neu, /Your commission/);
+  const calc = readFileSync(new URL("../src/lib/leasing/calc.ts", import.meta.url), "utf8");
+  assert.match(calc, /DESK_MIN_APR = 0\.0599/);
+  assert.match(calc, /DESK_MIN_DOWN_RATE = 0\.05/);
+  const adminDealers = readFileSync(new URL("../src/lib/admin/dealers.ts", import.meta.url), "utf8");
+  assert.match(adminDealers, /show_commission/);
+  assert.match(adminDealers, /commission_pct/);
 });

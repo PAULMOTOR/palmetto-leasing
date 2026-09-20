@@ -125,6 +125,11 @@ export const DEFAULT_DOWN_PAYMENT_RATE = 0.2;
 export const DEFAULT_RESIDUAL_RATE = RESIDUAL_BY_TERM[37];
 /** Annual APR used for money-factor interest portion of payment. */
 export const DEFAULT_BASE_INTEREST_RATE = 0.059;
+/** Dealer Control Centre floors — more flexible than the public quote. */
+export const DESK_MIN_APR = 0.0599;
+export const DESK_MIN_APR_PCT = 5.99;
+export const DESK_MIN_DOWN_RATE = 0.05;
+export const DESK_MIN_DOWN_PCT = 5;
 
 export type QuoteSettings = {
   baseInterestRate: number;
@@ -132,6 +137,8 @@ export type QuoteSettings = {
   residualRate: number;
   downPaymentRate: number;
   kmPerYear: number;
+  /** When set, skips retail price-tier down floors (dealer desk). */
+  minDownRate?: number;
 };
 
 export const DEFAULT_QUOTE_SETTINGS: QuoteSettings = {
@@ -191,9 +198,16 @@ export function calculateLease(
   const clicks = kmSliderClicks(kmPerYear);
   const programResidualRate = residualForTerm(termMonths);
   const scheduledResidualRate = mileageAdjustedResidualRate(termMonths, kmPerYear);
-  const minDownRate = minDownRateForPrice(priceCents);
-  const highValueForcedDown = isHighValueVehicle(priceCents);
-  const downPaymentRate = effectiveDownRate(priceCents, base.downPaymentRate);
+  const minDownRate =
+    typeof base.minDownRate === "number" && Number.isFinite(base.minDownRate)
+      ? Math.min(MAX_DOWN_RATE, Math.max(0, base.minDownRate))
+      : minDownRateForPrice(priceCents);
+  const highValueForcedDown =
+    typeof base.minDownRate === "number" ? false : isHighValueVehicle(priceCents);
+  const downPaymentRate = Math.min(
+    MAX_DOWN_RATE,
+    Math.max(minDownRate, base.downPaymentRate),
+  );
 
   const price = Math.max(0, Math.round(priceCents));
   const downPaymentCents = Math.round(price * downPaymentRate);

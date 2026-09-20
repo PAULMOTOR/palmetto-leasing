@@ -18,6 +18,8 @@ export function ensurePortalSchema(): Promise<void> {
       `insert into quote_settings (id) values (1) on conflict (id) do nothing`,
       `alter table dealerships add column if not exists referral_fee_bps integer not null default 150`,
       `alter table dealerships add column if not exists quote_rate_offset_bps integer not null default 0`,
+      `alter table dealerships add column if not exists show_commission boolean not null default false`,
+      `alter table dealerships add column if not exists commission_pct numeric(6,3) not null default 1`,
       `alter table dealerships add column if not exists portal_pin text`,
       `alter table dealerships add column if not exists contact_email text not null default ''`,
       `alter table crm_leads add column if not exists missing_docs text not null default '[]'`,
