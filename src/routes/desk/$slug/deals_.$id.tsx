@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
+import { DealHero } from "@/components/desk/deal-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,9 +147,14 @@ function DealCardPage() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6">
-            <p className="text-[10px] tracking-[0.2em] text-fg-subtle uppercase">File</p>
-            <h2 className="mt-1 text-lg font-medium tracking-tight">{deal.clientName || "Client"}</h2>
-            <p className="mt-1 text-sm text-fg-muted">{deal.vehicle || "Vehicle TBD"}</p>
+            <div className="flex items-start gap-4">
+              <DealHero url={deal.heroUrl} alt={deal.vehicle || "Vehicle"} size={96} />
+              <div>
+                <p className="text-[10px] tracking-[0.2em] text-fg-subtle uppercase">File</p>
+                <h2 className="mt-1 text-lg font-medium tracking-tight">{deal.clientName || "Client"}</h2>
+                <p className="mt-1 text-sm text-fg-muted">{deal.vehicle || "Vehicle TBD"}</p>
+              </div>
+            </div>
 
             <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Row label="VIN" value={deal.vin || "—"} mono />

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
 import { DealProgressNeedle } from "@/components/desk/vintage-gauge";
+import { DealHero } from "@/components/desk/deal-hero";
 import { deskBoard } from "@/lib/desk/actions";
 import { DESK_BUCKETS, DESK_BUCKET_TITLES, isDeskBucket, type DeskBucket } from "@/lib/desk/buckets";
 import type { DeskBoard, DeskDeal } from "@/lib/desk/types";
@@ -87,7 +88,6 @@ function DealsListPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-border text-left text-[10px] tracking-[0.14em] text-fg-subtle uppercase">
               <tr>
-                <th className="px-4 py-3 font-medium">VIN</th>
                 <th className="px-4 py-3 font-medium">Vehicle</th>
                 <th className="px-4 py-3 font-medium">Client</th>
                 <th className="px-4 py-3 font-medium">Progress</th>
@@ -135,14 +135,17 @@ function DealRow({ slug, deal }: { slug: string; deal: DeskDeal }) {
   const ymm = [deal.year, deal.make, deal.model].filter(Boolean).join(" ") || deal.vehicle || "—";
   return (
     <tr className="hover:bg-surface-2">
-      <td className="px-4 py-3 font-mono text-xs">{deal.vin || "—"}</td>
       <td className="px-4 py-3">
         <Link
           to="/desk/$slug/deals/$id"
           params={{ slug, id: deal.id }}
-          className="font-medium text-fg hover:underline"
+          className="flex items-center gap-3 font-medium text-fg hover:underline"
         >
-          {ymm}
+          <DealHero url={deal.heroUrl} alt={ymm} />
+          <span>
+            <span className="block">{ymm}</span>
+            <span className="block font-mono text-[11px] font-normal text-fg-muted">{deal.vin || "—"}</span>
+          </span>
         </Link>
       </td>
       <td className="px-4 py-3 text-fg-muted">{deal.clientName || "—"}</td>

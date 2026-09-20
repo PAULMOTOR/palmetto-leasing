@@ -11,6 +11,7 @@ export type DeskDeal = {
   model: string;
   trim: string;
   vehicle: string;
+  heroUrl?: string;
   bucket: DeskBucket;
   bucketLabel: string;
   docsMissing: string[];

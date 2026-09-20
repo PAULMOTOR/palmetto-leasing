@@ -16,6 +16,7 @@ import {
   startCrmDeal,
 } from "@/lib/crm/partner";
 import { assertDealerDesk } from "@/lib/desk/access";
+import { attachHeroShots, creditAppMail, heroShotByVin } from "@/lib/desk/hero";
 
 const tokenSlug = z.object({
   token: z.string().min(1),
@@ -27,6 +28,7 @@ export const deskBoard = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const ctx = await assertDealerDesk(data.token, data.slug);
     const board = await fetchDeskBoard(ctx.slug);
+    board.deals = await attachHeroShots(board.deals);
     let commission = { show: false, pct: 0 };
     try {
       await ensurePortalSchema();
@@ -63,7 +65,8 @@ export const deskDeal = createServerFn({ method: "GET" })
     const ctx = await assertDealerDesk(data.token, data.slug);
     const deal = await fetchDeskDeal(ctx.slug, data.id);
     if (!deal) throw new Error("Deal not found");
-    return { deal, slug: ctx.slug, dealerName: ctx.name };
+    const [withHero] = await attachHeroShots([deal]);
+    return { deal: withHero, slug: ctx.slug, dealerName: ctx.name };
   });
 
 export const deskExplodeVin = createServerFn({ method: "POST" })
@@ -128,6 +131,8 @@ export const deskStartDeal = createServerFn({ method: "POST" })
     const contactName = assignedRep.name || ctx.name;
     const contactEmail = assignedRep.email;
     const contactPhone = assignedRep.phone;
+    const heroUrl = await heroShotByVin(data.vin);
+    const vehicleLabel = [data.year, data.make, data.model, data.trim].filter(Boolean).join(" ");
     const started = await startCrmDeal({
       dealer: ctx.slug,
       name: data.name,
@@ -151,23 +156,31 @@ export const deskStartDeal = createServerFn({ method: "POST" })
       application: data.application,
       assignedRep,
       sendCreditLink: data.sendCreditLink,
+      image: heroUrl || undefined,
     });
     if (!started.ok || !started.id) return started;
     if (data.sendCreditLink) {
       const link = await sendCreditLink(ctx.slug, started.id, data.email);
       if (link.ok && link.url) {
         const { sendMail } = await import("@/lib/mail/send");
+        const mail = creditAppMail({
+          dealerName: ctx.name,
+          contactName,
+          contactEmail,
+          contactPhone,
+          vehicle: vehicleLabel,
+          creditUrl: link.url,
+          heroUrl,
+        });
         const mailed = await sendMail({
           to: data.email,
-          subject: `Credit application — ${[data.year, data.make, data.model].filter(Boolean).join(" ") || "Palmetto lease"}`,
-          text: `${contactName} at ${ctx.name} sent you a Palmetto credit application.\n\n${link.url}\n\nQuestions: ${contactEmail}${contactPhone ? ` · ${contactPhone}` : ""}`,
-          html: `<p>${contactName} at ${ctx.name} sent you a Palmetto credit application.</p><p><a href="${link.url}">Open credit app</a></p><p>Questions: ${contactEmail}${contactPhone ? ` · ${contactPhone}` : ""}</p>`,
+          ...mail,
         });
-        return { ...started, creditUrl: link.url, mailed: mailed.ok, mailError: mailed.error };
+        return { ...started, creditUrl: link.url, mailed: mailed.ok, mailError: mailed.error, heroUrl };
       }
-      return { ...started, creditUrl: link.url, mailed: false, mailError: link.error };
+      return { ...started, creditUrl: link.url, mailed: false, mailError: link.error, heroUrl };
     }
-    return started;
+    return { ...started, heroUrl };
   });
 
 export const deskCreditLink = createServerFn({ method: "POST" })
@@ -181,7 +194,22 @@ export const deskCreditLink = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const ctx = await assertDealerDesk(data.token, data.slug);
-    return sendCreditLink(ctx.slug, data.id, data.email);
+    const link = await sendCreditLink(ctx.slug, data.id, data.email);
+    if (!link.ok || !link.url || !data.email) return link;
+    const deal = await fetchDeskDeal(ctx.slug, data.id);
+    const [withHero] = deal ? await attachHeroShots([deal]) : [undefined];
+    const { sendMail } = await import("@/lib/mail/send");
+    const mail = creditAppMail({
+      dealerName: ctx.name,
+      contactName: ctx.user?.name || ctx.name,
+      contactEmail: ctx.user?.email || "",
+      contactPhone: ctx.user?.phone,
+      vehicle: withHero?.vehicle || [withHero?.year, withHero?.make, withHero?.model].filter(Boolean).join(" "),
+      creditUrl: link.url,
+      heroUrl: withHero?.heroUrl,
+    });
+    const mailed = await sendMail({ to: data.email, ...mail });
+    return { ...link, mailed: mailed.ok, mailError: mailed.error };
   });
 
 export const deskSaveQuote = createServerFn({ method: "POST" })

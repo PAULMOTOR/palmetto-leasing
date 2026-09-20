@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
 import { DealProgressNeedle, VintageGauge } from "@/components/desk/vintage-gauge";
+import { DealHero } from "@/components/desk/deal-hero";
 import { deskBoard } from "@/lib/desk/actions";
 import { DESK_BUCKETS, DESK_BUCKET_TITLES } from "@/lib/desk/buckets";
 import type { DeskBoard } from "@/lib/desk/types";
@@ -98,7 +99,6 @@ function DeskHome() {
               <table className="w-full text-sm">
                 <thead className="border-b border-border text-left text-[10px] tracking-[0.14em] text-fg-subtle uppercase">
                   <tr>
-                    <th className="px-4 py-3 font-medium">VIN</th>
                     <th className="px-4 py-3 font-medium">Vehicle</th>
                     <th className="px-4 py-3 font-medium">Client</th>
                     <th className="px-4 py-3 font-medium">Progress</th>
@@ -110,14 +110,19 @@ function DeskHome() {
                       [d.year, d.make, d.model].filter(Boolean).join(" ") || d.vehicle || "—";
                     return (
                       <tr key={d.id} className="hover:bg-surface-2">
-                        <td className="px-4 py-3 font-mono text-xs">{d.vin || "—"}</td>
                         <td className="px-4 py-3">
                           <Link
                             to="/desk/$slug/deals/$id"
                             params={{ slug, id: d.id }}
-                            className="font-medium text-fg hover:underline"
+                            className="flex items-center gap-3 font-medium text-fg hover:underline"
                           >
-                            {ymm}
+                            <DealHero url={d.heroUrl} alt={ymm} />
+                            <span>
+                              <span className="block">{ymm}</span>
+                              <span className="block font-mono text-[11px] font-normal text-fg-muted">
+                                {d.vin || "—"}
+                              </span>
+                            </span>
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-fg-muted">{d.clientName || "—"}</td>

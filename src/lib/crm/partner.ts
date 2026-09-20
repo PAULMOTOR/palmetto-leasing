@@ -140,6 +140,10 @@ function parseDeal(raw: unknown, fallbackDealer: string): DeskDeal | null {
     docsMissing: asStringList(o.docsMissing ?? o.docs_missing),
     complianceHold: Boolean(o.complianceHold ?? o.compliance_hold),
     updatedAt: asString(o.updatedAt ?? o.updated_at) || new Date().toISOString(),
+    heroUrl:
+      asString(o.heroUrl ?? o.heroImageUrl ?? o.image ?? o.photoUrl) ||
+      asString((car as Record<string, unknown>).image ?? (car as Record<string, unknown>).photoUrl) ||
+      undefined,
     quote: quoteRaw
       ? {
           price: Number(quoteRaw.price) || undefined,
@@ -394,6 +398,7 @@ export async function startCrmDeal(input: {
   application?: Record<string, unknown>;
   assignedRep?: { name: string; email: string; phone: string } | null;
   sendCreditLink?: boolean;
+  image?: string;
 }): Promise<{ ok: boolean; id?: string; error?: string; live: boolean }> {
   const slug = slugifyDealer(input.dealer);
   const name = input.name.trim();
@@ -429,6 +434,8 @@ export async function startCrmDeal(input: {
       model: input.model || "",
       trim: input.trim || "",
       odometerKm: Math.round(input.odometerKm),
+      image: input.image || "",
+      photoUrl: input.image || "",
     },
     dealer: { slug },
     dealerSlug: slug,
@@ -440,6 +447,10 @@ export async function startCrmDeal(input: {
     rate: input.rate || 0,
     kmPerYear: input.kmPerYear || 6000,
     creditConsent: filledApp,
+    image: input.image || "",
+    photoUrl: input.image || "",
+    heroImageUrl: input.image || "",
+    photos: input.image ? [input.image] : undefined,
     source: "dealer_desk",
     site: "https://www.palmettoleasing.com",
     vehicle: [input.year, input.make, input.model, input.trim].filter(Boolean).join(" "),
@@ -473,6 +484,7 @@ export async function startCrmDeal(input: {
       docsMissing: [],
       complianceHold: false,
       updatedAt: new Date().toISOString(),
+      heroUrl: input.image || undefined,
       quote: {
         price: input.price,
         down: input.down,
