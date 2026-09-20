@@ -457,7 +457,7 @@ async function runInventoryCrawlInner(opts?: {
       removed += 1;
     }
 
-    const dead = await sweepDeadListings(sql, { limit: 80, concurrency: 6 });
+    const dead = await sweepDeadListings(sql, { limit: 160, concurrency: 8 });
     removed += dead.removed;
     if (dead.removed) {
       notes.push(`Dead listing URLs (404/sold): removed ${dead.removed}/${dead.checked}`);

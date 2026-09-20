@@ -196,3 +196,17 @@ test("shopper grid only shows photographed Palmetto tiles", () => {
   assert.match(qa, /qa-unavailable/);
   assert.doesNotMatch(qa, /return accept;/);
 });
+
+test("Renders tab only lists live listings and rotates a dead-URL sweep", () => {
+  const renders = readFileSync(new URL("../src/lib/admin/renders.ts", import.meta.url), "utf8");
+  const dead = readFileSync(new URL("../src/lib/crawler/dead-listings.ts", import.meta.url), "utf8");
+  const cron = readFileSync(new URL("../src/routes/api/cron/sweep.ts", import.meta.url), "utf8");
+  const vercel = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.match(renders, /dealer_listing_url like 'http%'/);
+  assert.match(renders, /interval '7 days'/);
+  assert.match(renders, /sweepDeadListings/);
+  assert.match(dead, /listing_checked_at/);
+  assert.match(dead, /listingProbeLooksDead/);
+  assert.match(cron, /sweepDeadListings/);
+  assert.match(vercel, /\/api\/cron\/sweep/);
+});

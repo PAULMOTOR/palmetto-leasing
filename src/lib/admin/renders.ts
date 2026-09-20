@@ -37,6 +37,10 @@ export const listAdminRenders = createServerFn({ method: "GET" })
     if (data.token !== "admin-ok") throw new Error("Unauthorized");
     await ensurePortalSchema();
     const sql = await getSql();
+    const { sweepDeadListings } = await import("@/lib/crawler/dead-listings");
+    void sweepDeadListings(sql, { limit: 40, concurrency: 6 }).catch(() => {
+      /* next Renders load / cron finishes the rotation */
+    });
     const rows = await sql<{
       id: string;
       year: number;
@@ -60,6 +64,8 @@ export const listAdminRenders = createServerFn({ method: "GET" })
       from vehicles v
       join dealerships d on d.id = v.dealership_id
       where v.status = 'active' and d.active = true
+        and v.dealer_listing_url like 'http%'
+        and coalesce(v.last_seen_at, v.updated_at) > now() - interval '7 days'
       order by v.price_cents desc
     `;
     return rows.map((r) => {

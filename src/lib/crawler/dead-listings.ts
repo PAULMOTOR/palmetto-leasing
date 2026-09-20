@@ -77,10 +77,11 @@ export async function sweepDeadListings(
   const rows = await sql<{ id: string; dealer_listing_url: string }>`
     select id, dealer_listing_url from vehicles
     where status = 'active' and dealer_listing_url like 'http%'
-    order by last_seen_at asc
+    order by listing_checked_at asc nulls first, last_seen_at asc
     limit ${limit}
   `;
   const deadIds: string[] = [];
+  const checkedLive: string[] = [];
   let i = 0;
   async function worker() {
     while (i < rows.length) {
@@ -88,11 +89,15 @@ export async function sweepDeadListings(
       if (!row) break;
       const verdict = await probeListingUrl(row.dealer_listing_url);
       if (verdict === "dead") deadIds.push(row.id);
+      else checkedLive.push(row.id);
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, rows.length) }, () => worker()));
   for (const id of deadIds) {
     await sql`delete from vehicles where id = ${id}`;
+  }
+  for (const id of checkedLive) {
+    await sql`update vehicles set listing_checked_at = now() where id = ${id}`;
   }
   return { checked: rows.length, removed: deadIds.length, ids: deadIds };
 }

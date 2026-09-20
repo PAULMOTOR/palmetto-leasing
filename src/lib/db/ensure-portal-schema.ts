@@ -24,6 +24,7 @@ export function ensurePortalSchema(): Promise<void> {
       `alter table crm_leads add column if not exists contract_status text not null default 'none'`,
       `alter table crm_leads add column if not exists buyout_cents bigint`,
       `alter table vehicles add column if not exists thumbnail_source text not null default ''`,
+      `alter table vehicles add column if not exists listing_checked_at timestamptz`,
       `create table if not exists image_fix_requests (
         id bigserial primary key,
         dealership_id text not null,
