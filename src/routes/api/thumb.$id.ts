@@ -17,15 +17,21 @@ function notFound() {
 }
 
 function dataUriToResponse(uri: string, versioned: boolean): Response | null {
-  const m = uri.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
-  if (!m) return null;
+  const raw = (uri || "").trim();
+  if (!raw.startsWith("data:image/")) return null;
+  const comma = raw.indexOf(",");
+  if (comma < 12) return null;
+  const meta = raw.slice("data:".length, comma);
+  const b64 = raw.slice(comma + 1).replace(/\s/g, "");
+  if (b64.length < 400) return null;
+  const ctype = (meta.split(";")[0] || "image/jpeg").trim() || "image/jpeg";
   try {
-    const buf = Buffer.from(m[2]!.replace(/\s/g, ""), "base64");
+    const buf = Buffer.from(b64, "base64");
     if (buf.length < 400) return null;
     return new Response(buf, {
       status: 200,
       headers: {
-        "Content-Type": m[1]!,
+        "Content-Type": ctype,
         "Content-Length": String(buf.length),
         "Cache-Control": versioned
           ? "public, max-age=31536000, immutable"
