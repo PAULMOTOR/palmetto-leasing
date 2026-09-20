@@ -102,13 +102,30 @@ export const deskStartDeal = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const ctx = await assertDealerDesk(data.token, data.slug);
+    let assignedRep = ctx.user
+      ? { name: ctx.user.name, email: ctx.user.email, phone: ctx.user.phone }
+      : { name: ctx.name, email: "", phone: "" };
     if (!ctx.user) {
-      return {
-        ok: false as const,
-        error: "Sign in with your email so this file is assigned to you — not a Palmetto sales rep.",
-        live: false,
-      };
+      try {
+        const sql = await getSql();
+        const rows = await sql<{ contact_email: string; name: string }>`
+          select name, coalesce(contact_email, '') as contact_email
+          from dealerships where id = ${ctx.dealerId} limit 1
+        `;
+        if (rows[0]) {
+          assignedRep = {
+            name: rows[0].name || ctx.name,
+            email: rows[0].contact_email || "",
+            phone: "",
+          };
+        }
+      } catch {
+        /* rooftop name is enough */
+      }
     }
+    const contactName = assignedRep.name || ctx.name;
+    const contactEmail = assignedRep.email;
+    const contactPhone = assignedRep.phone;
     const started = await startCrmDeal({
       dealer: ctx.slug,
       name: data.name,
@@ -128,11 +145,7 @@ export const deskStartDeal = createServerFn({ method: "POST" })
       rate: data.rate,
       kmPerYear: data.kmPerYear,
       application: data.application,
-      assignedRep: {
-        name: ctx.user.name,
-        email: ctx.user.email,
-        phone: ctx.user.phone,
-      },
+      assignedRep,
       sendCreditLink: data.sendCreditLink,
     });
     if (!started.ok || !started.id) return started;
@@ -143,8 +156,8 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         const mailed = await sendMail({
           to: data.email,
           subject: `Credit application — ${[data.year, data.make, data.model].filter(Boolean).join(" ") || "Palmetto lease"}`,
-          text: `${ctx.user.name} at ${ctx.name} sent you a Palmetto credit application.\n\n${link.url}\n\nQuestions: ${ctx.user.email}${ctx.user.phone ? ` · ${ctx.user.phone}` : ""}`,
-          html: `<p>${ctx.user.name} at ${ctx.name} sent you a Palmetto credit application.</p><p><a href="${link.url}">Open credit app</a></p><p>Questions: ${ctx.user.email}${ctx.user.phone ? ` · ${ctx.user.phone}` : ""}</p>`,
+          text: `${contactName} at ${ctx.name} sent you a Palmetto credit application.\n\n${link.url}\n\nQuestions: ${contactEmail}${contactPhone ? ` · ${contactPhone}` : ""}`,
+          html: `<p>${contactName} at ${ctx.name} sent you a Palmetto credit application.</p><p><a href="${link.url}">Open credit app</a></p><p>Questions: ${contactEmail}${contactPhone ? ` · ${contactPhone}` : ""}</p>`,
         });
         return { ...started, creditUrl: link.url, mailed: mailed.ok, mailError: mailed.error };
       }

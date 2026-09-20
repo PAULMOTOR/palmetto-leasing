@@ -69,9 +69,10 @@ function NewDealPage() {
   const [consent, setConsent] = useState(false);
   const [exploding, setExploding] = useState(false);
   const [saving, setSaving] = useState(false);
-  const user = typeof window === "undefined" ? null : readDealerUser();
+  const [user, setUser] = useState<ReturnType<typeof readDealerUser>>(null);
 
   useEffect(() => {
+    setUser(readDealerUser());
     const token = readDealerToken();
     if (!token) return;
     void deskBoard({ data: { token, slug } })
@@ -216,8 +217,8 @@ function NewDealPage() {
     <DeskFrame slug={slug} dealerName={dealerName} live={live}>
       {!user ? (
         <p className="mb-4 rounded-[var(--radius-xl)] border border-border bg-surface px-4 py-3 text-sm text-fg-muted">
-          Sign in with your work email so this file is assigned to you. Credit will call that
-          number — not a Palmetto sales rep.
+          You're signed in as the rooftop. Submit still goes to credit. Add people in Admin
+          and sign in with your email so we call you on the file.
         </p>
       ) : null}
       <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
@@ -422,7 +423,7 @@ function NewDealPage() {
               ) : null}
             </dl>
           </div>
-          <Button type="submit" className="mt-5 w-full" disabled={saving || !user}>
+          <Button type="submit" className="mt-5 w-full" disabled={saving}>
             {saving ? <Loader2 className="animate-spin" /> : null}
             Submit to credit
           </Button>
