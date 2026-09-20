@@ -62,14 +62,14 @@ You own the domain at GoDaddy. Vercel does not need GoDaddy API access from code
 1. Vercel → Project → **Settings → Domains** → add `palmettoleasing.com` and `www.palmettoleasing.com`.
 2. Vercel shows the exact DNS records. Typical patterns:
 
-**Apex (`palmettoleasing.com`)** — one of:
+**Apex (`palmettoleasing.com`)** — GoDaddy **A** record, host `@`:
 
-- **A** record → `10.0.1.2` (Vercel’s common apex IP; **use the value Vercel displays**), or  
-- **CNAME flattening** if GoDaddy shows that option for the apex  
+- Use the **exact IP Vercel shows** on the domain card (often `76.76.21.21`).
+- Never use a private/example IP such as `10.0.1.2`. That is not Vercel and the apex will not load.
 
 **www**
 
-- **CNAME** `www` → `cname.vercel-dns.com` (**or the host Vercel shows**)
+- **CNAME** `www` → the host Vercel shows (currently a `*.vercel-dns-016.com` target).
 
 3. In GoDaddy → **DNS** for `palmettoleasing.com`:
    - Remove conflicting A/CNAME records for `@` and `www`
