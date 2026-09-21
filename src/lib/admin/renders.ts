@@ -9,7 +9,7 @@ import { generateVehicleThumbById } from "@/lib/imagine/batch-thumbs";
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { parsePhotos, parseSpecs } from "@/lib/leasing/types";
-import { listingPhotosInDealerOrder } from "@/lib/leasing/gallery";
+import { listingPhotosInDealerOrder, upgradeImageUrl } from "@/lib/leasing/gallery";
 import { STUDIO_PROMPT_REV } from "@/lib/imagine/thumb-prompt";
 import { studioTilePath } from "@/lib/leasing/thumb-url";
 
@@ -77,7 +77,10 @@ export const listAdminRenders = createServerFn({ method: "GET" })
       const tileRev = Math.max(1, Number(r.tile_rev) || 1);
       const hasStudio = (r.thumbnail_url || "").startsWith("data:image/");
       const listingPhotos = listingPhotosInDealerOrder(parsePhotos(r.photo_urls || ""), 8);
-      const hasListingPhoto = listingPhotos.length > 0 || /^https?:\/\//i.test(r.thumbnail_url || "");
+      const dealerPhoto =
+        listingPhotos.map(upgradeImageUrl).find((u) => /^https?:\/\//i.test(u)) ||
+        (/^https?:\/\//i.test(r.thumbnail_url || "") ? upgradeImageUrl(r.thumbnail_url) : "");
+      const hasListingPhoto = Boolean(dealerPhoto);
       const promptRev = parseSpecs(r.specs_json || "{}").imagineRev || "";
       return {
         id: r.id,
@@ -92,7 +95,7 @@ export const listAdminRenders = createServerFn({ method: "GET" })
         hasStudio,
         inferred: hasStudio && r.thumbnail_source === "inferred",
         hasListingPhoto,
-        tileUrl: studioTilePath(r.id, tileRev),
+        tileUrl: hasStudio ? studioTilePath(r.id, tileRev) : dealerPhoto,
         updatedAt,
         tileRev,
         promptRev,

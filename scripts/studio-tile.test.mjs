@@ -205,6 +205,8 @@ test("Renders tab only lists live listings and rotates a dead-URL sweep", () => 
   assert.match(renders, /dealer_listing_url like 'http%'/);
   assert.match(renders, /interval '7 days'/);
   assert.match(renders, /sweepDeadListings/);
+  assert.match(renders, /hasStudio \? studioTilePath/);
+  assert.match(renders, /dealerPhoto/);
   assert.match(dead, /listing_checked_at/);
   assert.match(dead, /listingProbeLooksDead/);
   assert.match(cron, /sweepDeadListings/);

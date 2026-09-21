@@ -42,6 +42,30 @@ function fileToJpegDataUri(file: File): Promise<string> {
   });
 }
 
+function TilePreview({ url, hasStudio }: { url: string; hasStudio: boolean }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+  if (!url || failed) {
+    return (
+      <div className="flex h-full items-center justify-center bg-canvas px-4 text-center text-[11px] text-fg-subtle">
+        {hasStudio ? "Studio tile missing" : "No dealer photo yet"}
+      </div>
+    );
+  }
+  return (
+    <img
+      key={url}
+      src={url}
+      alt=""
+      referrerPolicy="no-referrer"
+      className="h-full w-full object-cover object-center"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export function RendersPanel({
   token,
   imagined,
@@ -218,10 +242,9 @@ export function RendersPanel({
         <div>
           <h2 className="text-sm font-medium">Studio tiles</h2>
           <p className="mt-0.5 max-w-xl text-[12px] text-fg-subtle">
-            One dealer at a time, three cars per pass — about a minute. The new recipe uses one
-            dealer photo plus the camera plate (no collage), then QA rejects inverted or wrong-body
-            tiles. Per-car re-render still uses the dealer gallery; stubborn cars take a front 3/4,
-            rear 3/4, and seat shot.
+            One dealer at a time, three cars per pass. “Dealer photo” means this car is not on the
+            shopper grid yet — it still needs a studio tile. “Needs redo” already has a tile on the
+            old recipe. Pick a rooftop, then Next 3.
             {imagined != null ? ` ${imagined} studio · ${missing ?? 0} still dealer photos.` : null}
           </p>
         </div>
@@ -276,12 +299,7 @@ export function RendersPanel({
                 className="overflow-hidden rounded-[var(--radius-xl)] border border-border bg-surface"
               >
                 <div className="relative aspect-square bg-white">
-                  <img
-                    key={r.tileUrl}
-                    src={r.tileUrl}
-                    alt=""
-                    className="h-full w-full object-cover object-center"
-                  />
+                  <TilePreview url={r.tileUrl} hasStudio={r.hasStudio} />
                   {!r.hasStudio && r.hasListingPhoto && (
                     <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
                       Dealer photo
