@@ -17,6 +17,7 @@ export type DeskDeal = {
   docsMissing: string[];
   complianceHold: boolean;
   updatedAt: string;
+  assignedRep?: { name: string; email: string; phone: string; kind?: string };
   quote?: {
     price?: number;
     down?: number;

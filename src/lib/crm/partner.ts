@@ -1,15 +1,21 @@
 /**
  * Palmetto server → Paul Motor CRM. Bearer secret never leaves this module.
- * When CRM_HANDOFF_SECRET is missing (preview), a per-rooftop demo board is used.
+ * Palmetto is identity + quote desk + tile + mail. CRM is file, credit, docs, stage.
+ * Palmetto never writes the CRM database.
+ *
+ * Auth on every CRM call:
+ *   Authorization: Bearer {CRM_HANDOFF_SECRET}
+ *   X-Dealer-Slug: {dealer-slug}
+ *   and/or ?dealer={slug}
+ * Desk create: POST {CRM_HANDOFF_URL} (usually /api/handoff/lease)
+ *   source: "dealer_desk", assignPaulMotorRep: false, skipDefaultRep: true
+ *   assignedRep.kind: "dealer_user" — never a Paul Motor sales rep
+ * Partner reads: GET /api/partner/deals, GET /api/partner/deals/:id
+ *   POST /api/partner/vin, POST .../credit-link, POST .../quote (numbers only)
+ * Hero URLs must be HTTPS Palmetto /api/thumb/{id}.v{n} — never data URIs.
  */
 import { slugifyDealer } from "@/lib/crm/dealers";
-import {
-  DESK_BUCKETS,
-  emptyGauges,
-  isDeskBucket,
-  tallyGauges,
-  type DeskBucket,
-} from "@/lib/desk/buckets";
+import { DESK_BUCKETS, emptyGauges, isDeskBucket, tallyGauges, type DeskBucket } from "@/lib/desk/buckets";
 import type { DeskBoard, DeskDeal } from "@/lib/desk/types";
 
 export type { DeskBoard, DeskDeal };
@@ -93,6 +99,14 @@ function asString(v: unknown): string {
   return String(v).trim();
 }
 
+function palmettoHero(url?: string | null): string {
+  const u = (url || "").trim();
+  if (!u || u.startsWith("data:")) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("/")) return `https://www.palmettoleasing.com${u}`;
+  return "";
+}
+
 function asYear(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[^\d]/g, ""));
   return Number.isFinite(n) && n >= 1980 && n <= 2100 ? Math.round(n) : null;
@@ -130,6 +144,10 @@ function parseDeal(raw: unknown, fallbackDealer: string): DeskDeal | null {
     asString(o.heroUrl ?? o.heroImageUrl ?? o.image ?? o.photoUrl) ||
     asString(car.image ?? car.photoUrl);
   const heroUrl = rawHero && !rawHero.startsWith("data:") ? rawHero : undefined;
+  const assignedRaw = (o.assignedRep && typeof o.assignedRep === "object" ? o.assignedRep : null) as Record<
+    string,
+    unknown
+  > | null;
   return {
     id,
     clientName: asString(o.clientName ?? o.name ?? o.client),
@@ -147,6 +165,14 @@ function parseDeal(raw: unknown, fallbackDealer: string): DeskDeal | null {
     complianceHold: Boolean(o.complianceHold ?? o.compliance_hold),
     updatedAt: asString(o.updatedAt ?? o.updated_at) || new Date().toISOString(),
     heroUrl,
+    assignedRep: assignedRaw
+      ? {
+          name: asString(assignedRaw.name),
+          email: asString(assignedRaw.email),
+          phone: asString(assignedRaw.phone),
+          kind: asString(assignedRaw.kind) || "dealer_user",
+        }
+      : undefined,
     quote: quoteRaw
       ? {
           price: Number(quoteRaw.price) || undefined,
@@ -423,6 +449,7 @@ export async function startCrmDeal(input: {
         kind: "dealer_user",
       }
     : null;
+  const hero = palmettoHero(input.image);
 
   const payload = {
     name,
@@ -437,8 +464,8 @@ export async function startCrmDeal(input: {
       model: input.model || "",
       trim: input.trim || "",
       odometerKm: Math.round(input.odometerKm),
-      image: input.image || "",
-      photoUrl: input.image || "",
+      image: hero,
+      photoUrl: hero,
     },
     dealer: { slug },
     dealerSlug: slug,
@@ -450,10 +477,10 @@ export async function startCrmDeal(input: {
     rate: input.rate || 0,
     kmPerYear: input.kmPerYear || 6000,
     creditConsent: filledApp,
-    image: input.image || "",
-    photoUrl: input.image || "",
-    heroImageUrl: input.image || "",
-    photos: input.image ? [input.image] : undefined,
+    image: hero,
+    photoUrl: hero,
+    heroImageUrl: hero,
+    photos: hero ? [hero] : undefined,
     source: "dealer_desk",
     site: "https://www.palmettoleasing.com",
     vehicle: [input.year, input.make, input.model, input.trim].filter(Boolean).join(" "),
@@ -462,7 +489,7 @@ export async function startCrmDeal(input: {
     assignPaulMotorRep: false,
     skipDefaultRep: true,
     assignedRep: assigned,
-    application: input.application || undefined,
+    application: filledApp ? input.application : null,
     notes: assigned
       ? `Dealer desk · ${assigned.name} (${assigned.email}${assigned.phone ? ` · ${assigned.phone}` : ""})`
       : "Dealer desk — rooftop login, no employee on file",
@@ -488,6 +515,7 @@ export async function startCrmDeal(input: {
       complianceHold: false,
       updatedAt: new Date().toISOString(),
       heroUrl: input.image || undefined,
+      assignedRep: assigned || undefined,
       quote: {
         price: input.price,
         down: input.down,

@@ -153,12 +153,18 @@ function DealCardPage() {
                 <p className="text-[10px] tracking-[0.2em] text-fg-subtle uppercase">File</p>
                 <h2 className="mt-1 text-lg font-medium tracking-tight">{deal.clientName || "Client"}</h2>
                 <p className="mt-1 text-sm text-fg-muted">{deal.vehicle || "Vehicle TBD"}</p>
+                {deal.assignedRep?.name ? (
+                  <p className="mt-1 text-xs text-fg-subtle">
+                    Desk: {deal.assignedRep.name}
+                    {deal.assignedRep.email ? ` · ${deal.assignedRep.email}` : ""}
+                  </p>
+                ) : null}
               </div>
             </div>
 
             <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Row label="VIN" value={deal.vin || "—"} mono />
-              <Row label="bucketLabel" value={deal.bucketLabel} />
+              <Row label="Status" value={deal.bucketLabel} />
               <Row label="Year / make / model" value={[deal.year, deal.make, deal.model].filter(Boolean).join(" ") || "—"} />
               <Row label="Updated" value={deal.updatedAt.slice(0, 16).replace("T", " ")} />
               <Row
