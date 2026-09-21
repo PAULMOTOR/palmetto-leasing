@@ -77,8 +77,9 @@ function TeamPage() {
       <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6">
         <h2 className="text-sm font-medium">Team</h2>
         <p className="mt-1 text-xs text-fg-muted">
-          Each person signs in with their email and PIN. Credit calls that phone when a file needs
-          them — not a Palmetto sales rep.
+          Sign-in stays here (email + PIN). Adding someone does not create a CRM login. When they
+          submit a deal, their name, email, and phone are stamped on that file so Palmetto credit
+          can call them — a Paul Motor sales rep is never assigned.
         </p>
 
         {loading ? (
