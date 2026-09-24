@@ -226,6 +226,8 @@ function parseBoard(json: Record<string, unknown>, dealer: string): DeskBoard {
     gauges: parseGauges(json.gauges, deals),
     deals,
     live: true,
+    onboardingUrl:
+      asString(json.onboardingUrl ?? json.onboardUrl ?? json.crmOnboardUrl) || undefined,
   };
 }
 
@@ -624,6 +626,29 @@ export async function saveDeskQuote(
     method: "POST",
     dealer: slug,
     body: quote,
+  });
+  if (!res.ok || res.json.ok === false) {
+    return { ok: false, error: asString(res.json.error) || `CRM ${res.status}` };
+  }
+  return { ok: true };
+}
+
+export async function deleteDeskDeal(
+  dealer: string,
+  dealId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const slug = slugifyDealer(dealer);
+  if (!crmIsLive()) {
+    const board = demoBoard(slug);
+    const before = board.deals.length;
+    board.deals = board.deals.filter((d) => d.id !== dealId);
+    if (board.deals.length === before) return { ok: false, error: "Deal not found" };
+    demoStore.set(slug, board.deals);
+    return { ok: true };
+  }
+  const res = await crmFetch(`/api/partner/deals/${encodeURIComponent(dealId)}`, {
+    method: "DELETE",
+    dealer: slug,
   });
   if (!res.ok || res.json.ok === false) {
     return { ok: false, error: asString(res.json.error) || `CRM ${res.status}` };

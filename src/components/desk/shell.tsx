@@ -71,18 +71,13 @@ export function DeskFrame({
 
   const links: { to: string; label: string; match: (p: string) => boolean }[] = [
     {
-      to: `/desk/${slug}`,
-      label: "Desk",
-      match: (p) => p === `/desk/${slug}` || p === `/desk/${slug}/`,
-    },
-    {
       to: `/desk/${slug}/new`,
       label: "New deal",
-      match: (p) => p.startsWith(`/desk/${slug}/new`),
+      match: (p) => p.startsWith(`/desk/${slug}/new`) || p === `/desk/${slug}` || p === `/desk/${slug}/`,
     },
     {
       to: `/desk/${slug}/deals`,
-      label: "Files",
+      label: "Quotes",
       match: (p) => p.startsWith(`/desk/${slug}/deals`),
     },
     {

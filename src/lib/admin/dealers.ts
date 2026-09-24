@@ -20,6 +20,7 @@ export type AdminDealer = {
   vehicle_count: number;
   show_commission: boolean;
   commission_pct: number;
+  crm_onboard_url: string;
 };
 
 export const verifyAdminPin = createServerFn({ method: "POST" })
@@ -52,11 +53,13 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         vehicle_count: number;
         show_commission: boolean | null;
         commission_pct: number | string | null;
+        crm_onboard_url: string | null;
       }>`
         select d.id, d.name, d.city, d.province, d.brands, d.website_url, d.inventory_url, d.active,
           (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as vehicle_count,
           coalesce(d.show_commission, false) as show_commission,
-          coalesce(d.commission_pct, 1) as commission_pct
+          coalesce(d.commission_pct, 1) as commission_pct,
+          coalesce(d.crm_onboard_url, '') as crm_onboard_url
         from dealerships d
         order by d.name
       `;
@@ -66,6 +69,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         vehicle_count: Number(r.vehicle_count),
         show_commission: Boolean(r.show_commission),
         commission_pct: Number(r.commission_pct) || 0,
+        crm_onboard_url: r.crm_onboard_url || "",
       }));
     } catch {
       return DEALERS.map((d) => ({
@@ -80,6 +84,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         vehicle_count: 0,
         show_commission: false,
         commission_pct: 1,
+        crm_onboard_url: "",
       }));
     }
   });
@@ -99,6 +104,7 @@ export const updateDealer = createServerFn({ method: "POST" })
         active: z.boolean().optional(),
         show_commission: z.boolean().optional(),
         commission_pct: z.number().min(0).max(20).optional(),
+        crm_onboard_url: z.string().max(500).optional(),
       })
       .parse(input),
   )
@@ -118,7 +124,8 @@ export const updateDealer = createServerFn({ method: "POST" })
         province = coalesce(${data.province ?? null}, province),
         active = coalesce(${data.active ?? null}, active),
         show_commission = coalesce(${data.show_commission ?? null}, show_commission),
-        commission_pct = coalesce(${data.commission_pct ?? null}, commission_pct)
+        commission_pct = coalesce(${data.commission_pct ?? null}, commission_pct),
+        crm_onboard_url = coalesce(${data.crm_onboard_url ?? null}, crm_onboard_url)
       where id = ${data.id}
     `;
     if (data.inventory_url || data.active === true) {

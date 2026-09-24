@@ -36,4 +36,6 @@ export type DeskBoard = {
   live: boolean;
   error?: string;
   commission?: { show: boolean; pct: number };
+  /** Rooftop CRM onboarding link. Dealers open this; they do not get a CRM login. */
+  onboardingUrl?: string;
 };

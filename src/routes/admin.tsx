@@ -713,6 +713,7 @@ function DealerRow({
   const [inventory, setInventory] = useState(dealer.inventory_url);
   const [showCommission, setShowCommission] = useState(Boolean(dealer.show_commission));
   const [commissionPct, setCommissionPct] = useState(String(dealer.commission_pct ?? 1));
+  const [onboard, setOnboard] = useState(dealer.crm_onboard_url || "");
   const [saving, setSaving] = useState(false);
   const [savingFee, setSavingFee] = useState(false);
   const dirty = website !== dealer.website_url || inventory !== dealer.inventory_url;
@@ -722,7 +723,8 @@ function DealerRow({
     setInventory(dealer.inventory_url);
     setShowCommission(Boolean(dealer.show_commission));
     setCommissionPct(String(dealer.commission_pct ?? 1));
-  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct]);
+    setOnboard(dealer.crm_onboard_url || "");
+  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct, dealer.crm_onboard_url]);
 
   async function saveCommission(nextShow: boolean, nextPct: number) {
     if (!token) return;
@@ -845,6 +847,24 @@ function DealerRow({
           <span>% of financed</span>
         </label>
       </div>
+      <label className="mt-3 block">
+        <span className="mb-1 block text-[10px] tracking-wide text-fg-subtle uppercase">
+          CRM onboarding link
+        </span>
+        <input
+          value={onboard}
+          onChange={(e) => setOnboard(e.target.value)}
+          onBlur={() => {
+            const next = onboard.trim();
+            if (next === (dealer.crm_onboard_url || "")) return;
+            void updateDealer({ data: { token, id: dealer.id, crm_onboard_url: next } }).catch((err) => {
+              toast.error(err instanceof Error ? err.message : "Could not save onboarding link");
+            });
+          }}
+          placeholder="https://crm.paulmotorcompany.com/…"
+          className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
+        />
+      </label>
       {dirty && (
         <div className="mt-3 flex justify-end">
           <Button

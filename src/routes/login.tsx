@@ -129,7 +129,7 @@ function DealerLoginForm() {
       } else {
         sessionStorage.removeItem("palmetto_dealer_user");
       }
-      void nav({ to: "/desk/$slug", params: { slug: res.slug } });
+      void nav({ to: "/desk/$slug/new", params: { slug: res.slug } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Login failed");
     } finally {

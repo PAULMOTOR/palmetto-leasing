@@ -8,6 +8,7 @@ import { getSql } from "@/lib/db";
 import { ensurePortalSchema } from "@/lib/db/ensure-portal-schema";
 import { vehicleDisplayTitle } from "@/lib/leasing/vehicle-label";
 import {
+  deleteDeskDeal,
   explodeVin,
   fetchDeskBoard,
   fetchDeskDeal,
@@ -30,12 +31,18 @@ export const deskBoard = createServerFn({ method: "GET" })
     const board = await fetchDeskBoard(ctx.slug);
     board.deals = await attachHeroShots(board.deals, ctx.dealerId);
     let commission = { show: false, pct: 0 };
+    let onboard = board.onboardingUrl || "";
     try {
       await ensurePortalSchema();
       const sql = await getSql();
-      const rows = await sql<{ show_commission: boolean; commission_pct: number | string }>`
+      const rows = await sql<{
+        show_commission: boolean;
+        commission_pct: number | string;
+        crm_onboard_url: string;
+      }>`
         select coalesce(show_commission, false) as show_commission,
-               coalesce(commission_pct, 0) as commission_pct
+               coalesce(commission_pct, 0) as commission_pct,
+               coalesce(crm_onboard_url, '') as crm_onboard_url
         from dealerships where id = ${ctx.dealerId} limit 1
       `;
       if (rows[0]) {
@@ -43,6 +50,7 @@ export const deskBoard = createServerFn({ method: "GET" })
           show: Boolean(rows[0].show_commission),
           pct: Number(rows[0].commission_pct) || 0,
         };
+        if (!onboard) onboard = rows[0].crm_onboard_url || "";
       }
     } catch {
       /* preview without dealers table */
@@ -54,6 +62,7 @@ export const deskBoard = createServerFn({ method: "GET" })
       slug: ctx.slug,
       user: ctx.user,
       commission,
+      onboardingUrl: onboard || undefined,
     };
   });
 
@@ -100,8 +109,7 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         monthly: z.number().min(0).optional(),
         rate: z.number().min(0).optional(),
         kmPerYear: z.number().min(0).optional(),
-        sendCreditLink: z.boolean().optional(),
-        application: z.record(z.string(), z.unknown()).optional(),
+        emailQuote: z.boolean().optional(),
       })
       .parse(input),
   )
@@ -158,34 +166,34 @@ export const deskStartDeal = createServerFn({ method: "POST" })
       monthly: data.monthly,
       rate: data.rate,
       kmPerYear: data.kmPerYear,
-      application: data.application,
       assignedRep,
-      sendCreditLink: data.sendCreditLink,
       image: heroUrl || undefined,
     });
     if (!started.ok || !started.id) return started;
-    if (data.sendCreditLink) {
-      const link = await sendCreditLink(ctx.slug, started.id, data.email);
-      if (link.ok && link.url) {
-        const { sendMail } = await import("@/lib/mail/send");
-        const mail = creditAppMail({
-          dealerName: ctx.name,
-          contactName,
-          contactEmail,
-          contactPhone,
-          vehicle: vehicleLabel,
-          creditUrl: link.url,
-          heroUrl,
-        });
-        const mailed = await sendMail({
-          to: data.email,
-          ...mail,
-        });
-        return { ...started, creditUrl: link.url, mailed: mailed.ok, mailError: mailed.error, heroUrl };
-      }
-      return { ...started, creditUrl: link.url, mailed: false, mailError: link.error, heroUrl };
+    let mailed = false;
+    let mailError: string | undefined;
+    if (data.emailQuote) {
+      const { sendMail } = await import("@/lib/mail/send");
+      const mail = quoteMail({
+        dealerName: ctx.name,
+        contactName,
+        contactEmail,
+        contactPhone,
+        vehicle: vehicleLabel || "your vehicle",
+        lessee: data.name,
+        price: data.price || 0,
+        down: data.down || 0,
+        residual: data.residual || 0,
+        term: data.term || 0,
+        monthly: data.monthly || 0,
+        rate: data.rate || 0,
+        heroUrl,
+      });
+      const sent = await sendMail({ to: data.email, ...mail });
+      mailed = sent.ok;
+      mailError = sent.error;
     }
-    return { ...started, heroUrl };
+    return { ...started, mailed, mailError, heroUrl };
   });
 
 export const deskCreditLink = createServerFn({ method: "POST" })
@@ -360,3 +368,69 @@ export const deskUpsertPerson = createServerFn({ method: "POST" })
     `;
     return { ok: true as const, id };
   });
+
+export const deskRemovePerson = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    tokenSlug.extend({ id: z.string().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await assertDealerDesk(data.token, data.slug);
+    await ensurePortalSchema();
+    const sql = await getSql();
+    await sql`
+      delete from dealer_users
+      where id = ${data.id} and dealership_id = ${ctx.dealerId}
+    `;
+    return { ok: true as const };
+  });
+
+export const deskDeleteDeal = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    tokenSlug.extend({ id: z.string().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await assertDealerDesk(data.token, data.slug);
+    const deal = await fetchDeskDeal(ctx.slug, data.id);
+    if (!deal) return { ok: false as const, error: "Deal not found" };
+    const { canDeleteDeal } = await import("@/lib/desk/stages");
+    if (!canDeleteDeal(deal.bucket)) {
+      return { ok: false as const, error: "Only quoted or lost quotes can be deleted" };
+    }
+    return deleteDeskDeal(ctx.slug, data.id);
+  });
+
+function quoteMail(opts: {
+  dealerName: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone?: string;
+  vehicle: string;
+  lessee: string;
+  price: number;
+  down: number;
+  residual: number;
+  term: number;
+  monthly: number;
+  rate: number;
+  heroUrl?: string;
+}): { subject: string; text: string; html: string } {
+  const money = (n: number) =>
+    n.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 });
+  const q = [opts.contactName, opts.contactEmail, opts.contactPhone].filter(Boolean).join(" · ");
+  const hero = opts.heroUrl
+    ? `<img src="${opts.heroUrl.startsWith("http") ? opts.heroUrl : `https://www.palmettoleasing.com${opts.heroUrl}`}" width="240" height="240" alt="" style="display:block;width:240px;height:240px;object-fit:cover;border-radius:16px"/>`
+    : "";
+  const lines = [
+    `Price ${money(opts.price)}`,
+    `Down ${money(opts.down)}`,
+    `Residual ${money(opts.residual)}`,
+    `Term ${opts.term} months`,
+    `Rate ${opts.rate.toFixed(2)}%`,
+    `Monthly ${opts.monthly.toLocaleString("en-CA", { style: "currency", currency: "CAD" })}`,
+  ];
+  return {
+    subject: `Lease quote — ${opts.vehicle}`,
+    text: `${opts.lessee}, ${opts.dealerName} prepared a Palmetto lease quote for ${opts.vehicle}.\n\n${lines.join("\n")}\n\n${q}`,
+    html: `<div style="font-family:Georgia,serif;color:#1a1916;max-width:480px">${hero}<p>${opts.lessee}, ${opts.dealerName} prepared a Palmetto lease quote for <strong>${opts.vehicle}</strong>.</p><p>${lines.join("<br/>")}</p><p style="font-size:12px;color:#6b6560">${q}</p></div>`,
+  };
+}

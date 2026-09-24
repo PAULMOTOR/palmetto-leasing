@@ -3,33 +3,35 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
-import { DealProgressNeedle } from "@/components/desk/vintage-gauge";
+import { StagePill } from "@/components/desk/stage-pill";
 import { DealHero } from "@/components/desk/deal-hero";
 import { deskBoard } from "@/lib/desk/actions";
-import { DESK_BUCKETS, DESK_BUCKET_TITLES, isDeskBucket, type DeskBucket } from "@/lib/desk/buckets";
+import { DESK_STAGES, DESK_STAGE_META, deskStage, type DeskStage } from "@/lib/desk/stages";
 import type { DeskBoard, DeskDeal } from "@/lib/desk/types";
-import { cn } from "@/lib/utils";
+import { cn, formatCad } from "@/lib/utils";
+
+const STAGES = ["quoted", "credit", "approved", "compliance", "lost"] as const;
 
 export const Route = createFileRoute("/desk/$slug/deals")({
   validateSearch: (search: Record<string, unknown>) =>
     z
       .object({
-        bucket: z.string().optional(),
+        stage: z.enum(STAGES).optional(),
       })
       .parse({
-        bucket: typeof search.bucket === "string" && isDeskBucket(search.bucket) ? search.bucket : undefined,
+        stage: typeof search.stage === "string" && (STAGES as readonly string[]).includes(search.stage) ? search.stage : undefined,
       }),
-  component: DealsListPage,
+  component: QuotesPage,
   head: () => ({
-    meta: [{ title: "Files | Palmetto" }],
+    meta: [{ title: "Quotes | Palmetto" }],
   }),
 });
 
 const POLL_MS = 60_000;
 
-function DealsListPage() {
+function QuotesPage() {
   const { slug } = Route.useParams();
-  const { bucket } = Route.useSearch();
+  const { stage } = Route.useSearch();
   const [board, setBoard] = useState<DeskBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ function DealsListPage() {
       setBoard(next);
       setError(next.error || null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load files");
+      setError(err instanceof Error ? err.message : "Could not load quotes");
     } finally {
       setLoading(false);
     }
@@ -56,17 +58,30 @@ function DealsListPage() {
 
   const rows = useMemo(() => {
     const deals = board?.deals || [];
-    if (bucket && isDeskBucket(bucket)) return deals.filter((d) => d.bucket === bucket);
-    return deals;
-  }, [board, bucket]);
+    if (!stage) return deals;
+    return deals.filter((d) => deskStage(d.bucket) === stage);
+  }, [board, stage]);
 
   return (
     <DeskFrame slug={slug} dealerName={board?.dealerName} live={board?.live}>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <FilterChip slug={slug} active={!bucket} label="all" />
-        {DESK_BUCKETS.map((b) => (
-          <FilterChip key={b} slug={slug} bucket={b} active={bucket === b} label={DESK_BUCKET_TITLES[b]} />
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterChip slug={slug} active={!stage} label="All" />
+          {DESK_STAGES.map((s) => (
+            <FilterChip key={s} slug={slug} stage={s} active={stage === s} label={DESK_STAGE_META[s].label} />
+          ))}
+          <FilterChip slug={slug} stage="lost" active={stage === "lost"} label="Lost" />
+        </div>
+        {board?.onboardingUrl ? (
+          <a
+            href={board.onboardingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-medium text-fg underline"
+          >
+            Dealer onboarding
+          </a>
+        ) : null}
       </div>
 
       {error ? (
@@ -81,7 +96,7 @@ function DealsListPage() {
         </div>
       ) : rows.length === 0 ? (
         <p className="rounded-[var(--radius-xl)] border border-border bg-surface px-5 py-10 text-center text-sm text-fg-muted">
-          No files in this bucket.
+          No quotes here yet.
         </p>
       ) : (
         <div className="overflow-hidden rounded-[var(--radius-xl)] border border-border bg-surface shadow-[var(--shadow-card)]">
@@ -90,6 +105,7 @@ function DealsListPage() {
               <tr>
                 <th className="px-4 py-3 font-medium">Vehicle</th>
                 <th className="px-4 py-3 font-medium">Client</th>
+                <th className="px-4 py-3 font-medium">Quote</th>
                 <th className="px-4 py-3 font-medium">Progress</th>
               </tr>
             </thead>
@@ -107,12 +123,12 @@ function DealsListPage() {
 
 function FilterChip({
   slug,
-  bucket,
+  stage,
   active,
   label,
 }: {
   slug: string;
-  bucket?: DeskBucket;
+  stage?: DeskStage;
   active: boolean;
   label: string;
 }) {
@@ -120,7 +136,7 @@ function FilterChip({
     <Link
       to="/desk/$slug/deals"
       params={{ slug }}
-      search={bucket ? { bucket } : {}}
+      search={stage ? { stage } : {}}
       className={cn(
         "rounded-full border px-3 py-1 text-[11px] tracking-wide transition-colors",
         active ? "border-fg bg-fg text-primary-fg" : "border-border bg-surface text-fg-muted hover:text-fg",
@@ -132,9 +148,11 @@ function FilterChip({
 }
 
 function DealRow({ slug, deal }: { slug: string; deal: DeskDeal }) {
+  const lost = deskStage(deal.bucket) === "lost";
   const ymm = [deal.year, deal.make, deal.model].filter(Boolean).join(" ") || deal.vehicle || "—";
+  const monthly = deal.quote?.monthly;
   return (
-    <tr className="hover:bg-surface-2">
+    <tr className={cn("hover:bg-surface-2", lost && "opacity-45")}>
       <td className="px-4 py-3">
         <Link
           to="/desk/$slug/deals/$id"
@@ -149,13 +167,11 @@ function DealRow({ slug, deal }: { slug: string; deal: DeskDeal }) {
         </Link>
       </td>
       <td className="px-4 py-3 text-fg-muted">{deal.clientName || "—"}</td>
+      <td className="px-4 py-3 tabular-nums text-fg">
+        {monthly ? `${formatCad(Math.round(monthly * 100))}/mo` : "—"}
+      </td>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <DealProgressNeedle bucket={deal.bucket} />
-          <span className="text-[11px] tracking-wide">
-            {DESK_BUCKET_TITLES[deal.bucket] || deal.bucketLabel}
-          </span>
-        </div>
+        <StagePill bucket={deal.bucket} />
       </td>
     </tr>
   );

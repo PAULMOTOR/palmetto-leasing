@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { DeskFrame, readDealerToken } from "@/components/desk/shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { deskBoard, deskListPeople, deskUpsertPerson } from "@/lib/desk/actions";
+import { deskBoard, deskListPeople, deskRemovePerson, deskUpsertPerson } from "@/lib/desk/actions";
 
 export const Route = createFileRoute("/desk/$slug/people")({
   component: TeamPage,
@@ -52,6 +52,19 @@ function TeamPage() {
     void load();
   }, [load]);
 
+  async function onRemove(id: string, person: string) {
+    const token = readDealerToken();
+    if (!token) return;
+    if (!window.confirm(`Delete ${person}? They will not be able to sign in.`)) return;
+    try {
+      await deskRemovePerson({ data: { token, slug, id } });
+      toast.success("Person deleted");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete");
+    }
+  }
+
   async function onAdd(e: React.FormEvent) {
     e.preventDefault();
     const token = readDealerToken();
@@ -78,8 +91,8 @@ function TeamPage() {
         <h2 className="text-sm font-medium">Team</h2>
         <p className="mt-1 text-xs text-fg-muted">
           Sign-in stays here (email + PIN). Adding someone does not create a CRM login. When they
-          submit a deal, their name, email, and phone are stamped on that file so Palmetto credit
-          can call them — a Paul Motor sales rep is never assigned.
+          save a quote, their name, email, and phone are stamped on that file so Palmetto credit
+          can call them.
         </p>
 
         {loading ? (
@@ -91,10 +104,17 @@ function TeamPage() {
         ) : (
           <ul className="mt-5 divide-y divide-border">
             {people.map((p) => (
-              <li key={p.id} className="flex flex-wrap gap-x-4 gap-y-1 py-3 text-sm">
+              <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 text-sm">
                 <span className="font-medium text-fg">{p.name}</span>
                 <span className="text-fg-muted">{p.email}</span>
                 <span className="text-fg-muted">{p.phone}</span>
+                <button
+                  type="button"
+                  className="ml-auto text-xs text-destructive hover:underline"
+                  onClick={() => void onRemove(p.id, p.name)}
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>
