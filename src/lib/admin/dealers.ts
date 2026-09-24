@@ -21,6 +21,7 @@ export type AdminDealer = {
   show_commission: boolean;
   commission_pct: number;
   crm_onboard_url: string;
+  portal_pin: string;
 };
 
 export const verifyAdminPin = createServerFn({ method: "POST" })
@@ -54,12 +55,14 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         show_commission: boolean | null;
         commission_pct: number | string | null;
         crm_onboard_url: string | null;
+        portal_pin: string | null;
       }>`
         select d.id, d.name, d.city, d.province, d.brands, d.website_url, d.inventory_url, d.active,
           (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as vehicle_count,
           coalesce(d.show_commission, false) as show_commission,
           coalesce(d.commission_pct, 1) as commission_pct,
-          coalesce(d.crm_onboard_url, '') as crm_onboard_url
+          coalesce(d.crm_onboard_url, '') as crm_onboard_url,
+          coalesce(d.portal_pin, '') as portal_pin
         from dealerships d
         order by d.name
       `;
@@ -70,6 +73,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         show_commission: Boolean(r.show_commission),
         commission_pct: Number(r.commission_pct) || 0,
         crm_onboard_url: r.crm_onboard_url || "",
+        portal_pin: (r.portal_pin || "").trim(),
       }));
     } catch {
       return DEALERS.map((d) => ({
@@ -85,6 +89,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         show_commission: false,
         commission_pct: 1,
         crm_onboard_url: "",
+        portal_pin: "",
       }));
     }
   });
@@ -105,6 +110,7 @@ export const updateDealer = createServerFn({ method: "POST" })
         show_commission: z.boolean().optional(),
         commission_pct: z.number().min(0).max(20).optional(),
         crm_onboard_url: z.string().max(500).optional(),
+        portal_pin: z.string().min(4).max(64).optional(),
       })
       .parse(input),
   )
@@ -125,7 +131,8 @@ export const updateDealer = createServerFn({ method: "POST" })
         active = coalesce(${data.active ?? null}, active),
         show_commission = coalesce(${data.show_commission ?? null}, show_commission),
         commission_pct = coalesce(${data.commission_pct ?? null}, commission_pct),
-        crm_onboard_url = coalesce(${data.crm_onboard_url ?? null}, crm_onboard_url)
+        crm_onboard_url = coalesce(${data.crm_onboard_url ?? null}, crm_onboard_url),
+        portal_pin = coalesce(${data.portal_pin ?? null}, portal_pin)
       where id = ${data.id}
     `;
     if (data.inventory_url || data.active === true) {

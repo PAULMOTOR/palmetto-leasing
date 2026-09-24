@@ -257,6 +257,7 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   const adminDealers = readFileSync(new URL("../src/lib/admin/dealers.ts", import.meta.url), "utf8");
   assert.match(adminDealers, /show_commission/);
   assert.match(adminDealers, /commission_pct/);
+  assert.match(adminDealers, /portal_pin/);
 });
 
 test("re-render bumps a versioned tile filename", () => {

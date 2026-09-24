@@ -714,6 +714,10 @@ function DealerRow({
   const [showCommission, setShowCommission] = useState(Boolean(dealer.show_commission));
   const [commissionPct, setCommissionPct] = useState(String(dealer.commission_pct ?? 1));
   const [onboard, setOnboard] = useState(dealer.crm_onboard_url || "");
+  const [pin, setPin] = useState(dealer.portal_pin || "");
+  const [savedPin, setSavedPin] = useState(dealer.portal_pin || "");
+  const [showPin, setShowPin] = useState(false);
+  const [savingPin, setSavingPin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingFee, setSavingFee] = useState(false);
   const dirty = website !== dealer.website_url || inventory !== dealer.inventory_url;
@@ -724,7 +728,9 @@ function DealerRow({
     setShowCommission(Boolean(dealer.show_commission));
     setCommissionPct(String(dealer.commission_pct ?? 1));
     setOnboard(dealer.crm_onboard_url || "");
-  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct, dealer.crm_onboard_url]);
+    setPin(dealer.portal_pin || "");
+    setSavedPin(dealer.portal_pin || "");
+  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct, dealer.crm_onboard_url, dealer.portal_pin]);
 
   async function saveCommission(nextShow: boolean, nextPct: number) {
     if (!token) return;
@@ -865,6 +871,51 @@ function DealerRow({
           className="h-10 w-full rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
         />
       </label>
+      <div className="mt-3">
+        <span className="mb-1 block text-[10px] tracking-wide text-fg-subtle uppercase">
+          Dealer login password
+        </span>
+        <p className="mb-2 text-[11px] text-fg-subtle">
+          {savedPin
+            ? "Custom password. They sign in with the dealership name and this password."
+            : "Still the shared default “dealer”. Set one so this rooftop has its own."}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type={showPin ? "text" : "password"}
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            autoComplete="new-password"
+            placeholder="dealer"
+            className="h-10 min-w-[12rem] flex-1 rounded-full border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
+          />
+          <button
+            type="button"
+            className="h-10 rounded-full border border-border px-3 text-xs text-fg-muted"
+            onClick={() => setShowPin((v) => !v)}
+          >
+            {showPin ? "Hide" : "Show"}
+          </button>
+          <Button
+            size="sm"
+            disabled={savingPin || pin.trim().length < 4 || pin.trim() === savedPin}
+            onClick={() => {
+              const next = pin.trim();
+              setSavingPin(true);
+              void updateDealer({ data: { token, id: dealer.id, portal_pin: next } })
+                .then(() => {
+                  setSavedPin(next);
+                  toast.success(`Password saved for ${dealer.name}`);
+                })
+                .catch((err) => toast.error(err instanceof Error ? err.message : "Could not save password"))
+                .finally(() => setSavingPin(false));
+            }}
+          >
+            {savingPin ? <Loader2 className="animate-spin" /> : null}
+            Save password
+          </Button>
+        </div>
+      </div>
       {dirty && (
         <div className="mt-3 flex justify-end">
           <Button
