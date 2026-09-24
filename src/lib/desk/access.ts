@@ -3,6 +3,7 @@
  * Never trust the URL slug alone — it must match the signed-in dealer.
  */
 import { resolveDealerSlug, slugifyDealer } from "@/lib/crm/dealers";
+import { displayDealerName } from "@/lib/leasing/dealer-name";
 import { DEALERS } from "@/lib/leasing/seed";
 import { loadDealerUser, parseDealerToken, type DealerUser } from "@/lib/desk/users";
 
@@ -25,6 +26,7 @@ export type DeskContext = {
   dealerId: string;
   slug: string;
   name: string;
+  province: string;
   user: DealerUser | null;
 };
 
@@ -41,10 +43,25 @@ export async function assertDealerDesk(token: string, urlSlug: string): Promise<
   if (userId && (!user || user.dealershipId !== dealerId)) {
     throw new Error("Sign in as a person at this rooftop");
   }
+  let name = seed?.name || "";
+  let province = seed?.province || "";
+  try {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql<{ name: string; province: string }>`
+      select name, coalesce(province, '') as province
+      from dealerships where id = ${dealerId} limit 1
+    `;
+    if (rows[0]?.name?.trim()) name = rows[0].name.trim();
+    if (rows[0]?.province?.trim()) province = rows[0].province.trim();
+  } catch {
+    /* seed name is enough */
+  }
   return {
     dealerId,
     slug: resolved,
-    name: seed?.name || dealerId,
+    name: displayDealerName(name || dealerId),
+    province,
     user,
   };
 }

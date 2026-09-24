@@ -426,6 +426,9 @@ export async function startCrmDeal(input: {
   monthly?: number;
   rate?: number;
   kmPerYear?: number;
+  province?: string;
+  monthlyWithTax?: number;
+  taxLabel?: string;
   application?: Record<string, unknown>;
   assignedRep?: { name: string; email: string; phone: string } | null;
   sendCreditLink?: boolean;
@@ -477,7 +480,11 @@ export async function startCrmDeal(input: {
     term: input.term || 0,
     monthly: input.monthly || 0,
     rate: input.rate || 0,
-    kmPerYear: input.kmPerYear || 6000,
+    kmPerYear: input.kmPerYear || 0,
+    province: (input.province || "").trim(),
+    monthlyWithTax: input.monthlyWithTax || 0,
+    priceBeforeTax: true,
+    taxLabel: input.taxLabel || "",
     creditConsent: filledApp,
     image: hero,
     photoUrl: hero,
@@ -492,9 +499,18 @@ export async function startCrmDeal(input: {
     skipDefaultRep: true,
     assignedRep: assigned,
     application: filledApp ? input.application : null,
-    notes: assigned
-      ? `Dealer desk · ${assigned.name} (${assigned.email}${assigned.phone ? ` · ${assigned.phone}` : ""})`
-      : "Dealer desk — rooftop login, no employee on file",
+    notes: [
+      assigned
+        ? `Dealer desk · ${assigned.name} (${assigned.email}${assigned.phone ? ` · ${assigned.phone}` : ""})`
+        : "Dealer desk — rooftop login, no employee on file",
+      `Selling price $${Math.round(input.price || 0).toLocaleString("en-CA")} before tax`,
+      input.province ? `Province ${input.province}${input.taxLabel ? ` · ${input.taxLabel}` : ""}` : "",
+      input.monthlyWithTax
+        ? `Monthly $${(input.monthly || 0).toLocaleString("en-CA")} before tax · $${input.monthlyWithTax.toLocaleString("en-CA")} with tax`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
   };
 
   if (!crmIsLive()) {

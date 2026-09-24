@@ -126,10 +126,45 @@ export const DEFAULT_RESIDUAL_RATE = RESIDUAL_BY_TERM[37];
 /** Annual APR used for money-factor interest portion of payment. */
 export const DEFAULT_BASE_INTEREST_RATE = 0.059;
 /** Dealer Control Centre floors — more flexible than the public quote. */
-export const DESK_MIN_APR = 0.0599;
-export const DESK_MIN_APR_PCT = 5.99;
+export const DESK_MIN_APR = 0.0699;
+export const DESK_MIN_APR_PCT = 6.99;
+/** Desk opens here. The floor must not pull this default down. */
+export const DESK_DEFAULT_APR = 0.0799;
+export const DESK_DEFAULT_APR_PCT = 7.99;
 export const DESK_MIN_DOWN_RATE = 0.05;
 export const DESK_MIN_DOWN_PCT = 5;
+/** $1 residual when a dealer drags the percent to zero. */
+export const MIN_RESIDUAL_CENTS = 100;
+
+/** Dealer desk terms. 13 months is desk-only. */
+export const DESK_TERM_OPTIONS = [13, 25, 37, 49, 61] as const;
+
+/** Ceiling residual by term. Dealers may drag down to 0%. */
+export const DESK_RESIDUAL_CAP: Record<(typeof DESK_TERM_OPTIONS)[number], number> = {
+  13: 0.72,
+  25: 0.62,
+  37: 0.53,
+  49: 0.44,
+  61: 0.35,
+};
+
+export function deskResidualCap(termMonths: number): number {
+  if ((DESK_TERM_OPTIONS as readonly number[]).includes(termMonths)) {
+    return DESK_RESIDUAL_CAP[termMonths as (typeof DESK_TERM_OPTIONS)[number]];
+  }
+  return DESK_RESIDUAL_CAP[37];
+}
+
+/**
+ * Stated km/year allowance. It does not change the payment.
+ * Under $150,000 → 16,000 · $150,000–$499,999 → 8,000 · $500,000+ → 4,000.
+ */
+export function maxKmForPrice(priceCents: number): number {
+  const dollars = Math.max(0, priceCents) / 100;
+  if (dollars >= 500_000) return 4_000;
+  if (dollars >= 150_000) return 8_000;
+  return 16_000;
+}
 
 export type QuoteSettings = {
   baseInterestRate: number;
@@ -139,6 +174,12 @@ export type QuoteSettings = {
   kmPerYear: number;
   /** When set, skips retail price-tier down floors (dealer desk). */
   minDownRate?: number;
+  /** Dealer desk: km is a stated allowance and does not move residual. */
+  ignoreMileage?: boolean;
+  /** Dealer desk: residual the user set, 0–program cap. $1 when this is 0. */
+  residualOverride?: number;
+  /** Caps residualOverride. Defaults to the public term schedule. */
+  programResidualRate?: number;
 };
 
 export const DEFAULT_QUOTE_SETTINGS: QuoteSettings = {
@@ -194,10 +235,21 @@ export function calculateLease(
 ): LeaseQuote {
   const base: QuoteSettings = { ...DEFAULT_QUOTE_SETTINGS, ...settings };
   const termMonths = base.termMonths;
-  const kmPerYear = snapKmPerYear(base.kmPerYear ?? BASE_KM_PER_YEAR);
-  const clicks = kmSliderClicks(kmPerYear);
-  const programResidualRate = residualForTerm(termMonths);
-  const scheduledResidualRate = mileageAdjustedResidualRate(termMonths, kmPerYear);
+  const kmPerYear = base.ignoreMileage
+    ? Math.max(0, Math.round(base.kmPerYear || 0))
+    : snapKmPerYear(base.kmPerYear ?? BASE_KM_PER_YEAR);
+  const clicks = base.ignoreMileage ? 0 : kmSliderClicks(kmPerYear);
+  const programResidualRate =
+    typeof base.programResidualRate === "number" && Number.isFinite(base.programResidualRate)
+      ? Math.min(1, Math.max(0, base.programResidualRate))
+      : residualForTerm(termMonths);
+  let scheduledResidualRate = base.ignoreMileage
+    ? programResidualRate
+    : mileageAdjustedResidualRate(termMonths, kmPerYear);
+  const lockedResidual = typeof base.residualOverride === "number" && Number.isFinite(base.residualOverride);
+  if (lockedResidual) {
+    scheduledResidualRate = Math.min(programResidualRate, Math.max(0, base.residualOverride as number));
+  }
   const minDownRate =
     typeof base.minDownRate === "number" && Number.isFinite(base.minDownRate)
       ? Math.min(MAX_DOWN_RATE, Math.max(0, base.minDownRate))
@@ -218,9 +270,12 @@ export function calculateLease(
   // If user puts more down, residual drops dollar-for-dollar with the excess.
   let residualCents = scheduledResidualCents;
   let residualReducedByDown = false;
-  if (capCostCents < scheduledResidualCents) {
+  if (capCostCents < scheduledResidualCents && !lockedResidual) {
     residualCents = capCostCents; // residual = price − down; depreciation → 0
     residualReducedByDown = true;
+  }
+  if (lockedResidual && price > 0 && residualCents < MIN_RESIDUAL_CENTS) {
+    residualCents = MIN_RESIDUAL_CENTS;
   }
 
   const residualRate = price > 0 ? residualCents / price : scheduledResidualRate;

@@ -239,8 +239,8 @@ function DealCardPage() {
               </form>
             ) : (
               <dl className="mt-4 space-y-2 text-sm">
-                <QuoteRow label="Monthly" value={q?.monthly != null ? formatCadExact(Math.round(q.monthly * 100)) : "—"} strong />
-                <QuoteRow label="Price" value={q?.price != null ? formatCadExact(Math.round(q.price * 100)) : "—"} />
+                <QuoteRow label="Monthly before tax" value={q?.monthly != null ? formatCadExact(Math.round(q.monthly * 100)) : "—"} strong />
+                <QuoteRow label="Price before tax" value={q?.price != null ? formatCadExact(Math.round(q.price * 100)) : "—"} />
                 <QuoteRow label="Down" value={q?.down != null ? formatCadExact(Math.round(q.down * 100)) : "—"} />
                 <QuoteRow label="Residual" value={q?.residual != null ? formatCadExact(Math.round(q.residual * 100)) : "—"} />
                 <QuoteRow label="Term" value={q?.term ? `${q.term} mo` : "—"} />

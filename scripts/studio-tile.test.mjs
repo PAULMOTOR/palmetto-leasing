@@ -252,8 +252,14 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   assert.match(hero, /modelKey/);
   assert.match(hero, /studioTilePath/);
   const calc = readFileSync(new URL("../src/lib/leasing/calc.ts", import.meta.url), "utf8");
-  assert.match(calc, /DESK_MIN_APR = 0\.0599/);
+  assert.match(calc, /DESK_MIN_APR = 0\.0699/);
+  assert.match(calc, /DESK_DEFAULT_APR = 0\.0799/);
+  assert.match(calc, /maxKmForPrice/);
+  assert.match(calc, /DESK_RESIDUAL_CAP/);
   assert.match(calc, /DESK_MIN_DOWN_RATE = 0\.05/);
+  assert.match(neu, /Selling price before tax/);
+  assert.match(neu, /Province for tax/);
+  assert.match(neu, /before tax/);
   const adminDealers = readFileSync(new URL("../src/lib/admin/dealers.ts", import.meta.url), "utf8");
   assert.match(adminDealers, /show_commission/);
   assert.match(adminDealers, /commission_pct/);

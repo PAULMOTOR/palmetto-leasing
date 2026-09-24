@@ -63,6 +63,7 @@ export const deskBoard = createServerFn({ method: "GET" })
       user: ctx.user,
       commission,
       onboardingUrl: onboard || undefined,
+      province: ctx.province || undefined,
     };
   });
 
@@ -110,6 +111,9 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         rate: z.number().min(0).optional(),
         kmPerYear: z.number().min(0).optional(),
         emailQuote: z.boolean().optional(),
+        province: z.string().min(2).max(32),
+        monthlyWithTax: z.number().min(0).optional(),
+        taxLabel: z.string().max(80).optional(),
       })
       .parse(input),
   )
@@ -166,6 +170,9 @@ export const deskStartDeal = createServerFn({ method: "POST" })
       monthly: data.monthly,
       rate: data.rate,
       kmPerYear: data.kmPerYear,
+      province: data.province,
+      monthlyWithTax: data.monthlyWithTax,
+      taxLabel: data.taxLabel,
       assignedRep,
       image: heroUrl || undefined,
     });
@@ -187,6 +194,10 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         term: data.term || 0,
         monthly: data.monthly || 0,
         rate: data.rate || 0,
+        kmPerYear: data.kmPerYear || 0,
+        province: data.province,
+        monthlyWithTax: data.monthlyWithTax || 0,
+        taxLabel: data.taxLabel || "",
         heroUrl,
       });
       const sent = await sendMail({ to: data.email, ...mail });
@@ -412,25 +423,36 @@ function quoteMail(opts: {
   term: number;
   monthly: number;
   rate: number;
+  kmPerYear?: number;
+  province?: string;
+  monthlyWithTax?: number;
+  taxLabel?: string;
   heroUrl?: string;
 }): { subject: string; text: string; html: string } {
   const money = (n: number) =>
     n.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 });
-  const q = [opts.contactName, opts.contactEmail, opts.contactPhone].filter(Boolean).join(" · ");
+  const monthlyExact = (n: number) =>
+    n.toLocaleString("en-CA", { style: "currency", currency: "CAD" });
+  const signature = [opts.dealerName, [opts.contactName, opts.contactEmail, opts.contactPhone].filter(Boolean).join(" · ")]
+    .filter(Boolean)
+    .join("\n");
   const hero = opts.heroUrl
     ? `<img src="${opts.heroUrl.startsWith("http") ? opts.heroUrl : `https://www.palmettoleasing.com${opts.heroUrl}`}" width="240" height="240" alt="" style="display:block;width:240px;height:240px;object-fit:cover;border-radius:16px"/>`
     : "";
   const lines = [
-    `Price ${money(opts.price)}`,
+    `Selling price before tax ${money(opts.price)}`,
     `Down ${money(opts.down)}`,
-    `Residual ${money(opts.residual)}`,
+    `Residual ${opts.residual < 1 ? "$1.00" : money(opts.residual)}`,
     `Term ${opts.term} months`,
+    opts.kmPerYear ? `Allowance ${opts.kmPerYear.toLocaleString("en-CA")} km/year` : "",
     `Rate ${opts.rate.toFixed(2)}%`,
-    `Monthly ${opts.monthly.toLocaleString("en-CA", { style: "currency", currency: "CAD" })}`,
-  ];
+    `Monthly before tax ${monthlyExact(opts.monthly)}`,
+    opts.taxLabel ? `${opts.province || "Tax"} · ${opts.taxLabel}` : "",
+    opts.monthlyWithTax ? `Monthly with tax ${monthlyExact(opts.monthlyWithTax)}` : "",
+  ].filter(Boolean);
   return {
     subject: `Lease quote — ${opts.vehicle}`,
-    text: `${opts.lessee}, ${opts.dealerName} prepared a Palmetto lease quote for ${opts.vehicle}.\n\n${lines.join("\n")}\n\n${q}`,
-    html: `<div style="font-family:Georgia,serif;color:#1a1916;max-width:480px">${hero}<p>${opts.lessee}, ${opts.dealerName} prepared a Palmetto lease quote for <strong>${opts.vehicle}</strong>.</p><p>${lines.join("<br/>")}</p><p style="font-size:12px;color:#6b6560">${q}</p></div>`,
+    text: `${opts.lessee}, ${opts.dealerName} prepared a Palmetto lease quote for ${opts.vehicle}.\n\n${lines.join("\n")}\n\n${signature}`,
+    html: `<div style="font-family:Georgia,serif;color:#1a1916;max-width:480px">${hero}<p>${opts.lessee}, ${opts.dealerName} prepared a Palmetto lease quote for <strong>${opts.vehicle}</strong>.</p><p>${lines.join("<br/>")}</p><p style="font-size:13px;color:#1a1916;white-space:pre-line">${signature.replace(/\n/g, "<br/>")}</p></div>`,
   };
 }
