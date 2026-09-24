@@ -112,8 +112,11 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         kmPerYear: z.number().min(0).optional(),
         emailQuote: z.boolean().optional(),
         province: z.string().min(2).max(32),
-        monthlyWithTax: z.number().min(0).optional(),
+        monthlyWithTax: z.number().optional(),
         taxLabel: z.string().max(80).optional(),
+        dueOnDelivery: z.number().optional(),
+        pad: z.number().min(0).optional(),
+        financed: z.number().optional(),
       })
       .parse(input),
   )
@@ -173,6 +176,9 @@ export const deskStartDeal = createServerFn({ method: "POST" })
       province: data.province,
       monthlyWithTax: data.monthlyWithTax,
       taxLabel: data.taxLabel,
+      dueOnDelivery: data.dueOnDelivery,
+      pad: data.pad,
+      financed: data.financed,
       assignedRep,
       image: heroUrl || undefined,
     });
@@ -198,6 +204,9 @@ export const deskStartDeal = createServerFn({ method: "POST" })
         province: data.province,
         monthlyWithTax: data.monthlyWithTax || 0,
         taxLabel: data.taxLabel || "",
+        dueOnDelivery: data.dueOnDelivery || 0,
+        financed: data.financed || 0,
+        pad: data.pad || 0,
         heroUrl,
       });
       const sent = await sendMail({ to: data.email, ...mail });
@@ -427,6 +436,9 @@ function quoteMail(opts: {
   province?: string;
   monthlyWithTax?: number;
   taxLabel?: string;
+  dueOnDelivery?: number;
+  financed?: number;
+  pad?: number;
   heroUrl?: string;
 }): { subject: string; text: string; html: string } {
   const money = (n: number) =>
@@ -449,6 +461,8 @@ function quoteMail(opts: {
     `Monthly before tax ${monthlyExact(opts.monthly)}`,
     opts.taxLabel ? `${opts.province || "Tax"} · ${opts.taxLabel}` : "",
     opts.monthlyWithTax ? `Monthly with tax ${monthlyExact(opts.monthlyWithTax)}` : "",
+    opts.dueOnDelivery ? `Due on delivery ${money(opts.dueOnDelivery)}` : "",
+    opts.pad ? `Pad ${money(opts.pad)} (not on the sticker)` : "",
   ].filter(Boolean);
   return {
     subject: `Lease quote — ${opts.vehicle}`,

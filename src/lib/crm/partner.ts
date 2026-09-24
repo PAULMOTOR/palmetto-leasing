@@ -429,6 +429,9 @@ export async function startCrmDeal(input: {
   province?: string;
   monthlyWithTax?: number;
   taxLabel?: string;
+  dueOnDelivery?: number;
+  pad?: number;
+  financed?: number;
   application?: Record<string, unknown>;
   assignedRep?: { name: string; email: string; phone: string } | null;
   sendCreditLink?: boolean;
@@ -485,6 +488,9 @@ export async function startCrmDeal(input: {
     monthlyWithTax: input.monthlyWithTax || 0,
     priceBeforeTax: true,
     taxLabel: input.taxLabel || "",
+    dueOnDelivery: input.dueOnDelivery || 0,
+    pad: input.pad || 0,
+    financed: input.financed || 0,
     creditConsent: filledApp,
     image: hero,
     photoUrl: hero,
@@ -508,6 +514,7 @@ export async function startCrmDeal(input: {
       input.monthlyWithTax
         ? `Monthly $${(input.monthly || 0).toLocaleString("en-CA")} before tax · $${input.monthlyWithTax.toLocaleString("en-CA")} with tax`
         : "",
+      input.dueOnDelivery ? `Due on delivery $${input.dueOnDelivery.toLocaleString("en-CA")}` : "",
     ]
       .filter(Boolean)
       .join(" · "),
