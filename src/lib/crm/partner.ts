@@ -15,6 +15,7 @@
  * Hero URLs must be HTTPS Palmetto /api/thumb/{id}.v{n} — never data URIs.
  */
 import { slugifyDealer } from "@/lib/crm/dealers";
+import { decodeVinNhtsa, type VinDecode } from "@/lib/crm/vin";
 import { DESK_BUCKETS, emptyGauges, isDeskBucket, tallyGauges, type DeskBucket } from "@/lib/desk/buckets";
 import type { DeskBoard, DeskDeal } from "@/lib/desk/types";
 
@@ -367,43 +368,41 @@ export async function fetchDeskDeal(dealer: string, id: string): Promise<DeskDea
   return parseDeal(raw, slug);
 }
 
-export async function explodeVin(
-  dealer: string,
-  vin: string,
-): Promise<{ ok: boolean; year?: number; make?: string; model?: string; trim?: string }> {
+export async function explodeVin(dealer: string, vin: string): Promise<VinDecode> {
   const clean = vin.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (clean.length !== 17) return { ok: false };
+  let partial: VinDecode | null = null;
   if (crmIsLive()) {
-    const res = await crmFetch("/api/partner/vin", {
-      method: "POST",
-      dealer,
-      body: { vin: clean },
-    });
-    if (!res.ok || res.json.ok === false) return { ok: false };
-    const car = (res.json.car && typeof res.json.car === "object"
-      ? res.json.car
-      : res.json) as Record<string, unknown>;
-    const year = asYear(car.year);
-    const make = asString(car.make);
-    const model = asString(car.model);
-    if (!year && !make && !model) return { ok: false };
-    return { ok: true, year: year || undefined, make, model, trim: asString(car.trim) || undefined };
+    try {
+      const res = await crmFetch("/api/partner/vin", {
+        method: "POST",
+        dealer,
+        body: { vin: clean },
+      });
+      if (res.ok && res.json.ok !== false) {
+        const car = (res.json.car && typeof res.json.car === "object" ? res.json.car : res.json) as Record<
+          string,
+          unknown
+        >;
+        const year = asYear(car.year);
+        const make = asString(car.make);
+        const model = asString(car.model);
+        if (year || make || model) {
+          partial = { ok: true, year: year || undefined, make, model, trim: asString(car.trim) || undefined };
+          if (model) return partial;
+        }
+      }
+    } catch {
+      /* NHTSA below */
+    }
   }
   try {
-    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(clean)}?format=json`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) return { ok: false };
-    const json = (await res.json()) as { Results?: Array<Record<string, string | number | null>> };
-    const row = json.Results?.[0] || {};
-    const year = asYear(row.ModelYear);
-    const make = asString(row.Make);
-    const model = asString(row.Model);
-    const trim = asString(row.Trim);
-    if (!year && !make && !model) return { ok: false };
-    return { ok: true, year: year || undefined, make, model, trim: trim || undefined };
+    const nhtsa = await decodeVinNhtsa(clean);
+    if (nhtsa.ok) return nhtsa;
   } catch {
-    return { ok: false };
+    /* keep a partial CRM decode */
   }
+  return partial || { ok: false };
 }
 
 export async function startCrmDeal(input: {

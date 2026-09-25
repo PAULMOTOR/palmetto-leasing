@@ -169,7 +169,9 @@ function NewDealPage() {
       setMake(res.make || "");
       setModel(res.model || "");
       setTrim(res.trim || "");
-      toast.success("VIN decoded");
+      toast.success(res.note ? "VIN decoded with a correction" : "VIN decoded", {
+        description: res.note,
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "VIN explode failed");
     } finally {
