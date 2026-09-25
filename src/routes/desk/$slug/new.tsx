@@ -165,10 +165,10 @@ function NewDealPage() {
         toast.message("Could not decode VIN");
         return;
       }
-      if (res.year) setYear(String(res.year));
-      if (res.make) setMake(res.make);
-      if (res.model) setModel(res.model);
-      if (res.trim) setTrim(res.trim);
+      setYear(res.year ? String(res.year) : "");
+      setMake(res.make || "");
+      setModel(res.model || "");
+      setTrim(res.trim || "");
       toast.success("VIN decoded");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "VIN explode failed");
