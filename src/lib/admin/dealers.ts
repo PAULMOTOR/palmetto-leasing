@@ -22,6 +22,7 @@ export type AdminDealer = {
   commission_pct: number;
   crm_onboard_url: string;
   portal_pin: string;
+  show_handling: boolean;
 };
 
 export const verifyAdminPin = createServerFn({ method: "POST" })
@@ -56,13 +57,15 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         commission_pct: number | string | null;
         crm_onboard_url: string | null;
         portal_pin: string | null;
+        show_handling: boolean | null;
       }>`
         select d.id, d.name, d.city, d.province, d.brands, d.website_url, d.inventory_url, d.active,
           (select count(*)::int from vehicles v where v.dealership_id = d.id and v.status = 'active') as vehicle_count,
           coalesce(d.show_commission, false) as show_commission,
           coalesce(d.commission_pct, 1) as commission_pct,
           coalesce(d.crm_onboard_url, '') as crm_onboard_url,
-          coalesce(d.portal_pin, '') as portal_pin
+          coalesce(d.portal_pin, '') as portal_pin,
+          coalesce(d.show_handling, true) as show_handling
         from dealerships d
         order by d.name
       `;
@@ -74,6 +77,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         commission_pct: Number(r.commission_pct) || 0,
         crm_onboard_url: r.crm_onboard_url || "",
         portal_pin: (r.portal_pin || "").trim(),
+        show_handling: r.show_handling !== false,
       }));
     } catch {
       return DEALERS.map((d) => ({
@@ -90,6 +94,7 @@ export const listAdminDealers = createServerFn({ method: "GET" })
         commission_pct: 1,
         crm_onboard_url: "",
         portal_pin: "",
+        show_handling: !/ferrari/i.test(d.name) || !/alberta/i.test(d.name),
       }));
     }
   });
@@ -111,6 +116,7 @@ export const updateDealer = createServerFn({ method: "POST" })
         commission_pct: z.number().min(0).max(20).optional(),
         crm_onboard_url: z.string().max(500).optional(),
         portal_pin: z.string().min(4).max(64).optional(),
+        show_handling: z.boolean().optional(),
       })
       .parse(input),
   )
@@ -132,7 +138,8 @@ export const updateDealer = createServerFn({ method: "POST" })
         show_commission = coalesce(${data.show_commission ?? null}, show_commission),
         commission_pct = coalesce(${data.commission_pct ?? null}, commission_pct),
         crm_onboard_url = coalesce(${data.crm_onboard_url ?? null}, crm_onboard_url),
-        portal_pin = coalesce(${data.portal_pin ?? null}, portal_pin)
+        portal_pin = coalesce(${data.portal_pin ?? null}, portal_pin),
+        show_handling = coalesce(${data.show_handling ?? null}, show_handling)
       where id = ${data.id}
     `;
     if (data.inventory_url || data.active === true) {

@@ -39,4 +39,6 @@ export type DeskBoard = {
   /** Rooftop CRM onboarding link. Dealers open this; they do not get a CRM login. */
   onboardingUrl?: string;
   province?: string;
+  /** When false, the desk hides the handling box and quotes with $0 handling. */
+  showHandling?: boolean;
 };

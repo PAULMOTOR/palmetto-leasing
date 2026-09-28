@@ -65,6 +65,7 @@ function NewDealPage() {
   const [firstPayment, setFirstPayment] = useState(false);
   const [lockedBcPst, setLockedBcPst] = useState<number | null>(null);
   const [commission, setCommission] = useState({ show: false, pct: 0 });
+  const [showHandling, setShowHandling] = useState(true);
   const [emailQuote, setEmailQuote] = useState(true);
   const [exploding, setExploding] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -77,6 +78,7 @@ function NewDealPage() {
         setDealerName(displayDealerName(b.dealerName || slug));
         setLive(b.live);
         if (b.commission) setCommission(b.commission);
+        if (typeof b.showHandling === "boolean") setShowHandling(b.showHandling);
         if (b.province) setProvince(normalizeProvince(b.province));
       })
       .catch(() => undefined);
@@ -110,7 +112,7 @@ function NewDealPage() {
       residual,
       annualRate: rate,
       term,
-      handling: Number(handling) || 0,
+      handling: showHandling ? Number(handling) || 0 : 0,
       tradeAllowance: tradeKind === "none" ? 0 : Number(tradeAllowance) || 0,
       tradeKind,
       lien: Number(lien) || 0,
@@ -137,6 +139,7 @@ function NewDealPage() {
     aprPct,
     term,
     handling,
+    showHandling,
     tradeKind,
     tradeAllowance,
     lien,
@@ -430,7 +433,9 @@ function NewDealPage() {
                 />
               </div>
             ) : null}
-            <Field label="Handling" value={handling} onChange={setHandling} inputMode="decimal" />
+            {showHandling ? (
+              <Field label="Handling" value={handling} onChange={setHandling} inputMode="decimal" />
+            ) : null}
             <details className="rounded-2xl border border-border px-3 py-2">
               <summary className="cursor-pointer text-sm text-fg-muted">Due on delivery</summary>
               <div className="mt-3 space-y-3">

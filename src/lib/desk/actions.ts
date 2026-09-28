@@ -32,6 +32,7 @@ export const deskBoard = createServerFn({ method: "GET" })
     board.deals = await attachHeroShots(board.deals, ctx.dealerId);
     let commission = { show: false, pct: 0 };
     let onboard = board.onboardingUrl || "";
+    let showHandling = true;
     try {
       await ensurePortalSchema();
       const sql = await getSql();
@@ -39,10 +40,12 @@ export const deskBoard = createServerFn({ method: "GET" })
         show_commission: boolean;
         commission_pct: number | string;
         crm_onboard_url: string;
+        show_handling: boolean;
       }>`
         select coalesce(show_commission, false) as show_commission,
                coalesce(commission_pct, 0) as commission_pct,
-               coalesce(crm_onboard_url, '') as crm_onboard_url
+               coalesce(crm_onboard_url, '') as crm_onboard_url,
+               coalesce(show_handling, true) as show_handling
         from dealerships where id = ${ctx.dealerId} limit 1
       `;
       if (rows[0]) {
@@ -52,6 +55,7 @@ export const deskBoard = createServerFn({ method: "GET" })
         };
         if (!onboard) onboard = rows[0].crm_onboard_url || "";
       }
+      showHandling = rows[0] ? rows[0].show_handling !== false : true;
     } catch {
       /* preview without dealers table */
     }
@@ -64,6 +68,7 @@ export const deskBoard = createServerFn({ method: "GET" })
       commission,
       onboardingUrl: onboard || undefined,
       province: ctx.province || undefined,
+      showHandling,
     };
   });
 

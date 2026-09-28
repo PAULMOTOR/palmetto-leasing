@@ -264,6 +264,8 @@ test("dealer control centre has no inventory link and assigns the signed-in empl
   assert.match(adminDealers, /show_commission/);
   assert.match(adminDealers, /commission_pct/);
   assert.match(adminDealers, /portal_pin/);
+  assert.match(adminDealers, /show_handling/);
+  assert.match(schema, /show_handling/);
 });
 
 test("re-render bumps a versioned tile filename", () => {

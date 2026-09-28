@@ -712,6 +712,7 @@ function DealerRow({
   const [website, setWebsite] = useState(dealer.website_url);
   const [inventory, setInventory] = useState(dealer.inventory_url);
   const [showCommission, setShowCommission] = useState(Boolean(dealer.show_commission));
+  const [showHandling, setShowHandling] = useState(dealer.show_handling !== false);
   const [commissionPct, setCommissionPct] = useState(String(dealer.commission_pct ?? 1));
   const [onboard, setOnboard] = useState(dealer.crm_onboard_url || "");
   const [pin, setPin] = useState(dealer.portal_pin || "");
@@ -726,11 +727,12 @@ function DealerRow({
     setWebsite(dealer.website_url);
     setInventory(dealer.inventory_url);
     setShowCommission(Boolean(dealer.show_commission));
+    setShowHandling(dealer.show_handling !== false);
     setCommissionPct(String(dealer.commission_pct ?? 1));
     setOnboard(dealer.crm_onboard_url || "");
     setPin(dealer.portal_pin || "");
     setSavedPin(dealer.portal_pin || "");
-  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct, dealer.crm_onboard_url, dealer.portal_pin]);
+  }, [dealer.website_url, dealer.inventory_url, dealer.show_commission, dealer.commission_pct, dealer.crm_onboard_url, dealer.portal_pin, dealer.show_handling]);
 
   async function saveCommission(nextShow: boolean, nextPct: number) {
     if (!token) return;
@@ -851,6 +853,21 @@ function DealerRow({
             className="h-9 w-20 rounded-full border border-border bg-surface px-3 text-sm tabular-nums outline-none focus:border-accent disabled:opacity-40"
           />
           <span>% of financed</span>
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm text-fg">
+          <input
+            type="checkbox"
+            checked={showHandling}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setShowHandling(on);
+              void updateDealer({ data: { token, id: dealer.id, show_handling: on } }).catch((err) => {
+                toast.error(err instanceof Error ? err.message : "Could not save handling");
+              });
+            }}
+            className="size-4"
+          />
+          Show handling
         </label>
       </div>
       <label className="mt-3 block">

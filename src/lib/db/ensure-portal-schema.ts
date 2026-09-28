@@ -21,6 +21,7 @@ export function ensurePortalSchema(): Promise<void> {
       `alter table dealerships add column if not exists show_commission boolean not null default false`,
       `alter table dealerships add column if not exists commission_pct numeric(6,3) not null default 1`,
       `alter table dealerships add column if not exists portal_pin text`,
+      `alter table dealerships add column if not exists show_handling boolean not null default true`,
       `alter table dealerships add column if not exists contact_email text not null default ''`,
       `alter table dealerships add column if not exists crm_onboard_url text not null default ''`,
       `alter table crm_leads add column if not exists missing_docs text not null default '[]'`,
@@ -70,6 +71,26 @@ export function ensurePortalSchema(): Promise<void> {
           }
         }
       }
+    }
+    try {
+      const flagged = await sql<{ key: string }>`
+        select key from app_meta where key = 'show_handling_alberta' limit 1
+      `;
+      if (!flagged[0]) {
+        await sql`
+          update dealerships
+          set show_handling = false
+          where lower(name) like '%ferrari%alberta%'
+             or lower(id) like '%ferrari%alberta%'
+        `;
+        await sql`
+          insert into app_meta (key, value, updated_at)
+          values ('show_handling_alberta', '0', now())
+          on conflict (key) do nothing
+        `;
+      }
+    } catch {
+      /* column not ready yet */
     }
   })().catch((err) => {
     ensured = null;
