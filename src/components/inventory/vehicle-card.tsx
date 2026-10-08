@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { VehicleCard as VehicleCardType } from "@/lib/leasing/types";
@@ -126,16 +126,44 @@ export function VehicleCard({
   const title = vehicleDisplayTitle(vehicle);
   const delay = index < 3 ? 0 : Math.min(index, 12) * 35;
   const settings = quoteSettings ?? DEFAULT_QUOTE_SETTINGS;
+  const articleRef = useRef<HTMLElement>(null);
 
   const [learnOpen, setLearnOpen] = useState(false);
   const dealerLabel = (vehicle.dealer_name || "Partner dealer").toUpperCase();
 
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el) return;
+    if (!expanded) {
+      el.style.maxHeight = "";
+      return;
+    }
+    const fit = () => {
+      const shell = document.getElementById("inventory-filter-shell");
+      const bar = document.getElementById("inventory-filters");
+      const shellTop = shell ? Number.parseFloat(getComputedStyle(shell).top) || 0 : 76;
+      const barHeight = bar?.offsetHeight ?? 168;
+      const gap = shellTop + barHeight + 12;
+      const room = window.innerHeight - gap - 12;
+      const available = room >= 220 ? room : Math.max(220, window.innerHeight - 24);
+      el.style.maxHeight = `${available}px`;
+      const rect = el.getBoundingClientRect();
+      const fullyVisible = rect.top >= gap - 8 && rect.bottom <= window.innerHeight - 8;
+      if (!fullyVisible) {
+        window.scrollTo({ top: Math.max(0, window.scrollY + rect.top - gap), behavior: "smooth" });
+      }
+    };
+    const frame = requestAnimationFrame(fit);
+    return () => cancelAnimationFrame(frame);
+  }, [expanded]);
+
   return (
     <article
+      ref={articleRef}
       className={cn(
         "stagger-item group flex flex-col overflow-hidden rounded-[var(--radius-xl)] border border-border/80 bg-surface shadow-[var(--shadow-card)] transition-[transform,box-shadow,border-color] duration-[var(--motion-fast)] ease-[var(--ease-smooth-out)]",
         expanded
-          ? "z-20 col-span-full min-w-0 border-accent/40 shadow-[var(--shadow-card-hover)]"
+          ? "z-20 col-span-full flex min-h-0 w-full min-w-0 flex-col overflow-hidden border-accent/40 shadow-[var(--shadow-card-hover)]"
           : "hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]",
       )}
       style={{ animationDelay: `${delay}ms` }}
@@ -144,11 +172,11 @@ export function VehicleCard({
         className={cn(
           "grid",
           expanded
-            ? "min-w-0 md:grid-cols-[minmax(0,36%)_minmax(0,1fr)] lg:grid-cols-[minmax(0,34%)_minmax(0,1fr)]"
+            ? "min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[minmax(0,36%)_minmax(0,1fr)] md:grid-rows-1 lg:grid-cols-[minmax(0,34%)_minmax(0,1fr)]"
             : "grid-cols-1",
         )}
       >
-        <div className="flex flex-col">
+        <div className={cn("flex h-full min-h-0 min-w-0 flex-col", expanded && "overflow-hidden")}>
           {/* Square stage — click the car to open the lease quote */}
           <button
             type="button"
@@ -158,14 +186,14 @@ export function VehicleCard({
             className={cn(
               "relative w-full cursor-pointer overflow-hidden bg-white text-left",
               expanded
-                ? "aspect-[5/4] max-h-[42vh] md:aspect-auto md:max-h-none md:min-h-[280px] md:flex-1"
+                ? "h-[22vh] max-h-40 shrink-0 md:h-auto md:max-h-none md:min-h-0 md:flex-1"
                 : "aspect-square",
             )}
           >
             <TileThumb vehicle={vehicle} title={title} priority={index < 3} />
           </button>
 
-          <div className="flex flex-col items-center bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4">
+          <div className={cn("flex flex-col items-center bg-surface px-3.5 pt-2 pb-4 text-center sm:px-4 sm:pt-2.5 sm:pb-4", expanded && "shrink-0")}>
             <p className="mb-1.5 max-w-[94%] text-[9px] font-medium tracking-[0.22em] text-fg-subtle uppercase sm:text-[10px] sm:tracking-[0.26em]">
               {dealerLabel}
             </p>
@@ -206,7 +234,7 @@ export function VehicleCard({
         </div>
 
         {expanded && (
-          <div className="min-w-0 border-t border-border bg-surface-2/40 md:border-t-0 md:border-l">
+          <div className="h-full min-h-0 min-w-0 overflow-hidden border-t border-border bg-surface-2/40 md:border-t-0 md:border-l">
             <InCardQuote vehicle={vehicle} baseSettings={settings} onClose={onToggleLease} />
           </div>
         )}
@@ -295,14 +323,6 @@ function InCardQuote({
       }),
     [vehicle.price_cents, baseSettings, termMonths, downRate, kmPerYear],
   );
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      document
-        .getElementById(`quote-panel-${vehicle.id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
-  }, [vehicle.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -417,7 +437,7 @@ function InCardQuote({
   return (
     <div
       id={`quote-panel-${vehicle.id}`}
-      className="flex h-full max-h-[min(92vh,920px)] w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto p-3 sm:p-5 lg:p-6"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5 lg:p-6"
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>

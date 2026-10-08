@@ -200,6 +200,19 @@ function InventoryPage() {
   );
   const rangeFrom = filtered.length === 0 ? 0 : pageStart + 1;
   const rangeTo = Math.min(pageStart + pageSize, filtered.length);
+  const columns = useGridColumns();
+  const ordered = useMemo(() => {
+    if (!expandedId) return paged;
+    const index = paged.findIndex((v) => v.id === expandedId);
+    if (index < 0) return paged;
+    const rowStart = index - (index % columns);
+    if (rowStart === index) return paged;
+    const next = paged.slice();
+    const [item] = next.splice(index, 1);
+    if (!item) return paged;
+    next.splice(rowStart, 0, item);
+    return next;
+  }, [paged, expandedId, columns]);
 
   useEffect(() => {
     setPage(1);
@@ -241,6 +254,7 @@ function InventoryPage() {
     <div className="mx-auto max-w-[1280px] px-4 pb-10 sm:px-6">
       <HeroImagePreloads urls={heroThumbs} />
       <div
+        id="inventory-filter-shell"
         className={cn(
           "pointer-events-none fixed inset-x-0 top-[4.75rem] z-30 sm:top-[5.25rem]",
         )}
@@ -248,6 +262,7 @@ function InventoryPage() {
       >
         <div className="pointer-events-none mx-auto max-w-[1280px] px-4 sm:px-6">
           <div
+            id="inventory-filters"
             className={cn(
               "pointer-events-auto origin-top border-b bg-[var(--color-canvas,#f3f3f3)]/95 px-4 py-4 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] backdrop-blur-md will-change-transform sm:px-6",
               filtersVisible
@@ -377,20 +392,16 @@ function InventoryPage() {
           >
             <div
               key={currentPage}
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3"
+              className="grid min-w-0 grid-cols-1 gap-4 overflow-x-clip sm:grid-cols-2 sm:gap-5 lg:grid-cols-3"
             >
-              {paged.map((v, i) => (
+              {ordered.map((v, i) => (
                 <VehicleCard
                   key={v.id}
                   vehicle={v}
                   index={i}
                   expanded={expandedId === v.id}
                   onToggleLease={() => {
-                    setExpandedId((id) => {
-                      const next = id === v.id ? null : v.id;
-                      setDealerParam(next ? v.dealership_id : dealer);
-                      return next;
-                    });
+                    setExpandedId((id) => (id === v.id ? null : v.id));
                   }}
                   quoteSettings={quoteSettings}
                 />
@@ -411,6 +422,20 @@ function InventoryPage() {
       </div>
     </div>
   );
+}
+
+function useGridColumns() {
+  const [cols, setCols] = useState(1);
+  useEffect(() => {
+    const read = () => {
+      const width = window.innerWidth;
+      setCols(width >= 1024 ? 3 : width >= 640 ? 2 : 1);
+    };
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+  return cols;
 }
 
 function paginationItems(current: number, total: number): Array<number | "ellipsis"> {
